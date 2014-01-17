@@ -348,12 +348,6 @@ static int xhci_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		goto put_usb3_hcd;
 	/* Roothub already marked as USB 3.0 speed */
 
-	/* We know the LPM timeout algorithms for this host, let the USB core
-	 * enable and disable LPM for devices under the USB 3.0 roothub.
-	 */
-	if (xhci->quirks & XHCI_LPM_SUPPORT)
-		hcd_to_bus(xhci->shared_hcd)->root_hub->lpm_capable = 1;
-
 	if (device_create_file(&dev->dev, &dev_attr_ssic_port_enable))
 		dev_err(&dev->dev, "can't create ssic_port_enable attribute\n");
 
