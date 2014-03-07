@@ -678,6 +678,7 @@ i2c_new_device(struct i2c_adapter *adap, struct i2c_board_info const *info)
 	client->flags = info->flags;
 	client->addr = info->addr;
 	client->irq = info->irq;
+	client->irq_flags = info->irq_flags;
 	client->comp_addr_count = info->comp_addr_count;
 	client->comp_addrs = info->comp_addrs;
 
@@ -1123,6 +1124,7 @@ struct i2c_resource_info {
 	struct i2c_comp_address addrs[MAX_CRS_ELEMENTS];
 	int count;
 	int common_irq;
+	unsigned long irq_flags;
 };
 
 static int acpi_i2c_add_resource(struct acpi_resource *ares, void *data)
@@ -1146,8 +1148,10 @@ static int acpi_i2c_add_resource(struct acpi_resource *ares, void *data)
 	} else if (rcs_info->common_irq < 0) {
 		struct resource r;
 
-		if (acpi_dev_resource_interrupt(ares, 0, &r))
+		if (acpi_dev_resource_interrupt(ares, 0, &r)) {
 			rcs_info->common_irq = r.start;
+			rcs_info->irq_flags = r.flags;
+		}
 	}
 
 	/* Tell the ACPI core to skip this resource */
@@ -1187,6 +1191,7 @@ static acpi_status acpi_i2c_add_device(acpi_handle handle, u32 level,
 
 	adev->power.flags.ignore_parent = true;
 	info.irq = rcs_info.common_irq;
+	info.irq_flags = rcs_info.irq_flags;
 	info.comp_addr_count = rcs_info.count;
 	for (i = 0; i < rcs_info.count; ++i) {
 		if (!rcs_info.addrs[i].addr)
