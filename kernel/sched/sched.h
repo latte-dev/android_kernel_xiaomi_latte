@@ -1212,6 +1212,8 @@ extern void idle_exit_fair(struct rq *this_rq);
 
 extern void update_cpu_concurrency(struct rq *rq);
 extern void init_workload_consolidation(struct rq *rq);
+extern void wc_nonshielded_mask(struct sched_domain *sd, struct cpumask *mask);
+extern int wc_cpu_shielded(int cpu);
 
 #else	/* CONFIG_SMP */
 
@@ -1221,6 +1223,8 @@ static inline void idle_balance(int cpu, struct rq *rq)
 
 static inline void update_cpu_concurrency(struct rq *rq) {}
 static inline void init_workload_consolidation(struct rq *rq) {}
+static inline void wc_nonshielded_mask(struct sched_domain *sd, struct cpumask *mask) {}
+static inline int wc_cpu_shielded(struct sched_domain *sd) {}
 
 #endif
 

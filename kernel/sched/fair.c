@@ -2400,7 +2400,7 @@ void update_cpu_concurrency(struct rq *rq);
 static struct sched_group *wc_find_group(struct sched_domain *sd,
 	struct task_struct *p, int this_cpu);
 static void wc_unload(struct cpumask *nonshielded, struct sched_domain *sd);
-static void wc_nonshielded_mask(struct sched_domain *sd, struct cpumask *mask);
+void wc_nonshielded_mask(struct sched_domain *sd, struct cpumask *mask);
 static int cpu_cc_capable(int cpu);
 
 /*
@@ -7693,8 +7693,14 @@ struct sched_group *wc_find_group(struct sched_domain *sd,
  *
  * We assume (1) every sched_group has the same weight, and (2) SMP only
  */
-int wc_cpu_shielded(struct sched_domain *sd)
+int wc_cpu_shielded(int cpu)
 {
+	struct sched_domain *sd;
+	int shielded = 0;
+
+	rcu_read_lock();
+	sd = rcu_dereference(per_cpu(sd_wc, cpu));
+
 	while (sd) {
 		int half, sg_weight, this_sg_nr;
 		unsigned long sd_cc;
@@ -7717,11 +7723,15 @@ int wc_cpu_shielded(struct sched_domain *sd)
 				sd->consolidating_coeff);
 
 			if (!__can_consolidate_cc(sd_cc, sd->span_weight,
-				threshold, cpus))
-				return 0;
+				threshold, cpus)) {
+				shielded = 0;
+				goto ret;
+			}
 
-			if (this_sg_nr >= half)
-				return 1;
+			if (this_sg_nr >= half) {
+				shielded = 1;
+				goto ret;
+			}
 
 			half /= 2;
 		}
@@ -7729,7 +7739,9 @@ int wc_cpu_shielded(struct sched_domain *sd)
 		sd = sd->child;
 	}
 
-	return 0;
+ret:
+	rcu_read_unlock();
+	return shielded;
 }
 
 static inline int __nonshielded_groups(struct sched_domain *sd)
