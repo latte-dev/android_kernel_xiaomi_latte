@@ -525,6 +525,11 @@ config UID_CPUTIME
 	help
 	  Per UID based cpu time statistics exported to /proc/uid_cputime
 
+config VLV2_PLAT_CLK
+        tristate "Vlv2 platform clock control driver"
+        ---help---
+         Driver to enable the platform clock control for valleyview2
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
