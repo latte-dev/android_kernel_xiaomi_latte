@@ -60,3 +60,4 @@ obj-$(CONFIG_UID_CPUTIME) += uid_cputime.o
 obj-$(CONFIG_VLV2_PLAT_CLK)     += vlv2_plat_clock.o
 obj-$(CONFIG_DGNSS)             += dgnss/
 obj-$(CONFIG_PWM)               += pwm/
+obj-$(CONFIG_MONZA_X)           += monza_x.o
