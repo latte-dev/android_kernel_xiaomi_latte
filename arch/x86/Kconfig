@@ -2478,6 +2478,10 @@ config IOSF_MBI
 	  You should say Y if you are running a kernel on one of these
 	  platforms.
 
+config PMC_ATOM
+	def_bool y
+	depends on PCI
+
 source "net/Kconfig"
 
 source "drivers/Kconfig"
