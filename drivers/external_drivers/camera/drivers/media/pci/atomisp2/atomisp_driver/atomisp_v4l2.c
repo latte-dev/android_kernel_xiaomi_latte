@@ -1266,6 +1266,7 @@ static int atomisp_pci_probe(struct pci_dev *dev,
 	unsigned int start;
 	void __iomem *base;
 	int err, val;
+	u32 irq;
 
 	if (!dev) {
 		dev_err(&dev->dev, "atomisp: error device ptr\n");
@@ -1582,6 +1583,31 @@ enable_msi_fail:
 fw_validation_fail:
 	release_firmware(isp->firmware);
 load_fw_fail:
+	/*
+	 * Switch off ISP, as keeping it powered on would prevent
+	 * reaching S0ix states.
+	 *
+	 * The following lines have been copied from atomisp suspend path
+	 */
+
+	pci_read_config_dword(dev, PCI_INTERRUPT_CTRL, &irq);
+	irq = irq & 1 << INTR_IIR;
+	pci_write_config_dword(dev, PCI_INTERRUPT_CTRL, irq);
+
+	pci_read_config_dword(dev, PCI_INTERRUPT_CTRL, &irq);
+	irq &= ~(1 << INTR_IER);
+	pci_write_config_dword(dev, PCI_INTERRUPT_CTRL, irq);
+
+	atomisp_msi_irq_uninit(isp, dev);
+
+	atomisp_ospm_dphy_down(isp);
+#ifdef CONFIG_GMIN_INTEL_MID
+	if (ATOMISP_INTERNAL_PM) {
+		if (atomisp_mrfld_power_down(isp))
+			dev_err(&dev->dev, "Failed to switch off ISP\n");
+	}
+#endif
+
 	pci_dev_put(isp->pci_root);
 	return err;
 }
