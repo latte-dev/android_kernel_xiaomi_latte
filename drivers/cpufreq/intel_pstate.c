@@ -415,6 +415,8 @@ static void byt_set_pstate(struct cpudata *cpudata, int pstate)
 	if (pstate > cpudata->pstate.max_pstate)
 		vid = cpudata->vid.turbo;
 
+	trace_pstate_byt_set(pstate, vid);
+
 	val |= vid;
 
 	wrmsrl_on_cpu(cpudata->cpu, MSR_IA32_PERF_CTL, val);
