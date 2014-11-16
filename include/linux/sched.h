@@ -1023,6 +1023,7 @@ struct sched_avg {
 	 * choices of y < 1-2^(-32)*1024.
 	 */
 	u32 runnable_avg_sum, runnable_avg_period;
+	u32 period_contrib;
 	u64 last_runnable_update;
 	s64 decay_count;
 	unsigned long load_avg_contrib;

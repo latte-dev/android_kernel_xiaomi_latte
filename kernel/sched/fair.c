@@ -2084,10 +2084,14 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 	sa->last_runnable_update = now;
 
 	/* delta_w is the amount already accumulated against our next period */
-	delta_w = sa->runnable_avg_period % 1024;
+	delta_w = sa->period_contrib;
 	if (delta + delta_w >= 1024) {
 		/* period roll-over */
 		decayed = 1;
+		/*
+		 * We don't know how much left for next period yet
+		 */
+		sa->period_contrib = 0;
 
 		/*
 		 * Now that we know we're crossing a period boundary, figure
@@ -2096,7 +2100,7 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 		 */
 		delta_w = 1024 - delta_w;
 		if (runnable)
-			sa->runnable_avg_sum += delta_w;
+			sa->runnable_avg_sum += runnable * delta_w;
 		sa->runnable_avg_period += delta_w;
 
 		delta -= delta_w;
@@ -2113,14 +2117,16 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 		/* Efficiently calculate \sum (1..n_period) 1024*y^i */
 		runnable_contrib = __compute_runnable_contrib(periods);
 		if (runnable)
-			sa->runnable_avg_sum += runnable_contrib;
+			sa->runnable_avg_sum += runnable * runnable_contrib;
 		sa->runnable_avg_period += runnable_contrib;
 	}
 
 	/* Remainder of delta accrued against u_0` */
 	if (runnable)
-		sa->runnable_avg_sum += delta;
+		sa->runnable_avg_sum += runnable * delta;
 	sa->runnable_avg_period += delta;
+
+	sa->period_contrib += delta;
 
 	return decayed;
 }
