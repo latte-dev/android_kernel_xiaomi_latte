@@ -512,6 +512,10 @@ struct root_domain {
 
 extern struct root_domain def_root_domain;
 
+struct cpu_concurrency_t {
+	struct sched_avg avg;
+};
+
 #endif /* CONFIG_SMP */
 
 /*
@@ -599,6 +603,8 @@ struct rq {
 	int online;
 
 	struct list_head cfs_tasks;
+
+	struct cpu_concurrency_t concurrency;
 
 	u64 rt_avg;
 	u64 age_stamp;
@@ -1194,11 +1200,15 @@ extern void idle_balance(int this_cpu, struct rq *this_rq);
 extern void idle_enter_fair(struct rq *this_rq);
 extern void idle_exit_fair(struct rq *this_rq);
 
+extern void update_cpu_concurrency(struct rq *rq);
+
 #else	/* CONFIG_SMP */
 
 static inline void idle_balance(int cpu, struct rq *rq)
 {
 }
+
+static inline void update_cpu_concurrency(struct rq *rq) {}
 
 #endif
 

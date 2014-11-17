@@ -762,6 +762,7 @@ static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
 	sched_info_queued(rq, p);
+	update_cpu_concurrency(rq);
 	p->sched_class->enqueue_task(rq, p, flags);
 }
 
@@ -769,6 +770,7 @@ static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
 	sched_info_dequeued(rq, p);
+	update_cpu_concurrency(rq);
 	p->sched_class->dequeue_task(rq, p, flags);
 }
 
@@ -2465,6 +2467,7 @@ void scheduler_tick(void)
 
 	raw_spin_lock(&rq->lock);
 	update_rq_clock(rq);
+	update_cpu_concurrency(rq);
 	curr->sched_class->task_tick(rq, curr, 0);
 	update_cpu_load_active(rq);
 	raw_spin_unlock(&rq->lock);

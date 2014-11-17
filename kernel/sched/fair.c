@@ -2396,6 +2396,8 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 	} /* migrations, e.g. sleep=0 leave decay_count == 0 */
 }
 
+void update_cpu_concurrency(struct rq *rq);
+
 /*
  * Update the rq's load with the elapsed running time before entering
  * idle. if the last scheduled task is not a CFS task, idle_enter will
@@ -2403,6 +2405,7 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
  */
 void idle_enter_fair(struct rq *this_rq)
 {
+	update_cpu_concurrency(this_rq);
 }
 
 /*
@@ -2412,6 +2415,7 @@ void idle_enter_fair(struct rq *this_rq)
  */
 void idle_exit_fair(struct rq *this_rq)
 {
+	update_cpu_concurrency(this_rq);
 }
 
 #else
@@ -5094,6 +5098,8 @@ static void update_blocked_averages(int cpu)
 		__update_blocked_averages_cpu(cfs_rq->tg, rq->cpu);
 	}
 
+	update_cpu_concurrency(rq);
+
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 }
 
@@ -7354,3 +7360,34 @@ __init void init_sched_fair_class(void)
 #endif /* SMP */
 
 }
+
+#ifdef CONFIG_SMP
+/*
+ * CPU ConCurrency (CC) measures the CPU load by averaging
+ * the number of runnable tasks. Using CC, the scheduler can
+ * consolidate the load of CPUs when balancing load to improve
+ * power efficiency without sacrificing performance.
+ *
+ * Copyright (C) 2014 Intel, Inc.,
+ *
+ * Author: Du, Yuyang <yuyang.du@intel.com>
+ */
+
+/*
+ * We update cpu concurrency at:
+ * - enqueue task
+ * - dequeue task
+ * - periodic scheduler tick in case no en/dequeue for long
+ * - enter and exit idle
+ * - update_blocked_averages
+ */
+void update_cpu_concurrency(struct rq *rq)
+{
+	struct sched_avg *sa = &rq->concurrency.avg;
+	if (__update_entity_runnable_avg(rq->clock, sa, rq->nr_running)) {
+		sa->load_avg_contrib = sa->runnable_avg_sum << NICE_0_SHIFT;
+		sa->load_avg_contrib /= (sa->runnable_avg_period + 1);
+	}
+}
+
+#endif /* SMP */
