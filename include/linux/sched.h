@@ -870,6 +870,7 @@ enum cpu_idle_type {
 #define SD_PREFER_SIBLING	0x1000	/* Prefer to place tasks in a sibling domain */
 #define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
 #define SD_NUMA			0x4000	/* cross-node balancing */
+#define SD_WORKLOAD_CONSOLIDATION  0x8000	/* consolidate CPU workload */
 
 extern int __weak arch_sd_sibiling_asym_packing(void);
 
@@ -953,6 +954,11 @@ struct sched_domain {
 		void *private;		/* used during construction */
 		struct rcu_head rcu;	/* used during destruction */
 	};
+
+	unsigned int total_groups;		/* total group number */
+	unsigned int group_number;		/* this CPU's group sequence */
+	unsigned int consolidating_coeff;	/* consolidating coefficient */
+	struct sched_group *first_group;	/* ordered by CPU number */
 
 	unsigned int span_weight;
 	/*

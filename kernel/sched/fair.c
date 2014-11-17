@@ -7381,6 +7381,7 @@ __init void init_sched_fair_class(void)
  * - enter and exit idle
  * - update_blocked_averages
  */
+
 void update_cpu_concurrency(struct rq *rq)
 {
 	struct sched_avg *sa = &rq->concurrency.avg;
@@ -7388,6 +7389,11 @@ void update_cpu_concurrency(struct rq *rq)
 		sa->load_avg_contrib = sa->runnable_avg_sum << NICE_0_SHIFT;
 		sa->load_avg_contrib /= (sa->runnable_avg_period + 1);
 	}
+}
+
+void init_workload_consolidation(struct rq *rq)
+{
+	rq->concurrency.unload = 0;
 }
 
 #endif /* SMP */

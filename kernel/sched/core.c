@@ -4919,7 +4919,7 @@ set_table_entry(struct ctl_table *entry,
 static struct ctl_table *
 sd_alloc_ctl_domain_table(struct sched_domain *sd)
 {
-	struct ctl_table *table = sd_alloc_ctl_entry(13);
+	struct ctl_table *table = sd_alloc_ctl_entry(14);
 
 	if (table == NULL)
 		return NULL;
@@ -4949,7 +4949,9 @@ sd_alloc_ctl_domain_table(struct sched_domain *sd)
 		sizeof(int), 0644, proc_dointvec_minmax, false);
 	set_table_entry(&table[11], "name", sd->name,
 		CORENAME_MAX_SIZE, 0444, proc_dostring, false);
-	/* &table[12] is terminator */
+	set_table_entry(&table[12], "consolidating_coeff", &sd->consolidating_coeff,
+		sizeof(int), 0644, proc_dointvec, false);
+	/* &table[13] is terminator */
 
 	return table;
 }
@@ -5550,7 +5552,7 @@ static void update_top_cache_domain(int cpu)
 	int id = cpu;
 	int size = 1;
 
-	sd = highest_flag_domain(cpu, SD_SHARE_PKG_RESOURCES);
+	sd = highest_flag_domain(cpu, SD_SHARE_PKG_RESOURCES, 1);
 	if (sd) {
 		id = cpumask_first(sched_domain_span(sd));
 		size = cpumask_weight(sched_domain_span(sd));
@@ -5565,8 +5567,38 @@ static void update_top_cache_domain(int cpu)
 	sd = lowest_flag_domain(cpu, SD_NUMA);
 	rcu_assign_pointer(per_cpu(sd_numa, cpu), sd);
 
-	sd = highest_flag_domain(cpu, SD_ASYM_PACKING);
+	sd = highest_flag_domain(cpu, SD_ASYM_PACKING, 1);
 	rcu_assign_pointer(per_cpu(sd_asym, cpu), sd);
+}
+
+DEFINE_PER_CPU(struct sched_domain *, sd_wc);
+
+static void update_wc_domain(struct sched_domain *sd, int cpu)
+{
+	while (sd) {
+		int i = 0, j = 0, first, min = INT_MAX;
+		struct sched_group *group;
+
+		group = sd->groups;
+		first = group_first_cpu(group);
+		do {
+			int k = group_first_cpu(group);
+			i += 1;
+			if (k < first)
+				j += 1;
+			if (k < min) {
+				sd->first_group = group;
+				min = k;
+			}
+		} while (group = group->next, group != sd->groups);
+
+		sd->total_groups = i;
+		sd->group_number = j;
+		sd = sd->parent;
+	}
+
+	sd = highest_flag_domain(cpu, SD_WORKLOAD_CONSOLIDATION, 0);
+	rcu_assign_pointer(per_cpu(sd_wc, cpu), sd);
 }
 
 /*
@@ -5617,6 +5649,8 @@ cpu_attach_domain(struct sched_domain *sd, struct root_domain *rd, int cpu)
 	destroy_sched_domains(tmp, cpu);
 
 	update_top_cache_domain(cpu);
+
+	update_wc_domain(sd, cpu);
 }
 
 /* cpus with isolated domains */
@@ -6960,6 +6994,8 @@ void __init sched_init(void)
 #endif
 		init_rq_hrtick(rq);
 		atomic_set(&rq->nr_iowait, 0);
+
+		init_workload_consolidation(rq);
 	}
 
 	set_load_weight(&init_task);
