@@ -2399,6 +2399,8 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 void update_cpu_concurrency(struct rq *rq);
 static struct sched_group *wc_find_group(struct sched_domain *sd,
 	struct task_struct *p, int this_cpu);
+static void wc_unload(struct cpumask *nonshielded, struct sched_domain *sd);
+static void wc_nonshielded_mask(struct sched_domain *sd, struct cpumask *mask);
 static int cpu_cc_capable(int cpu);
 
 /*
@@ -6396,6 +6398,22 @@ void idle_balance(int this_cpu, struct rq *this_rq)
 
 	update_blocked_averages(this_cpu);
 	rcu_read_lock();
+
+	sd = rcu_dereference(per_cpu(sd_wc, this_cpu));
+	if (sd) {
+		struct cpumask *nonshielded_cpus = __get_cpu_var(load_balance_mask);
+
+		cpumask_copy(nonshielded_cpus, cpu_active_mask);
+
+		/*
+		 * If we encounter shielded CPU here, don't do balance on them
+		 */
+		wc_nonshielded_mask(sd, nonshielded_cpus);
+		if (!cpumask_test_cpu(this_cpu, nonshielded_cpus))
+			goto unlock;
+		wc_unload(nonshielded_cpus, sd);
+	}
+
 	for_each_domain(this_cpu, sd) {
 		unsigned long interval;
 		int continue_balancing = 1;
@@ -6430,6 +6448,7 @@ void idle_balance(int this_cpu, struct rq *this_rq)
 			break;
 		}
 	}
+unlock:
 	rcu_read_unlock();
 
 	raw_spin_lock(&this_rq->lock);
