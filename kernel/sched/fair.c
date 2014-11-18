@@ -6550,8 +6550,33 @@ static inline int find_new_ilb(void)
 {
 	int ilb = cpumask_first(nohz.idle_cpus_mask);
 
-	if (ilb < nr_cpu_ids && idle_cpu(ilb))
-		return ilb;
+	if (ilb < nr_cpu_ids && idle_cpu(ilb)) {
+		struct sched_domain *sd;
+		int this_cpu = smp_processor_id();
+
+		rcu_read_lock();
+		sd = rcu_dereference(per_cpu(sd_wc, this_cpu));
+		if (sd) {
+			struct cpumask *nonshielded_cpus =
+				__get_cpu_var(load_balance_mask);
+
+			cpumask_copy(nonshielded_cpus, nohz.idle_cpus_mask);
+
+			wc_nonshielded_mask(sd, nonshielded_cpus);
+			rcu_read_unlock();
+
+			/*
+			 * Get idle load balancer again
+			 */
+			ilb = cpumask_first(nonshielded_cpus);
+
+		    if (ilb < nr_cpu_ids && idle_cpu(ilb))
+				return ilb;
+		} else {
+			rcu_read_unlock();
+			return ilb;
+		}
+	}
 
 	return nr_cpu_ids;
 }
@@ -6777,7 +6802,7 @@ out:
  * In CONFIG_NO_HZ_COMMON case, the idle balance kickee will do the
  * rebalancing for all the cpus for whom scheduler ticks are stopped.
  */
-static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
+static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle, struct cpumask *mask)
 {
 	int this_cpu = this_rq->cpu;
 	struct rq *rq;
@@ -6787,7 +6812,7 @@ static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 	    !test_bit(NOHZ_BALANCE_KICK, nohz_flags(this_cpu)))
 		goto end;
 
-	for_each_cpu(balance_cpu, nohz.idle_cpus_mask) {
+	for_each_cpu(balance_cpu, mask) {
 		if (balance_cpu == this_cpu || !idle_cpu(balance_cpu))
 			continue;
 
@@ -6835,10 +6860,10 @@ static inline int nohz_kick_needed(struct rq *rq)
 	if (unlikely(rq->idle_balance))
 		return 0;
 
-       /*
-	* We may be recently in ticked or tickless idle mode. At the first
-	* busy tick after returning from idle, we will update the busy stats.
-	*/
+	/*
+	 * We may be recently in ticked or tickless idle mode. At the first
+	 * busy tick after returning from idle, we will update the busy stats.
+	 */
 	set_cpu_sd_state_busy();
 	nohz_balance_exit_idle(cpu);
 
@@ -6881,7 +6906,7 @@ need_kick:
 	return 1;
 }
 #else
-static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle) { }
+static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle, struct cpumask *mask) { }
 #endif
 
 /*
@@ -6901,7 +6926,7 @@ static void run_rebalance_domains(struct softirq_action *h)
 	 * balancing on behalf of the other idle cpus whose ticks are
 	 * stopped.
 	 */
-	nohz_idle_balance(this_rq, idle);
+	nohz_idle_balance(this_rq, idle, nohz.idle_cpus_mask);
 }
 
 static inline int on_null_domain(struct rq *rq)
