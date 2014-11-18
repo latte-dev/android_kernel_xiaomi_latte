@@ -2397,6 +2397,9 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 }
 
 void update_cpu_concurrency(struct rq *rq);
+static struct sched_group *wc_find_group(struct sched_domain *sd,
+	struct task_struct *p, int this_cpu);
+static int cpu_cc_capable(int cpu);
 
 /*
  * Update the rq's load with the elapsed running time before entering
@@ -4173,7 +4176,19 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	struct sched_group *sg;
 	int i = task_cpu(p);
 
-	if (idle_cpu(target))
+	/*
+	 * We prefer wakee to waker CPU. For each of them, if it is idle, then
+	 * select it, but if not, we lower down the bar to use a threshold of CC
+	 * to determine whether it is capable of handling the wakee task
+	 */
+	if (sysctl_sched_cc_wakeup_threshold) {
+		if (idle_cpu(i) || cpu_cc_capable(i))
+			return i;
+
+		if (i != target && (idle_cpu(target) || cpu_cc_capable(target)))
+			return target;
+	}
+	else if (idle_cpu(target))
 		return target;
 
 	/*
@@ -4266,7 +4281,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	}
 
 	while (sd) {
-		struct sched_group *group;
+		struct sched_group *group = NULL;
 		int weight;
 
 		if (!(sd->flags & sd_flag)) {
@@ -4274,7 +4289,12 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 			continue;
 		}
 
-		group = find_idlest_group(sd, p, cpu, sd_flag);
+		if (sd->flags & SD_WORKLOAD_CONSOLIDATION)
+			group = wc_find_group(sd, p, cpu);
+
+		if (!group)
+			group = find_idlest_group(sd, p, cpu, sd_flag);
+
 		if (!group) {
 			sd = sd->child;
 			continue;
@@ -7381,6 +7401,12 @@ __init void init_sched_fair_class(void)
  */
 
 /*
+ * Concurrency lower than this threshold% is capable of running
+ * wakee task, otherwise make it 0
+ */
+unsigned int sysctl_sched_cc_wakeup_threshold = 60;
+
+/*
  * Aggressively push the task even it is hot
  */
 static int wc_push_hot_task = 1;
@@ -7415,6 +7441,26 @@ static inline u32 cc_weight(unsigned int nr_running)
 static inline unsigned long get_cpu_concurrency(int cpu)
 {
 	return cpu_rq(cpu)->concurrency.avg.load_avg_contrib;
+}
+
+/*
+ * whether cpu is capable of having more concurrency
+ */
+static int cpu_cc_capable(int cpu)
+{
+	unsigned long cpu_cc = get_cpu_concurrency(cpu);
+	unsigned long threshold = cc_weight(1);
+
+	cpu_cc *= 100;
+	cpu_cc *= cpu_rq(cpu)->cpu_power;
+
+	threshold *= sysctl_sched_cc_wakeup_threshold;
+	threshold <<= SCHED_POWER_SHIFT;
+
+	if (cpu_cc <= threshold)
+		return 1;
+
+	return 0;
 }
 
 static inline unsigned long sched_group_cc(struct sched_group *sg)
