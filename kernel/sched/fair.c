@@ -6915,18 +6915,57 @@ static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle, struc
  */
 static void run_rebalance_domains(struct softirq_action *h)
 {
+	int this_cpu = smp_processor_id();
 	struct rq *this_rq = this_rq();
+	struct sched_domain *sd;
 	enum cpu_idle_type idle = this_rq->idle_balance ?
 						CPU_IDLE : CPU_NOT_IDLE;
 
-	rebalance_domains(this_rq, idle);
+	rcu_read_lock();
+	sd = rcu_dereference(per_cpu(sd_wc, this_cpu));
+	if (sd) {
+		struct cpumask *nonshielded_cpus =
+			__get_cpu_var(load_balance_mask);
 
-	/*
-	 * If this cpu has a pending nohz_balance_kick, then do the
-	 * balancing on behalf of the other idle cpus whose ticks are
-	 * stopped.
-	 */
-	nohz_idle_balance(this_rq, idle, nohz.idle_cpus_mask);
+		/*
+		 * If we encounter shielded cpus here, don't do balance on them
+		 */
+		cpumask_copy(nonshielded_cpus, cpu_active_mask);
+
+		wc_nonshielded_mask(sd, nonshielded_cpus);
+		rcu_read_unlock();
+
+		/*
+		 * Aggressively unload the shielded cpus to unshielded cpus
+		 */
+		wc_unload(nonshielded_cpus, sd);
+
+		if (cpumask_test_cpu(this_cpu, nonshielded_cpus)) {
+			struct cpumask *idle_cpus =
+				__get_cpu_var(local_cpu_mask);
+			cpumask_and(idle_cpus, nonshielded_cpus,
+				    nohz.idle_cpus_mask);
+
+			rebalance_domains(this_rq, idle);
+
+			/*
+			 * If this cpu has a pending nohz_balance_kick, then do the
+			 * balancing on behalf of the other idle cpus whose ticks are
+			 * stopped.
+			 */
+			nohz_idle_balance(this_rq, idle, idle_cpus);
+		}
+	} else {
+		rcu_read_unlock();
+		rebalance_domains(this_rq, idle);
+
+		/*
+		 * If this cpu has a pending nohz_balance_kick, then do the
+		 * balancing on behalf of the other idle cpus whose ticks are
+		 * stopped.
+		 */
+		nohz_idle_balance(this_rq, idle, nohz.idle_cpus_mask);
+	}
 }
 
 static inline int on_null_domain(struct rq *rq)
