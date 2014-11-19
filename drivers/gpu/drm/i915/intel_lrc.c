@@ -2254,10 +2254,6 @@ static int gen8_init_render_ring(struct intel_engine_cs *ring)
 	 */
 	I915_WRITE(MI_MODE, _MASKED_BIT_ENABLE(ASYNC_FLIP_PERF_DISABLE));
 
-	ret = intel_init_pipe_control(ring);
-	if (ret)
-		return ret;
-
 	I915_WRITE(INSTPM, _MASKED_BIT_ENABLE(INSTPM_FORCE_ORDERING));
 
 	return init_workarounds_ring(ring);
@@ -2788,6 +2784,7 @@ static int logical_render_ring_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_engine_cs *ring = &dev_priv->ring[RCS];
+	int ret;
 
 	ring->name = "render ring";
 	ring->id = RCS;
@@ -2817,7 +2814,12 @@ static int logical_render_ring_init(struct drm_device *dev)
 	ring->save = gen8_ring_save;
 	ring->restore = gen8_ring_restore;
 
-	return logical_ring_init(dev, ring);
+	ring->dev = dev;
+	ret = logical_ring_init(dev, ring);
+	if (ret)
+		return ret;
+
+	return intel_init_pipe_control(ring);
 }
 
 static int logical_bsd_ring_init(struct drm_device *dev)
