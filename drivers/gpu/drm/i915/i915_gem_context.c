@@ -90,6 +90,7 @@
 #include "i915_drv.h"
 #include "intel_lrc_tdr.h"
 #include "intel_sync.h"
+#include "i915_trace.h"
 
 /* This is a HW constraint. The value below is the largest known requirement
  * I've seen in a spec to date, and that was a workaround for a non-shipping
@@ -140,6 +141,8 @@ void i915_gem_context_free(struct kref *ctx_ref)
 	struct intel_context *ctx = container_of(ctx_ref,
 						 typeof(*ctx), ref);
 	struct drm_i915_private *dev_priv = ctx->dev_priv;
+
+	trace_i915_context_free(ctx);
 
 	for (i = 0; i < I915_NUM_RINGS; i++) {
 		struct intel_engine_cs *ring = &dev_priv->ring[i];
@@ -308,6 +311,8 @@ i915_gem_create_context(struct drm_device *dev,
 
 	ctx->pid = get_pid(task_tgid(current));
 	i915_perfmon_ctx_setup(ctx);
+
+	trace_i915_context_create(ctx);
 
 	return ctx;
 
@@ -720,6 +725,7 @@ static int do_switch(struct intel_engine_cs *ring,
 		 * "PP_DCLV followed by PP_DIR_BASE register through Load
 		 * Register Immediate commands in Ring Buffer before submitting
 		 * a context."*/
+		trace_switch_mm(ring, to);
 		ret = to->ppgtt->switch_mm(to->ppgtt, ring, false);
 		if (ret)
 			goto unpin_out;
