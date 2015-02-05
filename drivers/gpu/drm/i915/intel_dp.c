@@ -1139,6 +1139,12 @@ found:
 			       pipe_config->port_clock,
 			       &pipe_config->dp_m_n);
 
+	if (intel_connector->panel.downclock_mode)
+		intel_link_compute_m_n(bpp, lane_count,
+			       intel_connector->panel.downclock_mode->clock,
+			       pipe_config->port_clock,
+			       &pipe_config->dp_m2_n2);
+
 	intel_dp_set_clock(encoder, pipe_config, intel_dp->link_bw);
 
 	return true;

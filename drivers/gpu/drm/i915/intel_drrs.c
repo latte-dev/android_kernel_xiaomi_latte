@@ -312,6 +312,8 @@ int intel_drrs_init(struct drm_device *dev,
 
 	if (intel_encoder->type == INTEL_OUTPUT_DSI) {
 		drrs->encoder_ops = get_intel_dsi_drrs_ops();
+	} else if (intel_encoder->type == INTEL_OUTPUT_EDP) {
+		drrs->encoder_ops = get_intel_edp_drrs_ops();
 	} else {
 		DRM_ERROR("DRRS: Unsupported Encoder\n");
 		ret = -EINVAL;
