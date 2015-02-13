@@ -4132,12 +4132,31 @@ void intel_crtc_wait_for_pending_flips(struct drm_crtc *crtc)
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 
 		if (unpin_work) {
+			struct drm_pending_vblank_event *vblank_e =
+				unpin_work->event;
+			if (vblank_e) {
+				spin_lock_irqsave(&dev->event_lock, flags);
+				vblank_e->base.file_priv->event_space +=
+					sizeof(vblank_e->event);
+				spin_unlock_irqrestore(&dev->event_lock, flags);
+				kfree(vblank_e);
+			}
+
 			intel_unpin_work_fn(&unpin_work->work);
 			atomic_clear_mask(1 << intel_crtc->plane,
 					&obj->pending_flip.counter);
 		}
 
 		if (sprite_unpin_work) {
+			struct drm_pending_vblank_event *vblank_e =
+				sprite_unpin_work->event;
+			if (vblank_e) {
+				spin_lock_irqsave(&dev->event_lock, flags);
+				vblank_e->base.file_priv->event_space +=
+					sizeof(vblank_e->event);
+				spin_unlock_irqrestore(&dev->event_lock, flags);
+				kfree(vblank_e);
+			}
 			obj = sprite_unpin_work->old_fb_obj;
 			if (obj)
 				atomic_clear_mask(1 << intel_crtc->plane,
