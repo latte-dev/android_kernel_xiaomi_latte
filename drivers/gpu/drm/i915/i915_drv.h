@@ -1750,6 +1750,9 @@ struct drm_i915_private {
 	/* Track the media promotion timer update */
 	bool last_media_active_state;
 
+	/* Track the media promotion timer update */
+	bool last_media_active_state;
+
 	/* Indicates currently enabled planes */
 	unsigned int pipe_plane_stat;
 	unsigned int prev_pipe_plane_stat;
