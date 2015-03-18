@@ -1037,6 +1037,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			if (xhci_handshake(xhci, &xhci->op_regs->status,
 				STS_HALT, STS_HALT, XHCI_MAX_HALT_USEC)) {
 				xhci_warn(xhci, "Stop controller timeout\n");
+				spin_unlock_irqrestore(&xhci->lock, flags);
 				return -ETIMEDOUT;
 			}
 
