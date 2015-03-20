@@ -4906,14 +4906,12 @@ static void valleyview_cleanup_gt_powersave(struct drm_device *dev)
 	valleyview_cleanup_pctx(dev);
 }
 
-static void cherryview_enable_rps(struct drm_device *dev)
+static void cherryview_enable_rc6(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_engine_cs *ring;
-	u32 gtfifodbg, val, rc6_mode = 0, pcbr;
+	u32 gtfifodbg, rc6_mode = 0, pcbr;
 	int i;
-
-	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
 
 	gtfifodbg = I915_READ(GTFIFODBG);
 	if (gtfifodbg) {
@@ -4923,10 +4921,6 @@ static void cherryview_enable_rps(struct drm_device *dev)
 	}
 
 	cherryview_check_pctx(dev_priv);
-
-	/* 1a & 1b: Get forcewake during program sequence. Although the driver
-	 * hasn't enabled a state yet where we need forcewake, BIOS may have.*/
-	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
 	/* 2a: Program RC6 thresholds.*/
 	I915_WRITE(GEN6_RC6_WAKE_RATE_LIMIT, 40 << 16);
@@ -4958,7 +4952,17 @@ static void cherryview_enable_rps(struct drm_device *dev)
 						(pcbr >> VLV_PCBR_ADDR_SHIFT))
 		vlv_set_rc6_mode(dev, false);
 
-	I915_WRITE(GEN6_RC_CONTROL, rc6_mode);
+	intel_print_rc6_info(dev, rc6_mode);
+}
+
+static void cherryview_enable_rps(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 val;
+
+	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
+
+	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
 	/* 4 Program defaults and thresholds for RPS*/
 	I915_WRITE(GEN6_RP_UP_THRESHOLD, 59400);
@@ -5946,12 +5950,13 @@ void intel_enable_gt_powersave(struct drm_device *dev)
 		}
 
 		/*
-		 * Enabling RC6 for VLV here itself and only deferring turbo
+		 * Enabling RC6 for VLV/CHV here itself and only deferring turbo
 		 * enabling.
 		 */
-		if (IS_VALLEYVIEW(dev) && !IS_CHERRYVIEW(dev)) {
+		if (IS_CHERRYVIEW(dev))
+			cherryview_enable_rc6(dev);
+		else if (IS_VALLEYVIEW(dev))
 			valleyview_enable_rc6(dev);
-		}
 
 		/*
 		 * PCU communication is slow and this doesn't need to be
