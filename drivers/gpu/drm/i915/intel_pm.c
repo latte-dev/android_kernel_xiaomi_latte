@@ -3850,8 +3850,6 @@ void vlv_set_rc6_mode(struct drm_device *dev, bool disable)
 		return;
 	}
 
-	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
-
 	dev_priv->rps.rc6_disable = disable;
 
 	if (disable)
@@ -5016,8 +5014,6 @@ static void valleyview_enable_rc6(struct drm_device *dev)
 	u32 gtfifodbg, rc6_mode = 0, pcbr;
 	int i;
 
-	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
-
 	valleyview_check_pctx(dev_priv);
 
 	if ((gtfifodbg = I915_READ(GTFIFODBG))) {
@@ -5954,9 +5950,7 @@ void intel_enable_gt_powersave(struct drm_device *dev)
 		 * enabling.
 		 */
 		if (IS_VALLEYVIEW(dev) && !IS_CHERRYVIEW(dev)) {
-			mutex_lock(&dev_priv->rps.hw_lock);
 			valleyview_enable_rc6(dev);
-			mutex_unlock(&dev_priv->rps.hw_lock);
 		}
 
 		/*
