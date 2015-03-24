@@ -4506,7 +4506,6 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 	u32 old_read_domains, old_write_domain;
 	bool was_pin_display;
 	int ret;
-	struct drm_device *dev = obj->base.dev;
 
 	if (pipelined != i915_gem_request_get_ring(obj->last_read_req)) {
 		ret = i915_gem_object_sync(obj, pipelined, false);
@@ -4536,13 +4535,9 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 
 	/* As the user may map the buffer once pinned in the display plane
 	 * (e.g. libkms for the bootup splash), we have to ensure that we
-	 * always use map_and_fenceable for all scanout buffers. No need
-	 * of map_fenceable for >= gen8
+	 * always use map_and_fenceable for all scanout buffers.
 	 */
-	if ((INTEL_INFO(dev)->gen >= 8))
-		ret = i915_gem_obj_ggtt_pin(obj, alignment, 0);
-	else
-		ret = i915_gem_obj_ggtt_pin(obj, alignment, PIN_MAPPABLE);
+	ret = i915_gem_obj_ggtt_pin(obj, alignment, PIN_MAPPABLE);
 	if (ret)
 		goto err_unpin_display;
 
