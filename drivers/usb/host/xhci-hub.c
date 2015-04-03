@@ -1222,6 +1222,13 @@ int xhci_bus_suspend(struct usb_hcd *hcd)
 			xhci_dbg(xhci, "suspend failed because a port is resuming\n");
 			return -EBUSY;
 		}
+		if (usb_hub_port_waking_up(hcd->self.root_hub)) {
+			spin_unlock_irqrestore(&xhci->lock, flags);
+			xhci_dbg(xhci,
+				"suspend failed as a SS port is resuming\n");
+			return -EBUSY;
+		}
+
 	}
 
 	port_index = max_ports;
