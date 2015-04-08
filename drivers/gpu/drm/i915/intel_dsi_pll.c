@@ -128,15 +128,11 @@ static u32 dsi_rr_formula(const struct drm_display_mode *mode,
 
 #else
 
-/* Get DSI clock from pixel clock */
-static u32 dsi_clk_from_pclk(struct intel_dsi *intel_dsi,
-			  int pixel_format, int lane_count)
+static u32 intel_get_bits_per_pixel(struct intel_dsi *intel_dsi)
 {
-	u32 dsi_clk_khz;
 	u32 bpp;
-	int pclk;
 
-	switch (pixel_format) {
+	switch (intel_dsi->pixel_format) {
 	default:
 	case VID_MODE_FORMAT_RGB888:
 	case VID_MODE_FORMAT_RGB666_LOOSE:
@@ -149,11 +145,71 @@ static u32 dsi_clk_from_pclk(struct intel_dsi *intel_dsi,
 		bpp = 16;
 		break;
 	}
-	pclk = intel_dsi->pclk;
 
-	/* DSI data rate = pixel clock * bits per pixel / lane count
-	   pixel clock is converted from KHz to Hz */
-	dsi_clk_khz = DIV_ROUND_CLOSEST(pclk * bpp, lane_count);
+	return bpp;
+}
+
+void adjust_pclk_for_dual_link(struct intel_dsi *intel_dsi,
+				struct drm_display_mode *mode, u32 *pclk)
+{
+	/* In dual link mode each port needs half of pixel clock */
+	*pclk = *pclk / 2;
+
+	/*
+	 * If pixel_overlap needed by panel, we need to	increase the pixel
+	 * clock for extra pixels.
+	 */
+	if (intel_dsi->dual_link & MIPI_DUAL_LINK_FRONT_BACK)
+		*pclk += DIV_ROUND_UP(mode->vtotal * intel_dsi->pixel_overlap *
+							mode->vrefresh, 1000);
+}
+
+void adjust_pclk_for_burst_mode(u32 *pclk, u16 burst_mode_ratio)
+{
+	*pclk = DIV_ROUND_UP(*pclk * burst_mode_ratio, 100);
+}
+
+
+/* To recalculate the pclk considering dual link and Burst mode */
+static u32 intel_drrs_calc_pclk(struct intel_dsi *intel_dsi,
+					struct drm_display_mode *mode)
+{
+	u32 pclk;
+	int pkt_pixel_size;		/* in bits */
+
+	pclk = mode->clock;
+
+	pkt_pixel_size = intel_get_bits_per_pixel(intel_dsi);
+
+	/* In dual link mode each port needs half of pixel clock */
+	if (intel_dsi->dual_link)
+		adjust_pclk_for_dual_link(intel_dsi, mode, &pclk);
+
+	/* Retaining the same Burst mode ratio for DRRS. Need to be tested */
+	if (intel_dsi->burst_mode_ratio > 100)
+		adjust_pclk_for_burst_mode(&pclk, intel_dsi->burst_mode_ratio);
+
+	DRM_DEBUG_KMS("mode->clock : %d, pclk : %d\n", mode->clock, pclk);
+	return pclk;
+}
+
+/* Get DSI clock from pixel clock */
+static u32 dsi_clk_from_pclk(struct intel_dsi *intel_dsi,
+					struct drm_display_mode *mode)
+{
+	u32 dsi_clk_khz;
+	u32 bpp;
+	u32 pclk;
+
+	bpp = intel_get_bits_per_pixel(intel_dsi);
+
+	pclk = intel_drrs_calc_pclk(intel_dsi, mode);
+
+	/*
+	 * DSI data rate = pixel clock * bits per pixel / lane count
+	 * pixel clock is converted from KHz to Hz
+	 */
+	dsi_clk_khz = DIV_ROUND_CLOSEST(pclk * bpp, intel_dsi->lane_count);
 
 	return dsi_clk_khz;
 }
@@ -258,12 +314,13 @@ static void vlv_configure_dsi_pll(struct intel_encoder *encoder)
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+	struct intel_connector *intel_connector = intel_dsi->attached_connector;
 	enum pipe pipe = intel_crtc->pipe;
 	int ret;
 	u32 dsi_clk;
 
-	dsi_clk = dsi_clk_from_pclk(intel_dsi, intel_dsi->pixel_format,
-						intel_dsi->lane_count);
+	dsi_clk = dsi_clk_from_pclk(intel_dsi,
+					intel_connector->panel.fixed_mode);
 
 	ret = dsi_calc_mnp(dev_priv, dsi_clk, &dsi_mnp);
 	if (ret) {
