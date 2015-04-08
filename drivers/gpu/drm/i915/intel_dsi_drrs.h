@@ -58,4 +58,9 @@ struct dsi_drrs {
 };
 
 extern inline struct drrs_encoder_ops *get_intel_dsi_drrs_ops(void);
+int vlv_dsi_mnp_calculate_for_mode(struct intel_encoder *encoder,
+				struct dsi_mnp *dsi_mnp,
+				struct drm_display_mode *mode);
+int vlv_drrs_configure_dsi_pll(struct intel_encoder *encoder,
+						struct dsi_mnp *dsi_mnp);
 #endif /* INTEL_DSI_DRRS_H */

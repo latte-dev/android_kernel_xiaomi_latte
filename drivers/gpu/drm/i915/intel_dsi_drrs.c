@@ -20,6 +20,23 @@
 #include "intel_drv.h"
 #include "intel_dsi.h"
 
+/*
+ * VLV and CHV platform code
+ */
+struct drrs_dsi_platform_ops vlv_dsi_drrs_ops = {
+	.configure_dsi_pll		= vlv_drrs_configure_dsi_pll,
+	.mnp_calculate_for_mode		= vlv_dsi_mnp_calculate_for_mode,
+};
+
+inline struct drrs_dsi_platform_ops *get_vlv_dsi_drrs_ops(void)
+{
+	return &vlv_dsi_drrs_ops;
+}
+
+/*
+ * Generic DSI DRRS code
+ */
+
 /* Work function for DSI deferred work */
 static void intel_mipi_drrs_work_fn(struct work_struct *__work)
 {
@@ -238,6 +255,16 @@ int intel_dsi_drrs_init(struct i915_drrs *drrs,
 	drm_mode_debug_printmodeline(downclock_mode);
 
 	panel->target_mode = NULL;
+
+	if (IS_VALLEYVIEW(intel_encoder->base.dev)) {
+
+		/* VLV and CHV */
+		dsi_drrs->ops = get_vlv_dsi_drrs_ops();
+	} else {
+		DRM_ERROR("DRRS: Unsupported platform\n");
+		ret = -EINVAL;
+		goto out_err_2;
+	}
 
 	if (!dsi_drrs->ops || !dsi_drrs->ops->mnp_calculate_for_mode ||
 					!dsi_drrs->ops->configure_dsi_pll) {

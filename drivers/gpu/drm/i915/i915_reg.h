@@ -2724,6 +2724,10 @@ enum punit_power_well {
 #define VSYNCSHIFT(trans) _TRANSCODER2(trans, _VSYNCSHIFT_A)
 #define PIPESRC(trans) _TRANSCODER2(trans, _PIPEASRC)
 
+#define VERTICAL_ACTIVE_DISPLAY_MASK		(0xfff)
+#define VERTICAL_TOTAL_DISPLAY_OFFSET		16
+#define VERTICAL_TOTAL_DISPLAY_MASK		(0xfff<<16)
+
 /* HSW+ eDP PSR registers */
 #define EDP_PSR_BASE(dev)                       (IS_HASWELL(dev) ? 0x64800 : 0x6f800)
 #define EDP_PSR_CTL(dev)			(EDP_PSR_BASE(dev) + 0)
