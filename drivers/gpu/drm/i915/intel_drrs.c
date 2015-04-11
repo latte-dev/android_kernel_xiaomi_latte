@@ -16,6 +16,7 @@
 
 #include <drm/i915_drm.h>
 #include <linux/delay.h>
+#include <linux/list.h>
 
 #include "i915_drv.h"
 #include "intel_drv.h"
@@ -140,7 +141,10 @@ static void intel_idleness_drrs_work_fn(struct work_struct *__work)
 
 	panel = &drrs->connector->panel;
 
-	/* TODO: If DRRS is not supported on clone mode act here */
+	/* Double check if the dual-display mode is active. */
+	if (drrs->is_clone)
+		return;
+
 	mutex_lock(&drrs->drrs_mutex);
 	if (panel->target_mode != NULL)
 		DRM_ERROR("FIXME: We shouldn't be here\n");
@@ -234,6 +238,7 @@ void intel_restart_idleness_drrs(struct intel_crtc *intel_crtc)
 	struct drm_device *dev = intel_crtc->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct i915_drrs *drrs;
+	struct drm_crtc *crtc = NULL, *tmp_crtc;
 	int index;
 
 	index = get_drrs_struct_index_for_crtc(dev_priv, intel_crtc);
@@ -244,7 +249,27 @@ void intel_restart_idleness_drrs(struct intel_crtc *intel_crtc)
 	if (!drrs || !drrs->has_drrs)
 		return;
 
-	/* TODO: Find clone mode here and act on it*/
+	/*
+	 * TODO: This is identifying the multiple active crtcs at a time.
+	 * Here we assume that this is clone state and disable DRRS.
+	 * But need to implement a proper method to find the real cloned mode
+	 * state. DRRS need not be disabled incase of multiple crtcs with
+	 * different content.
+	 */
+	list_for_each_entry(tmp_crtc, &dev->mode_config.crtc_list, head) {
+		if (intel_crtc_active(tmp_crtc)) {
+			if (crtc) {
+				DRM_DEBUG_KMS(
+				"more than one pipe active, disabling DRRS\n");
+				drrs->is_clone = true;
+				intel_disable_idleness_drrs(intel_crtc);
+				return;
+			}
+			crtc = tmp_crtc;
+		}
+	}
+
+	drrs->is_clone = false;
 	intel_disable_idleness_drrs(intel_crtc);
 
 	/* re-enable idleness detection */
