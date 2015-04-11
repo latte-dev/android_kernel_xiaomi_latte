@@ -20,6 +20,73 @@
 
 #include "i915_drv.h"
 
+/*
+ * VLV eDP DRRS Support
+ */
+
+static int vlv_edp_drrs_init(struct intel_encoder *encoder)
+{
+	return 0;
+}
+
+static void vlv_edp_drrs_exit(struct intel_encoder *encoder)
+{
+	return;
+}
+
+static int vlv_edp_set_drrs_state(struct intel_encoder *encoder,
+				enum drrs_refresh_rate_type target_rr_type)
+{
+	struct drm_device *dev = encoder->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *crtc = to_intel_crtc(encoder->base.crtc);
+	u32 reg, val;
+
+	if (!crtc)
+		return -EINVAL;
+
+	reg = PIPECONF(crtc->config.cpu_transcoder);
+	val = I915_READ(reg);
+
+	switch (target_rr_type) {
+	case DRRS_HIGH_RR:
+		if (IS_VALLEYVIEW(dev))
+			val &= ~PIPECONF_EDP_RR_MODE_SWITCH_VLV;
+		else
+			val &= ~PIPECONF_EDP_RR_MODE_SWITCH;
+
+		break;
+	case DRRS_LOW_RR:
+		if (IS_VALLEYVIEW(dev))
+			val |= PIPECONF_EDP_RR_MODE_SWITCH_VLV;
+		else
+			val |= PIPECONF_EDP_RR_MODE_SWITCH;
+
+		intel_dp_set_m2_n2(crtc, &crtc->config.dp_m2_n2);
+		break;
+	default:
+		DRM_ERROR("invalid refresh rate type\n");
+		return -EINVAL;
+	}
+
+	I915_WRITE(reg, val);
+	return 0;
+}
+
+struct edp_drrs_platform_ops vlv_edp_drrs_ops = {
+	.init = vlv_edp_drrs_init,
+	.exit = vlv_edp_drrs_exit,
+	.set_drrs_state = vlv_edp_set_drrs_state,
+};
+
+struct edp_drrs_platform_ops *get_vlv_edp_drrs_ops(void)
+{
+	return &vlv_edp_drrs_ops;
+}
+
+/*
+ * Generic eDP DRRS implementation
+ */
 void intel_edp_set_drrs_state(struct i915_drrs *drrs)
 {
 	struct intel_encoder *intel_encoder = drrs->connector->encoder;
@@ -36,6 +103,13 @@ int intel_edp_drrs_init(struct i915_drrs *drrs,
 	struct intel_dp *intel_dp = enc_to_intel_dp(&intel_encoder->base);
 	struct drm_display_mode *downclock_mode;
 	int ret = -EINVAL;
+
+	if (IS_VALLEYVIEW(intel_encoder->base.dev))
+
+		/* VLV and CHV */
+		intel_dp->drrs_ops = get_vlv_edp_drrs_ops();
+	else
+		intel_dp->drrs_ops = NULL;
 
 	if (!intel_dp->drrs_ops ||
 			!intel_dp->drrs_ops->set_drrs_state) {
