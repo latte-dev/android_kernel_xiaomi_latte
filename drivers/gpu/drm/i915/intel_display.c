@@ -14276,6 +14276,7 @@ void intel_modeset_init(struct drm_device *dev)
 	int sprite, ret;
 	enum pipe pipe;
 	struct intel_crtc *crtc;
+	struct intel_connector *connector;
 
 	drm_mode_config_init(dev);
 
@@ -14338,6 +14339,11 @@ void intel_modeset_init(struct drm_device *dev)
 	/* Just disable it once at startup */
 	i915_disable_vga(dev);
 	intel_setup_outputs(dev);
+
+	list_for_each_entry(connector, &dev->mode_config.connector_list,
+								base.head) {
+		intel_drrs_init(dev, connector, connector->panel.fixed_mode);
+	}
 
 	/* Just in case the BIOS is doing something questionable. */
 	intel_disable_fbc(dev);
