@@ -78,7 +78,8 @@ i915-y += dvo_ch7017.o \
 	  i915_dpst.o \
 	  intel_clrmgr.o \
 	  i915_sprite_csc.o \
-	  i915_adf_wrapper.o
+	  i915_adf_wrapper.o \
+	  intel_drrs.o
 
 # legacy horrors
 i915-y += i915_dma.o \

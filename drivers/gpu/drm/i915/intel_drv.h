@@ -34,6 +34,8 @@
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_dp_helper.h>
 
+#include "intel_drrs.h"
+
 /**
  * _wait_for - magic (register) wait macro
  *
@@ -189,6 +191,7 @@ struct intel_encoder {
 struct intel_panel {
 	struct drm_display_mode *fixed_mode;
 	struct drm_display_mode *downclock_mode;
+	struct drm_display_mode *target_mode;
 	int fitting_mode;
 
 	/* backlight */

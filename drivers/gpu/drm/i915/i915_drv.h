@@ -743,6 +743,81 @@ struct i915_fbc {
 	bool disable;
 };
 
+/**
+ * DRRS Support Type:
+ * DRRS_NOT_SUPPORTED		: DRRS not supported
+ * STATIC_DRRS_SUPPORT		: Need a complete modeset for DRRS
+ * SEAMLESS_DRRS_SUPPORT	: Seamless vrefresh switch is supported on HW
+ * SEAMLESS_DRRS_SUPPORT_SW	: Seamless vrefresh switch is supported on SW
+ */
+enum drrs_support_type {
+	DRRS_NOT_SUPPORTED = 0,
+	STATIC_DRRS_SUPPORT = 1,
+	SEAMLESS_DRRS_SUPPORT = 2,
+	SEAMLESS_DRRS_SUPPORT_SW = 3,
+};
+
+/**
+ * Different DRRS States:
+ * DRRS_HIGH_RR	: Refreshrate of Fixed mode. [Maximum Vrefresh]
+ * DRRS_LOW_RR	: Refreshrate of Downclock mode. [Minimum vrefresh]
+ */
+enum drrs_refresh_rate_type {
+	DRRS_HIGH_RR,
+	DRRS_LOW_RR,
+	DRRS_MAX_RR,
+};
+
+struct drrs_info {
+	enum drrs_support_type type;
+	enum drrs_refresh_rate_type current_rr_type;
+	enum drrs_refresh_rate_type target_rr_type;
+};
+
+struct i915_drrs;
+
+/**
+ * intel_idleness_drrs_work:
+ * work		: Deferred work to declare the Idleness, if not disturbed.
+ * crtc		: Target drm_crtc
+ * interval	: Time to defer the deferred work
+ */
+struct intel_idleness_drrs_work {
+	struct delayed_work work;
+	struct i915_drrs *drrs;
+
+	/* Idleness interval in mSec*/
+	int interval;
+};
+
+/* Encoder related function pointers */
+struct drrs_encoder_ops {
+	int (*init)(struct i915_drrs *, struct drm_display_mode *);
+	void (*exit)(struct i915_drrs *);
+	void (*set_drrs_state)(struct i915_drrs *);
+	bool (*is_drrs_hr_state_pending)(struct i915_drrs *);
+};
+
+struct i915_drrs {
+	/* Whether another pipe is enabled in parallel */
+	bool is_clone;
+
+	/* Whether DRRS is supported on this Panel */
+	bool has_drrs;
+
+	/* Holds the DRRS state machine states */
+	struct drrs_info drrs_state;
+
+	/* Pointer to the relevant connector */
+	struct intel_connector *connector;
+
+	struct intel_idleness_drrs_work *idleness_drrs_work;
+
+	/* Functions to hold encoder specific DRRS functions */
+	struct drrs_encoder_ops *encoder_ops;
+	struct mutex drrs_mutex;
+};
+
 struct i915_psr {
 	bool sink_support;
 	bool source_ok;
@@ -1396,12 +1471,6 @@ struct ddi_vbt_port_info {
 	uint8_t supports_dp:1;
 };
 
-enum drrs_support_type {
-	DRRS_NOT_SUPPORTED = 0,
-	STATIC_DRRS_SUPPORT = 1,
-	SEAMLESS_DRRS_SUPPORT = 2
-};
-
 struct intel_vbt_data {
 	struct drm_display_mode *lfp_lvds_vbt_mode; /* if any */
 	struct drm_display_mode *sdvo_lvds_vbt_mode; /* if any */
@@ -1676,6 +1745,7 @@ struct drm_i915_private {
 	u32 hotplug_status;
 
 	struct i915_fbc fbc;
+	struct i915_drrs *drrs[I915_MAX_PIPES];
 	struct intel_opregion opregion;
 	struct intel_vbt_data vbt;
 	bool scaling_reqd;
@@ -2397,6 +2467,7 @@ enum context_submission_status {
 #define IS_HSW_ULX(dev)		((dev)->pdev->device == 0x0A0E || \
 				 (dev)->pdev->device == 0x0A1E)
 #define IS_PRELIMINARY_HW(intel_info) ((intel_info)->is_preliminary)
+#define IS_PLATFORM_HAS_DRRS(dev)	IS_VALLEYVIEW(dev)
 
 /*
  * The genX designation typically refers to the render engine, so render
