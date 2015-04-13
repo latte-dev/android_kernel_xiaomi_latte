@@ -3523,6 +3523,7 @@ intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 	else
 		intel_edp_psr_update(dev, false);
 	intel_update_fbc(dev);
+	intel_restart_idleness_drrs(intel_crtc);
 	mutex_unlock(&dev->struct_mutex);
 
 	return 0;
@@ -4738,6 +4739,7 @@ static void intel_crtc_enable_planes(struct drm_crtc *crtc)
 
 	mutex_lock(&dev->struct_mutex);
 	intel_update_fbc(dev);
+	intel_restart_idleness_drrs(intel_crtc);
 
 	if (IS_VALLEYVIEW(dev))
 		intel_vlv_edp_psr_update(dev);
@@ -4760,6 +4762,7 @@ static void intel_crtc_disable_planes(struct drm_crtc *crtc)
 	if (dev_priv->fbc.plane == plane)
 		intel_disable_fbc(dev);
 
+	intel_disable_idleness_drrs(intel_crtc);
 	hsw_disable_ips(intel_crtc);
 
 	intel_crtc_dpms_overlay(intel_crtc, false);
@@ -5050,6 +5053,7 @@ static void ironlake_crtc_disable(struct drm_crtc *crtc)
 
 	mutex_lock(&dev->struct_mutex);
 	intel_update_fbc(dev);
+	intel_restart_idleness_drrs(intel_crtc);
 	intel_edp_psr_update(dev, false);
 	mutex_unlock(&dev->struct_mutex);
 }
@@ -5105,6 +5109,7 @@ static void haswell_crtc_disable(struct drm_crtc *crtc)
 
 	mutex_lock(&dev->struct_mutex);
 	intel_update_fbc(dev);
+	intel_restart_idleness_drrs(intel_crtc);
 	intel_edp_psr_update(dev, false);
 	mutex_unlock(&dev->struct_mutex);
 }
@@ -5922,6 +5927,7 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 
 	mutex_lock(&dev->struct_mutex);
 	intel_update_fbc(dev);
+	intel_restart_idleness_drrs(intel_crtc);
 	if (IS_VALLEYVIEW(dev))
 		intel_vlv_edp_psr_reset(dev);
 	else
@@ -10201,6 +10207,11 @@ void intel_unpin_work_fn(struct work_struct *__work)
 	if (IS_VALLEYVIEW(dev))
 		intel_vlv_edp_psr_update(dev);
 
+	/*
+	 * disable current DRRS work scheduled and restart
+	 * to push work by another x seconds
+	 */
+	intel_restart_idleness_drrs(to_intel_crtc(work->crtc));
 	intel_update_fbc(dev);
 	mutex_unlock(&dev->struct_mutex);
 
@@ -10919,6 +10930,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 		goto cleanup_unpin;
 
 	intel_disable_fbc(dev);
+	intel_disable_idleness_drrs(intel_crtc);
 	intel_mark_fb_busy(obj, NULL);
 	mutex_unlock(&dev->struct_mutex);
 
@@ -14338,6 +14350,8 @@ void intel_modeset_init(struct drm_device *dev)
 		if (!crtc->active)
 			continue;
 
+		intel_disable_idleness_drrs(crtc);
+
 		/*
 		 * Note that reserving the BIOS fb up front prevents us
 		 * from stuffing other stolen allocations like the ring
@@ -14843,6 +14857,7 @@ void intel_modeset_cleanup(struct drm_device *dev)
 	}
 
 	intel_disable_fbc(dev);
+	intel_disable_idleness_drrs(to_intel_crtc(crtc));
 
 	intel_disable_gt_powersave(dev);
 
