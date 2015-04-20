@@ -5,6 +5,15 @@
 
 menu "Triggers - standalone"
 
+config IIO_HRTIMER_TRIGGER
+	tristate "High resolution timer trigger"
+	select IIO_SW_TRIGGER
+	help
+	  Provides a frequency based IIO trigger using hrtimers.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called iio-trig-hrtimer.
+
 config IIO_INTERRUPT_TRIGGER
 	tristate "Generic interrupt trigger"
 	help
