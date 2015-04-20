@@ -17,6 +17,14 @@ config IIO_BUFFER
 	  Provide core support for various buffer based data
 	  acquisition methods.
 
+config IIO_CONFIGFS
+	tristate "Enable IIO configuration via configfs"
+	select CONFIGFS_FS
+	help
+	  This allows configuring various IIO bits through configfs
+	  (e.g. software triggers). For more info see
+	  Documentation/iio/iio_configfs.txt.
+
 if IIO_BUFFER
 
 config IIO_BUFFER_CB
