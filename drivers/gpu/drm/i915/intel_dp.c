@@ -4486,7 +4486,7 @@ intel_dp_check_link_status(struct intel_dp *intel_dp)
 				   sink_irq_vector);
 
 		if (sink_irq_vector & DP_AUTOMATED_TEST_REQUEST)
-			intel_dp_handle_test_request(intel_dp);
+			DRM_DEBUG_DRIVER("Test request in short pulse not handled\n");
 		if (sink_irq_vector & (DP_CP_IRQ | DP_SINK_SPECIFIC_IRQ))
 			DRM_DEBUG_DRIVER("CP or sink specific irq unhandled\n");
 	}
@@ -4698,6 +4698,7 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	struct drm_device *dev = connector->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	enum drm_connector_status status;
+	u8 sink_irq_vector;
 	enum intel_display_power_domain power_domain;
 	struct edid *edid = NULL;
 	struct intel_crtc *intel_crtc = NULL;
@@ -4759,6 +4760,20 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	}
 
 	status = connector_status_connected;
+
+	/* Try to read the source of the interrupt */
+	if (intel_dp->dpcd[DP_DPCD_REV] >= 0x11 &&
+	    intel_dp_get_sink_irq(intel_dp, &sink_irq_vector)) {
+		/* Clear interrupt source */
+		drm_dp_dpcd_writeb(&intel_dp->aux,
+				   DP_DEVICE_SERVICE_IRQ_VECTOR,
+				   sink_irq_vector);
+
+		if (sink_irq_vector & DP_AUTOMATED_TEST_REQUEST)
+			intel_dp_handle_test_request(intel_dp);
+		if (sink_irq_vector & (DP_CP_IRQ | DP_SINK_SPECIFIC_IRQ))
+			DRM_DEBUG_DRIVER("CP or sink specific irq unhandled\n");
+	}
 
 out:
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
