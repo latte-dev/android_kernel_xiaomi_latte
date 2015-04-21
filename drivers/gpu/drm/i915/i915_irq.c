@@ -5003,7 +5003,7 @@ static irqreturn_t i915_irq_handler(int irq, void *arg)
 {
 	struct drm_device *dev = arg;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 iir, new_iir, pipe_stats[I915_MAX_PIPES];
+	u32 iir, new_iir, pipe_stats[I915_MAX_PIPES] = {0};
 	unsigned long irqflags;
 	u32 flip_mask =
 		I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT |
@@ -5244,7 +5244,7 @@ static irqreturn_t i965_irq_handler(int irq, void *arg)
 	struct drm_device *dev = arg;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 iir, new_iir;
-	u32 pipe_stats[I915_MAX_PIPES];
+	u32 pipe_stats[I915_MAX_PIPES] = {0};
 	unsigned long irqflags;
 	int ret = IRQ_NONE, pipe;
 	u32 flip_mask =

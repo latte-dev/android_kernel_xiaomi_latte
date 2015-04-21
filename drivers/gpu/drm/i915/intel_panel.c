@@ -772,7 +772,7 @@ static void vlv_disable_mipi_backlight(struct intel_connector *connector)
 
 	intel_panel_actually_set_backlight(connector, 0);
 
-	if (intel_dsi->dev.dev_ops->disable_backlight)
+	if (intel_dsi != NULL && intel_dsi->dev.dev_ops->disable_backlight)
 		intel_dsi->dev.dev_ops->disable_backlight(&intel_dsi->dev);
 
 	if (dev_priv->vbt.dsi.config->pmic_soc_blc) {
@@ -1096,7 +1096,7 @@ static void vlv_enable_mipi_backlight(struct intel_connector *connector)
 	if (dev_priv->vbt.dsi.config->pmic_soc_blc)
 		lpio_enable_backlight(dev);
 
-	if (intel_dsi->dev.dev_ops->enable_backlight)
+	if (intel_dsi != NULL && intel_dsi->dev.dev_ops->enable_backlight)
 		intel_dsi->dev.dev_ops->enable_backlight(&intel_dsi->dev);
 
 	intel_panel_actually_set_backlight(connector, panel->backlight.level);

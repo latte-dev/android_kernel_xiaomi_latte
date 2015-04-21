@@ -155,6 +155,9 @@ static int intelfb_create(struct drm_fb_helper *helper,
 		sizes->fb_height = intel_fb->base.height;
 	}
 
+	if (intel_fb == NULL)
+		goto out_unlock;
+
 	obj = intel_fb->obj;
 	size = obj->base.size;
 

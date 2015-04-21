@@ -115,6 +115,12 @@ int i915_extended_ioctl(struct drm_device *dev, void *data,
 		}
 	}
 
+	if (kdata == NULL) {
+		DRM_ERROR("kdata is NULL\n");
+		retcode = -EINVAL;
+		goto err_i1;
+	}
+
 	if (ioctl->flags & DRM_UNLOCKED) {
 		retcode = func(dev, kdata, file_priv);
 	} else {

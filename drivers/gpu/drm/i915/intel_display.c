@@ -1997,6 +1997,11 @@ static void intel_prepare_shared_dpll(struct intel_crtc *crtc)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_shared_dpll *pll = intel_crtc_to_shared_dpll(crtc);
 
+	if (pll == NULL) {
+		DRM_ERROR("Shared dpll is null\n");
+		return;
+	}
+
 	WARN_ON(!pll->refcount);
 	if (pll->active == 0) {
 		DRM_DEBUG_DRIVER("setting up %s\n", pll->name);
@@ -13204,7 +13209,8 @@ fail:
 		 * due to fb==NULL. This should only happen during boot since
 		 * we don't yet reconstruct the FB from the hardware state.
 		 */
-		if (to_intel_crtc(save_set.crtc)->new_enabled && !save_set.fb)
+		if (!save_set.fb &&
+			to_intel_crtc(save_set.crtc)->new_enabled)
 			disable_crtc_nofb(to_intel_crtc(save_set.crtc));
 
 		/* Try to restore the config */
