@@ -28,6 +28,7 @@
 #include <drm/drm_crtc.h>
 #include <linux/mfd/intel_soc_pmic.h>
 #include "intel_drv.h"
+#include "intel_dsi_drrs.h"
 
 #define HV_DDI0_HPD_GPIONC_0_PCONF0		0x4130
 #define HV_DDI0_HPD_GPIONC_0_PAD		0x4138
@@ -463,6 +464,8 @@ struct intel_dsi {
 	struct intel_dsi_device dev;
 
 	struct intel_connector *attached_connector;
+
+	struct dsi_drrs dsi_drrs;
 
 	/* if true, use HS mode, otherwise LP */
 	bool hs;

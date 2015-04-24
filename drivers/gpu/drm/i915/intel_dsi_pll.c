@@ -38,11 +38,6 @@
 #define DSI_HFP_PACKET_EXTRA_SIZE	6
 #define DSI_EOTP_PACKET_SIZE		4
 
-struct dsi_mnp {
-	u32 dsi_pll_ctrl;
-	u32 dsi_pll_div;
-};
-
 static const u32 lfsr_converts[] = {
 	426, 469, 234, 373, 442, 221, 110, 311, 411,		/* 62 - 70 */
 	461, 486, 243, 377, 188, 350, 175, 343, 427, 213,	/* 71 - 80 */

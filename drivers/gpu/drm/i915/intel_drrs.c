@@ -19,6 +19,7 @@
 
 #include "i915_drv.h"
 #include "intel_drv.h"
+#include "intel_dsi.h"
 #include "intel_drrs.h"
 
 int get_drrs_struct_index_for_crtc(struct drm_i915_private *dev_priv,
@@ -279,6 +280,7 @@ int intel_drrs_init(struct drm_device *dev,
 					struct drm_display_mode *fixed_mode)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_encoder *intel_encoder = intel_connector->encoder;
 	struct i915_drrs *drrs;
 	int ret = 0, index;
 
@@ -307,6 +309,14 @@ int intel_drrs_init(struct drm_device *dev,
 
 	drrs = dev_priv->drrs[index];
 	drrs->connector = intel_connector;
+
+	if (intel_encoder->type == INTEL_OUTPUT_DSI) {
+		drrs->encoder_ops = get_intel_dsi_drrs_ops();
+	} else {
+		DRM_ERROR("DRRS: Unsupported Encoder\n");
+		ret = -EINVAL;
+		goto err_out;
+	}
 
 	if (!drrs->encoder_ops) {
 		DRM_ERROR("Encoder ops not initialized\n");
