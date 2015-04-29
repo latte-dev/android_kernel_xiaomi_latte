@@ -23,11 +23,44 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#ifdef CONFIG_GMIN_INTEL_MID
+#include <linux/acpi.h>
+#include <linux/atomisp_gmin_platform.h>
+#endif
 
 #include "pixter.h"
 
 #define to_pixter_dev(sd) container_of(sd, struct pixter_device, sd)
 #define dev_off(m) offsetof(struct pixter_device, m)
+
+#ifdef CONFIG_GMIN_INTEL_MID
+static struct pixter_port_info g_port_info[] = {
+	[ATOMISP_CAMERA_PORT_PRIMARY] = {
+		.type = PIXTER_0_TYPE,
+		.format = PIXTER_0_FORMAT,
+		.bayer = PIXTER_0_BAYER,
+		.lanes = PIXTER_0_LANES,
+		.streams = PIXTER_0_STREAMS,
+		.i2c_addr = 0x70,
+	},
+	[ATOMISP_CAMERA_PORT_SECONDARY] = {
+		.type = PIXTER_1_TYPE,
+		.format = PIXTER_1_FORMAT,
+		.bayer = PIXTER_1_BAYER,
+		.lanes = PIXTER_1_LANES,
+		.streams = PIXTER_1_STREAMS,
+		.i2c_addr = 0x70,
+	},
+	[ATOMISP_CAMERA_PORT_TERTIARY] = {
+		.type = PIXTER_2_TYPE,
+		.format = PIXTER_2_FORMAT,
+		.bayer = PIXTER_2_BAYER,
+		.lanes = PIXTER_2_LANES,
+		.streams = PIXTER_2_STREAMS,
+		.i2c_addr = 0x70,
+	},
+};
+#endif
 
 static struct regmap_config pixter_reg_config = {
 	.reg_bits = 8,
@@ -929,6 +962,39 @@ static const struct file_operations pixter_dbgfs_fops = {
 	.llseek = generic_file_llseek,
 };
 
+static struct atomisp_camera_caps *pixter0_get_camera_caps(void)
+{
+	static struct atomisp_camera_caps caps;
+	caps.sensor_num = 1;
+	caps.sensor[0].stream_num =
+	    g_port_info[ATOMISP_CAMERA_PORT_PRIMARY].streams;
+	caps.sensor[0].is_slave = false;
+	caps.multi_stream_ctrl = false;
+	return &caps;
+}
+
+static struct atomisp_camera_caps *pixter1_get_camera_caps(void)
+{
+	static struct atomisp_camera_caps caps;
+	caps.sensor_num = 1;
+	caps.sensor[0].stream_num =
+	    g_port_info[ATOMISP_CAMERA_PORT_SECONDARY].streams;
+	caps.sensor[0].is_slave = false;
+	caps.multi_stream_ctrl = false;
+	return &caps;
+}
+
+static struct atomisp_camera_caps *pixter2_get_camera_caps(void)
+{
+	static struct atomisp_camera_caps caps;
+	caps.sensor_num = 1;
+	caps.sensor[0].stream_num =
+	    g_port_info[ATOMISP_CAMERA_PORT_SECONDARY].streams;
+	caps.sensor[0].is_slave = false;
+	caps.multi_stream_ctrl = false;
+	return &caps;
+}
+
 static int pixter_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
@@ -938,6 +1004,11 @@ static int pixter_remove(struct i2c_client *client)
 		media_entity_cleanup(&dev->sd.entity);
 	dev->platform_data->csi_cfg(sd, 0);
 	v4l2_device_unregister_subdev(sd);
+#ifdef CONFIG_GMIN_INTEL_MID
+	dev_err(&client->dev, "Removing pixter device.\n");
+	client->addr = dev->ori_i2c_addr;
+	atomisp_gmin_remove_subdev(sd);
+#endif
 	if (dev->dbgfs_data)
 		debugfs_remove_recursive(dev->dbgfs_data[0].entry);
 
@@ -954,7 +1025,11 @@ static int pixter_probe(struct i2c_client *client,
 	struct pixter_dbgfs_data *dbgfs_data;
 	u32 reg_val, i, j;
 	int ret;
-
+#ifdef CONFIG_GMIN_INTEL_MID
+	void *pdata;
+	int port = gmin_get_var_int(&client->dev, "CsiPort", 0);
+	struct pixter_port_info *port_info = &g_port_info[port];
+#endif
 	/* allocate sensor device & init sub device */
 	dev = devm_kzalloc(&client->dev, sizeof(*dev), GFP_KERNEL);
 	if (!dev)
@@ -966,17 +1041,48 @@ static int pixter_probe(struct i2c_client *client,
 
 	v4l2_i2c_subdev_init(&dev->sd, client, &pixter_ops);
 
+#ifdef CONFIG_GMIN_INTEL_MID
+	pdata = client->dev.platform_data;
+	if (ACPI_COMPANION(&client->dev))
+		pdata = gmin_camera_platform_data(&dev->sd,
+			port_info->format,
+			port_info->bayer);
+	if (!pdata) {
+		v4l2_device_unregister_subdev(&dev->sd);
+		kfree(dev);
+		return -EINVAL;
+	}
+	dev->platform_data = (struct camera_sensor_platform_data *)pdata;
+	if (port == ATOMISP_CAMERA_PORT_PRIMARY)
+		dev->platform_data->get_camera_caps = pixter0_get_camera_caps;
+	else if (port == ATOMISP_CAMERA_PORT_SECONDARY)
+		dev->platform_data->get_camera_caps = pixter1_get_camera_caps;
+	else
+		dev->platform_data->get_camera_caps = pixter2_get_camera_caps;
+	ret = camera_sensor_csi(&dev->sd, port, port_info->lanes,
+				port_info->format, port_info->bayer, 1);
+	if (ret)
+		goto out_free;
+	ret = atomisp_register_i2c_module(&dev->sd, pdata, SOC_CAMERA);
+	if (ret) {
+		v4l2_device_unregister_subdev(&dev->sd);
+		kfree(dev);
+	}
+	dev->ori_i2c_addr = client->addr;
+	client->addr = port_info->i2c_addr;
+#else
 	if (client->dev.platform_data) {
 		dev->platform_data = client->dev.platform_data;
 		ret = dev->platform_data->csi_cfg(&dev->sd, 1);
 		if (ret)
 			goto out_free;
-		if (dev->platform_data->get_camera_caps)
-			caps = dev->platform_data->get_camera_caps();
-		else
-			caps = atomisp_get_default_camera_caps();
-		dev->caps = caps;
 	}
+#endif
+	if (dev->platform_data->get_camera_caps)
+		caps = dev->platform_data->get_camera_caps();
+	else
+		caps = atomisp_get_default_camera_caps();
+	dev->caps = caps;
 
 	dev->mipi_info = v4l2_get_subdev_hostdata(&dev->sd);
 	if (!dev->mipi_info) {
@@ -1140,6 +1246,15 @@ out_free:
 	return ret;
 }
 
+#ifdef CONFIG_GMIN_INTEL_MID
+static struct acpi_device_id pixter_acpi_match[] = {
+	{"INT33BE"},
+	{"INT33FB"},
+	{},
+};
+MODULE_DEVICE_TABLE(acpi, pixter_acpi_match);
+#endif
+
 static const struct i2c_device_id pixter_ids[] = {
 	{PIXTER_0, 0},
 	{PIXTER_1, 0},
@@ -1153,6 +1268,9 @@ static struct i2c_driver pixter_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = PIXTER_DRV,
+#ifdef CONFIG_GMIN_INTEL_MID
+		.acpi_match_table = ACPI_PTR(pixter_acpi_match),
+#endif
 	},
 	.probe = pixter_probe,
 	.remove = pixter_remove,

@@ -74,6 +74,42 @@
 #define PIXTER_RONLY		S_IRUSR
 #define PIXTER_RW		(S_IRUSR | S_IWUSR)
 
+#ifdef CONFIG_GMIN_INTEL_MID
+/* Supported TYPE:
+	RAW_CAMERA
+	SOC_CAMERA
+   Supported FORMAT:
+	ATOMISP_INPUT_FORMAT_RAW_8
+	ATOMISP_INPUT_FORMAT_RAW_10
+	ATOMISP_INPUT_FORMAT_YUV420_8
+	ATOMISP_INPUT_FORMAT_YUV422_8
+   Supported BAYER:
+	atomisp_bayer_order_grbg
+	atomisp_bayer_order_rggb
+	atomisp_bayer_order_bggr
+	atomisp_bayer_order_gbrg
+   For YUV formats, BAYER should be set to 0.
+*/
+
+#define PIXTER_0_TYPE		RAW_CAMERA
+#define PIXTER_0_FORMAT		-1
+#define PIXTER_0_BAYER		atomisp_bayer_order_rggb
+#define PIXTER_0_LANES		4
+#define PIXTER_0_STREAMS	1
+
+#define PIXTER_1_TYPE		RAW_CAMERA
+#define PIXTER_1_FORMAT		-1
+#define PIXTER_1_BAYER		atomisp_bayer_order_rggb
+#define PIXTER_1_LANES		1
+#define PIXTER_1_STREAMS	1
+
+#define PIXTER_2_TYPE		RAW_CAMERA
+#define PIXTER_2_FORMAT		-1
+#define PIXTER_2_BAYER		atomisp_bayer_order_rggb
+#define PIXTER_2_LANES		2
+#define PIXTER_2_STREAMS	1
+#endif
+
 enum pixter_image_format {
 	PIXTER_UNKNOWN_FMT,
 	PIXTER_RGGB10,
@@ -180,11 +216,25 @@ struct pixter_device {
 	struct pixter_vc_setting vc_setting[4];
 	struct pixter_setting *settings;
 	u32 *setting_en;
+#ifdef CONFIG_GMIN_INTEL_MID
+	unsigned short ori_i2c_addr;
+#endif
 
 	struct pixter_fps dbg_fps;
 	struct pixter_blank dbg_blank;
 	struct pixter_timing dbg_timing;
 	struct pixter_dbgfs_data *dbgfs_data;
 };
+
+#ifdef CONFIG_GMIN_INTEL_MID
+struct pixter_port_info {
+	unsigned int type;
+	unsigned int format;
+	unsigned int bayer;
+	unsigned int lanes;
+	unsigned int streams;
+	unsigned int i2c_addr;
+};
+#endif
 
 #endif
