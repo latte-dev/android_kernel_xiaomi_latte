@@ -903,6 +903,26 @@ static const char * const ctrl_run_mode_menu[] = {
 	"Preview",
 };
 
+static int pixter_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+{
+	struct pixter_device *dev = container_of(
+		ctrl->handler, struct pixter_device, ctrl_handler);
+
+	switch (ctrl->id) {
+	case V4L2_CID_LINK_FREQ:
+		ctrl->val = dev->dbg_timing.mipi_clk;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static const struct v4l2_ctrl_ops ctrl_ops = {
+	.g_volatile_ctrl = pixter_g_volatile_ctrl
+};
+
 static const struct v4l2_ctrl_config ctrls[] = {
 	{
 		.id = V4L2_CID_RUN_MODE,
@@ -912,7 +932,18 @@ static const struct v4l2_ctrl_config ctrls[] = {
 		.def = 4,
 		.max = 4,
 		.qmenu = ctrl_run_mode_menu,
-	}
+	},
+	{
+		.ops = &ctrl_ops,
+		.id = V4L2_CID_LINK_FREQ,
+		.name = "Link Frequency",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 1,
+		.max = 1500000 * 1000,
+		.step = 1,
+		.def = 1,
+		.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+	},
 };
 
 static const struct v4l2_subdev_core_ops pixter_core_ops = {
