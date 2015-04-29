@@ -68,6 +68,9 @@ static struct regmap_config pixter_reg_config = {
 	.val_format_endian = REGMAP_ENDIAN_NATIVE,
 };
 
+static const uint32_t pixter_embedded_effective_size[2]	= {
+	PIXTER_METADATA_EFFECTIVE_SIZE0, PIXTER_METADATA_EFFECTIVE_SIZE1};
+
 static struct pixter_format_bridge format_bridge[] = {
 	{"", 0, ATOMISP_INPUT_FORMAT_BINARY_8, 8},
 	{"RGGB10", V4L2_MBUS_FMT_SRGGB10_1X10, ATOMISP_INPUT_FORMAT_RAW_10, 10},
@@ -653,6 +656,19 @@ static int pixter_s_mbus_fmt(struct v4l2_subdev *sd,
 		stream_info->ch_id = stream_info->stream;
 	dev->vc_setting[stream_info->ch_id] =
 		dev->settings[dev->cur_setting].vc[stream_info->ch_id];
+
+#if PIXTER_METADATA_EN
+	dev->mipi_info->metadata_width =
+	    (dev->settings[dev->cur_setting].vc[stream_info->ch_id].width *
+	    format_bridge[dev->settings[dev->cur_setting].vc[stream_info->ch_id].format].bpp + 7) / 8;
+	dev->mipi_info->metadata_height = PIXTER_METADATA_LINES;
+	dev->mipi_info->metadata_effective_width = pixter_embedded_effective_size;
+	dev->mipi_info->metadata_format = PIXTER_METADATA_FORMAT;
+	dev_dbg(&client->dev, "Metadata: %dx%d fmt=%d\n",
+		dev->mipi_info->metadata_width,
+		dev->mipi_info->metadata_height,
+		dev->mipi_info->metadata_format);
+#endif
 	mutex_unlock(&dev->input_lock);
 	dev_dbg(&client->dev, "%s w:%d h:%d code: 0x%x stream: %d\n", __func__,
 			fmt->width, fmt->height, fmt->code,
