@@ -1341,6 +1341,24 @@ static void i915_hotplug_work_func(struct work_struct *work)
 
 }
 
+static void i915_probe_hotplug_work_func(struct work_struct *work)
+{
+	struct drm_i915_private *dev_priv =
+		container_of(work, struct drm_i915_private, probe_hotplug_work);
+
+	struct drm_device *dev = dev_priv->dev;
+	struct drm_mode_config *mode_config = &dev->mode_config;
+	struct intel_encoder *intel_encoder;
+
+	mutex_lock(&mode_config->mutex);
+	list_for_each_entry(intel_encoder, &mode_config->encoder_list, base.head)
+		if (intel_encoder->hot_plug)
+			intel_encoder->hot_plug(intel_encoder);
+
+	mutex_unlock(&mode_config->mutex);
+	drm_helper_hpd_irq_event(dev);
+}
+
 static void intel_hpd_irq_uninstall(struct drm_i915_private *dev_priv)
 {
 	del_timer_sync(&dev_priv->hotplug_reenable_timer);
@@ -5393,6 +5411,7 @@ void intel_irq_init(struct drm_device *dev)
 	INIT_WORK(&dev_priv->hotplug_work, i915_hotplug_work_func);
 	INIT_WORK(&dev_priv->dig_port_work, i915_digport_work_func);
 	INIT_WORK(&dev_priv->gpu_error.work, i915_error_work_func);
+	INIT_WORK(&dev_priv->probe_hotplug_work, i915_probe_hotplug_work_func);
 	INIT_WORK(&dev_priv->rps.work, gen6_pm_rps_work);
 	INIT_WORK(&dev_priv->l3_parity.error_work, ivybridge_parity_work);
 	INIT_DELAYED_WORK(&dev_priv->simulate_work,
