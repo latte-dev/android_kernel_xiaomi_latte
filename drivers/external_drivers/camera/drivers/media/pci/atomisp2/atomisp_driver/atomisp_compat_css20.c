@@ -2467,8 +2467,6 @@ static enum ia_css_pipe_mode __pipe_id_to_pipe_mode(
 		if (mipi_info && mipi_info->input_format ==
 			ATOMISP_INPUT_FORMAT_YUV420_8_LEGACY)
 			return IA_CSS_PIPE_MODE_YUVPP;
-		if (asd->copy_mode_format_conv)
-			return IA_CSS_PIPE_MODE_CAPTURE;
 		return IA_CSS_PIPE_MODE_COPY;
 	case IA_CSS_PIPE_ID_PREVIEW:
 		return IA_CSS_PIPE_MODE_PREVIEW;

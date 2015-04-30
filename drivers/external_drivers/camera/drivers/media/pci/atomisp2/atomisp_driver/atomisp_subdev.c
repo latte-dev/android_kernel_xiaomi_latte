@@ -132,20 +132,6 @@ bool atomisp_subdev_format_conversion(struct atomisp_sub_device *asd,
 		&& !atomisp_is_mbuscode_raw(src->code);
 }
 
-bool atomisp_subdev_copy_format_conversion(struct atomisp_sub_device *asd,
-				      unsigned int source_pad)
-{
-	struct v4l2_mbus_framefmt *sink, *src;
-
-	sink = atomisp_subdev_get_ffmt(&asd->subdev, NULL,
-				       V4L2_SUBDEV_FORMAT_ACTIVE,
-				       ATOMISP_SUBDEV_PAD_SINK);
-	src = atomisp_subdev_get_ffmt(&asd->subdev, NULL,
-				      V4L2_SUBDEV_FORMAT_ACTIVE, source_pad);
-
-	return sink->code != src->code;
-}
-
 uint16_t atomisp_subdev_source_pad(struct video_device *vdev)
 {
 	return vdev->entity.links[0].source->index;

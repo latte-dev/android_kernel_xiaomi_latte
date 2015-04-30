@@ -6343,7 +6343,7 @@ int atomisp_get_pipe_id(struct atomisp_video_pipe *pipe)
 		else
 			return CSS_PIPE_ID_PREVIEW;
 	} else if (pipe == &asd->video_out_capture) {
-		if (asd->copy_mode && !asd->copy_mode_format_conv)
+		if (asd->copy_mode)
 			return IA_CSS_PIPE_ID_COPY;
 		else
 			return CSS_PIPE_ID_CAPTURE;
