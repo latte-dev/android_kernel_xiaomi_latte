@@ -621,15 +621,15 @@ static int atomisp_enum_input(struct file *file, void *fh,
 	 * ioctl is the only way to enum inputs + possible external actuators
 	 * for 3A tuning purpose.
 	 */
-	if (isp->inputs[index].motor &&
-	    strlen(isp->inputs[index].motor->name) > 0) {
+	if (isp->motor &&
+	    strlen(isp->motor->name) > 0) {
 		const int cur_len = strlen(input->name);
 		const int max_size = sizeof(input->name) - cur_len - 1;
 
 		if (max_size > 1) {
 			input->name[cur_len] = '+';
 			strncpy(&input->name[cur_len + 1],
-				isp->inputs[index].motor->name, max_size - 1);
+				isp->motor->name, max_size - 1);
 		}
 	}
 
@@ -764,9 +764,11 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 		goto error;
 	}
 
-	if (!isp->sw_contex.file_input && isp->inputs[input].motor)
-		ret = v4l2_subdev_call(isp->inputs[input].motor, core,
-				       init, 1);
+	if (isp->motor)
+		ret = v4l2_subdev_call(isp->motor, core, s_power, 1);
+
+	if (!isp->sw_contex.file_input && isp->motor)
+		ret = v4l2_subdev_call(isp->motor, core, init, 1);
 
 	asd->input_curr = input;
 	/* mark this camera is used by the current stream */
@@ -2372,8 +2374,14 @@ static int atomisp_queryctl(struct file *file, void *fh,
 		case V4L2_CID_FOCUS_ABSOLUTE:
 		case V4L2_CID_FOCUS_RELATIVE:
 		case V4L2_CID_FOCUS_STATUS:
-			return v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
-						core, queryctrl, qc);
+			if (isp->motor)
+				return v4l2_subdev_call(
+					isp->motor,
+					core, queryctrl, qc);
+			else
+				return v4l2_subdev_call(
+					isp->inputs[asd->input_curr].camera,
+					core, queryctrl, qc);
 	}
 
 	if (qc->id & V4L2_CTRL_FLAG_NEXT_CTRL)
@@ -2432,9 +2440,9 @@ static int atomisp_camera_g_ext_ctrls(struct file *file, void *fh,
 		case V4L2_CID_FOCUS_RELATIVE:
 		case V4L2_CID_FOCUS_STATUS:
 		case V4L2_CID_FOCUS_AUTO:
-			if (isp->inputs[asd->input_curr].motor)
+			if (isp->motor)
 				ret = v4l2_subdev_call(
-					isp->inputs[asd->input_curr].motor,
+					isp->motor,
 					core, g_ctrl, &ctrl);
 			else
 				ret = v4l2_subdev_call(
@@ -2539,9 +2547,9 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 		case V4L2_CID_FOCUS_RELATIVE:
 		case V4L2_CID_FOCUS_STATUS:
 		case V4L2_CID_FOCUS_AUTO:
-			if (isp->inputs[asd->input_curr].motor)
+			if (isp->motor)
 				ret = v4l2_subdev_call(
-					isp->inputs[asd->input_curr].motor,
+					isp->motor,
 					core, s_ctrl, &ctrl);
 			else
 				ret = v4l2_subdev_call(
@@ -2909,9 +2917,9 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		break;
 
 	case ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA:
-		if (isp->inputs[asd->input_curr].motor)
+		if (isp->motor)
 			err = v4l2_subdev_call(
-					isp->inputs[asd->input_curr].motor,
+					isp->motor,
 					core, ioctl, cmd, arg);
 		else
 			err = v4l2_subdev_call(
