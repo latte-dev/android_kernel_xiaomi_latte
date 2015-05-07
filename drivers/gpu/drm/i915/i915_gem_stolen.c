@@ -427,7 +427,7 @@ static int intel_logical_memset_stolen_obj_hw(struct drm_i915_gem_object *obj)
 	if (!ringbuf)
 		DRM_ERROR("No ring obj");
 
-	ret = i915_gem_object_pin(obj, vm, PAGE_SIZE, 0);
+	ret = i915_gem_object_pin(obj, vm, 0, PAGE_SIZE, 0);
 	if (ret) {
 		DRM_ERROR("Mapping of User FB to PPGTT failed\n");
 		return ret;

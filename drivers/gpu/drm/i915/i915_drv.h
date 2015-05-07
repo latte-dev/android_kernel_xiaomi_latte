@@ -2790,6 +2790,7 @@ void i915_gem_close_object(struct drm_gem_object *gem_obj,
 #define PIN_OFFSET_MASK (~4095)
 int __must_check i915_gem_object_pin(struct drm_i915_gem_object *obj,
 				     struct i915_address_space *vm,
+				     uint32_t size,
 				     uint32_t alignment,
 				     uint64_t flags);
 int __must_check i915_vma_unbind(struct i915_vma *vma);
@@ -3009,7 +3010,8 @@ i915_gem_obj_ggtt_pin(struct drm_i915_gem_object *obj,
 		      uint32_t alignment,
 		      unsigned flags)
 {
-	return i915_gem_object_pin(obj, obj_to_ggtt(obj), alignment, flags | PIN_GLOBAL);
+	return i915_gem_object_pin(obj, obj_to_ggtt(obj), 0, alignment,
+				   flags | PIN_GLOBAL);
 }
 
 static inline int

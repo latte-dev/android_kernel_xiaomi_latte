@@ -4062,12 +4062,13 @@ static void i915_gem_verify_gtt(struct drm_device *dev)
 static struct i915_vma *
 i915_gem_object_bind_to_vm(struct drm_i915_gem_object *obj,
 			   struct i915_address_space *vm,
+			   uint32_t size,
 			   unsigned alignment,
 			   uint64_t flags)
 {
 	struct drm_device *dev = obj->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 size, fence_size, fence_alignment, unfenced_alignment;
+	u32 fence_size, fence_alignment, unfenced_alignment;
 	unsigned long start =
 		flags & PIN_OFFSET_BIAS ? flags & PIN_OFFSET_MASK : 0;
 	unsigned long end =
@@ -4094,14 +4095,16 @@ i915_gem_object_bind_to_vm(struct drm_i915_gem_object *obj,
 		return ERR_PTR(-EINVAL);
 	}
 
-	size = flags & PIN_MAPPABLE ? fence_size : obj->base.size;
+	size = max_t(u32, size, obj->base.size);
+	if (flags & PIN_MAPPABLE)
+		size = max_t(u32, size, fence_size);
 
 	/* If the object is bigger than the entire aperture, reject it early
 	 * before evicting everything in a vain attempt to find space.
 	 */
-	if (obj->base.size > end) {
-		DRM_DEBUG("Attempting to bind an object larger than the aperture: object=%zd > %s aperture=%lu\n",
-			  obj->base.size,
+	if (size > end) {
+		DRM_DEBUG("Attempting to bind an object larger than the aperture: requested=%u [object=%zd] > %s aperture=%lu\n",
+			  size, obj->base.size,
 			  flags & PIN_MAPPABLE ? "mappable" : "total",
 			  end);
 		return ERR_PTR(-E2BIG);
@@ -4711,12 +4714,14 @@ i915_gem_ring_throttle(struct drm_device *dev, struct drm_file *file)
 }
 
 static bool
-i915_vma_misplaced(struct i915_vma *vma, uint32_t alignment, uint64_t flags)
+i915_vma_misplaced(struct i915_vma *vma, uint32_t size, uint32_t alignment, uint64_t flags)
 {
 	struct drm_i915_gem_object *obj = vma->obj;
 
-	if (alignment &&
-	    vma->node.start & (alignment - 1))
+	if (vma->node.size < size)
+		return true;
+
+	if (alignment && vma->node.start & (alignment - 1))
 		return true;
 
 	if (flags & PIN_MAPPABLE && !obj->map_and_fenceable)
@@ -4732,6 +4737,7 @@ i915_vma_misplaced(struct i915_vma *vma, uint32_t alignment, uint64_t flags)
 int
 i915_gem_object_pin(struct drm_i915_gem_object *obj,
 		    struct i915_address_space *vm,
+		    uint32_t size,
 		    uint32_t alignment,
 		    uint64_t flags)
 {
@@ -4772,7 +4778,7 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 		if (WARN_ON(vma->pin_count == DRM_I915_GEM_OBJECT_MAX_PIN_COUNT))
 			return -EBUSY;
 
-		if (i915_vma_misplaced(vma, alignment, flags)) {
+		if (i915_vma_misplaced(vma, size, alignment, flags)) {
 			WARN(vma->pin_count,
 			     "bo is already pinned with incorrect alignment:"
 			     " offset=%lx, req.alignment=%x, req.map_and_fenceable=%d,"
@@ -4790,7 +4796,7 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 
 	bound = vma ? obj->has_global_gtt_mapping : 0;
 	if (vma == NULL || !drm_mm_node_allocated(&vma->node)) {
-		vma = i915_gem_object_bind_to_vm(obj, vm, alignment, flags);
+		vma = i915_gem_object_bind_to_vm(obj, vm, size, alignment, flags);
 		if (IS_ERR(vma))
 			return PTR_ERR(vma);
 	}
@@ -4810,7 +4816,7 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 							     obj->tiling_mode,
 							     true);
 
-		fenceable = (vma->node.size == fence_size &&
+		fenceable = (vma->node.size >= fence_size &&
 			     (vma->node.start & (fence_alignment - 1)) == 0);
 
 		mappable = (vma->node.start + obj->base.size <=

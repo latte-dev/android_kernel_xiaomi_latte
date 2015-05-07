@@ -93,7 +93,7 @@ static struct drm_i915_gem_object *create_fw_obj(struct drm_device *dev,
 	if (!obj)
 		HUC_ERROR_OUT("Failed allocation");
 
-	ret = i915_gem_object_pin(obj, vm, PAGE_SIZE, 0);
+	ret = i915_gem_object_pin(obj, vm, 0, PAGE_SIZE, 0);
 	if (ret)
 		HUC_ERROR_OUT("Failed to pin");
 
