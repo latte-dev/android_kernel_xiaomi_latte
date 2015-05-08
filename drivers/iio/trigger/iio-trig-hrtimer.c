@@ -154,10 +154,9 @@ static struct iio_sw_trigger *iio_trig_hrtimer_probe(const char *name)
 	ret = iio_trigger_register(trig_info->swt.trigger);
 	if (ret)
 		goto err_free_trigger;
-#ifdef CONFIG_CONFIGFS_FS
-	config_group_init_type_name(&trig_info->swt.group, name,
-				    &iio_hrtimer_type);
-#endif
+
+	iio_config_group_init_type_name(&trig_info->swt.group, name,
+					&iio_hrtimer_type);
 	return &trig_info->swt;
 err_free_trigger:
 	iio_trigger_free(trig_info->swt.trigger);

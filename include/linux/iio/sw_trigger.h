@@ -66,6 +66,20 @@ struct iio_sw_trigger *to_iio_sw_trigger(struct config_item *item)
 	return container_of(to_config_group(item), struct iio_sw_trigger,
 			    group);
 }
+
+static inline
+void iio_config_group_init_type_name(struct config_group *group,
+				     const char *name,
+				     struct config_item_type *type)
+{
+	config_group_init_type_name(group, name, type);
+}
+#else
+static inline
+void iio_config_group_init_type_name(struct config_group *group,
+				     const char *name,
+				     struct config_item_type *type)
+{ }
 #endif
 
 #endif /* __IIO_SW_TRIGGER */
