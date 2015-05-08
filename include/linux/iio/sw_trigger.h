@@ -1,5 +1,5 @@
 /*
- * Industrial I/O configfs bits
+ * Industrial I/O software trigger interface
  *
  * Copyright (c) 2015 Intel Corporation
  *
@@ -23,9 +23,9 @@
 struct iio_sw_trigger_ops;
 
 struct iio_sw_trigger_type {
-	char *name;
+	const char *name;
 	struct module *owner;
-	struct iio_sw_trigger_ops *ops;
+	const struct iio_sw_trigger_ops *ops;
 	struct list_head list;
 };
 
@@ -42,10 +42,21 @@ struct iio_sw_trigger_ops {
 	int (*remove)(struct iio_sw_trigger *);
 };
 
-int iio_register_sw_trigger_type(struct iio_sw_trigger_type *);
-int iio_unregister_sw_trigger_type(struct iio_sw_trigger_type *);
+/**
+ * iio_register_sw_trigger_type() - register a software trigger type
+ *
+ * @tt: software trigger type to be registered
+ */
+int iio_register_sw_trigger_type(struct iio_sw_trigger_type *tt);
 
-struct iio_sw_trigger *iio_sw_trigger_create(char *, char *);
+/**
+ * iio_unregister_sw_trigger_type() - unregister a software trigger type
+ *
+ * @tt: software trigger type to be unregistered
+ */
+int iio_unregister_sw_trigger_type(struct iio_sw_trigger_type *tt);
+
+struct iio_sw_trigger *iio_sw_trigger_create(const char *, const char *);
 void iio_sw_trigger_destroy(struct iio_sw_trigger *);
 
 #ifdef CONFIG_CONFIGFS_FS

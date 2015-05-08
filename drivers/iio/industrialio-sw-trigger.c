@@ -20,7 +20,8 @@ static LIST_HEAD(iio_trigger_types_list);
 static DEFINE_RWLOCK(iio_trigger_types_lock);
 
 static
-struct iio_sw_trigger_type *iio_find_sw_trigger_type(char *name, unsigned len)
+struct iio_sw_trigger_type *__iio_find_sw_trigger_type(const char *name,
+						       unsigned len)
 {
 	struct iio_sw_trigger_type *t = NULL, *iter;
 
@@ -39,12 +40,13 @@ int iio_register_sw_trigger_type(struct iio_sw_trigger_type *t)
 	int ret = 0;
 
 	write_lock(&iio_trigger_types_lock);
-	iter = iio_find_sw_trigger_type(t->name, strlen(t->name));
+	iter = __iio_find_sw_trigger_type(t->name, strlen(t->name));
 	if (iter)
 		ret = -EBUSY;
 	else
 		list_add_tail(&t->list, &iio_trigger_types_list);
 	write_unlock(&iio_trigger_types_lock);
+
 	return ret;
 }
 EXPORT_SYMBOL(iio_register_sw_trigger_type);
@@ -55,7 +57,7 @@ int iio_unregister_sw_trigger_type(struct iio_sw_trigger_type *t)
 	int ret = 0;
 
 	write_lock(&iio_trigger_types_lock);
-	iter = iio_find_sw_trigger_type(t->name, strlen(t->name));
+	iter = __iio_find_sw_trigger_type(t->name, strlen(t->name));
 	if (!iter)
 		ret = -EINVAL;
 	else
@@ -67,12 +69,12 @@ int iio_unregister_sw_trigger_type(struct iio_sw_trigger_type *t)
 EXPORT_SYMBOL(iio_unregister_sw_trigger_type);
 
 static
-struct iio_sw_trigger_type *iio_get_sw_trigger_type(char *name)
+struct iio_sw_trigger_type *iio_get_sw_trigger_type(const char *name)
 {
 	struct iio_sw_trigger_type *t;
 
 	read_lock(&iio_trigger_types_lock);
-	t = iio_find_sw_trigger_type(name, strlen(name));
+	t = __iio_find_sw_trigger_type(name, strlen(name));
 	if (t && !try_module_get(t->owner))
 		t = NULL;
 	read_unlock(&iio_trigger_types_lock);
@@ -80,7 +82,7 @@ struct iio_sw_trigger_type *iio_get_sw_trigger_type(char *name)
 	return t;
 }
 
-struct iio_sw_trigger *iio_sw_trigger_create(char *type, char *name)
+struct iio_sw_trigger *iio_sw_trigger_create(const char *type, const char *name)
 {
 	struct iio_sw_trigger *t;
 	struct iio_sw_trigger_type *tt;
