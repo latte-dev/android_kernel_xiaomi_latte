@@ -30,35 +30,32 @@ struct iio_hrtimer_info {
 	ktime_t period;
 };
 
-#ifdef CONFIG_CONFIGFS_FS
-struct iio_hrtimer_info *to_iio_hrtimer_info(struct config_item *item)
-{
-	return item ? container_of(to_iio_sw_trigger(item),
-				   struct iio_hrtimer_info, swt) : NULL;
-}
-
-CONFIGFS_ATTR_STRUCT(iio_hrtimer_info);
-
-#define IIO_HRTIMER_INFO_ATTR(_name, _mode, _show, _store) \
-	struct iio_hrtimer_info_attribute iio_hrtimer_attr_##_name = \
-	__CONFIGFS_ATTR(_name, _mode, _show, _store)
+static struct config_item_type iio_hrtimer_type = {
+	.ct_owner = THIS_MODULE,
+};
 
 static
-ssize_t iio_hrtimer_info_show_sampling_frequency(struct iio_hrtimer_info *info,
-						 char *page)
+ssize_t iio_hrtimer_show_sampling_frequency(struct device *dev,
+					    struct device_attribute *attr,
+					    char *buf)
 {
-	return snprintf(page, PAGE_SIZE, "%lu\n", info->sampling_frequency);
+	struct iio_trigger *trig = to_iio_trigger(dev);
+	struct iio_hrtimer_info *info = iio_trigger_get_drvdata(trig);
+
+	return snprintf(buf, PAGE_SIZE, "%lu\n", info->sampling_frequency);
 }
 
 static
-ssize_t iio_hrtimer_info_store_sampling_frequency(struct iio_hrtimer_info *info,
-						  const char *page,
-						  size_t count)
+ssize_t iio_hrtimer_store_sampling_frequency(struct device *dev,
+					     struct device_attribute *attr,
+					     const char *buf, size_t len)
 {
+	struct iio_trigger *trig = to_iio_trigger(dev);
+	struct iio_hrtimer_info *info = iio_trigger_get_drvdata(trig);
 	unsigned long val;
 	int ret;
 
-	ret = kstrtoul(page, 10, &val);
+	ret = kstrtoul(buf, 10, &val);
 	if (ret)
 		return ret;
 
@@ -68,31 +65,26 @@ ssize_t iio_hrtimer_info_store_sampling_frequency(struct iio_hrtimer_info *info,
 	info->sampling_frequency = val;
 	info->period = ktime_set(0, NSEC_PER_SEC / val);
 
-	return count;
+	return len;
 }
 
-IIO_HRTIMER_INFO_ATTR(sampling_frequency, S_IRUGO | S_IWUSR,
-		      iio_hrtimer_info_show_sampling_frequency,
-		      iio_hrtimer_info_store_sampling_frequency);
+static DEVICE_ATTR(sampling_frequency, S_IRUGO | S_IWUSR,
+		   iio_hrtimer_show_sampling_frequency,
+		   iio_hrtimer_store_sampling_frequency);
 
-static struct configfs_attribute *iio_hrtimer_attrs[] = {
-	&iio_hrtimer_attr_sampling_frequency.attr,
+static struct attribute *iio_hrtimer_attrs[] = {
+	&dev_attr_sampling_frequency.attr,
 	NULL
 };
 
-CONFIGFS_ATTR_OPS(iio_hrtimer_info);
-static struct configfs_item_operations iio_hrtimer_ops = {
-	.show_attribute		= iio_hrtimer_info_attr_show,
-	.store_attribute	= iio_hrtimer_info_attr_store,
+static const struct attribute_group iio_hrtimer_attr_group = {
+	.attrs = iio_hrtimer_attrs,
 };
 
-static struct config_item_type iio_hrtimer_type = {
-	.ct_item_ops	= &iio_hrtimer_ops,
-	.ct_attrs	= iio_hrtimer_attrs,
-	.ct_owner	= THIS_MODULE,
+static const struct attribute_group *iio_hrtimer_attr_groups[] = {
+	&iio_hrtimer_attr_group,
+	NULL
 };
-
-#endif /* CONFIGFS_FS */
 
 static enum hrtimer_restart iio_hrtimer_trig_handler(struct hrtimer *timer)
 {
@@ -143,6 +135,7 @@ static struct iio_sw_trigger *iio_trig_hrtimer_probe(const char *name)
 
 	iio_trigger_set_drvdata(trig_info->swt.trigger, trig_info);
 	trig_info->swt.trigger->ops = &iio_hrtimer_trigger_ops;
+	trig_info->swt.trigger->dev.groups = iio_hrtimer_attr_groups;
 
 	hrtimer_init(&trig_info->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	trig_info->timer.function = iio_hrtimer_trig_handler;
@@ -172,16 +165,17 @@ static int iio_trig_hrtimer_remove(struct iio_sw_trigger *swt)
 
 	trig_info = iio_trigger_get_drvdata(swt->trigger);
 
-	hrtimer_cancel(&trig_info->timer);
-
 	iio_trigger_unregister(swt->trigger);
+
+	/* cancel the timer after unreg to make sure no one rearms it */
+	hrtimer_cancel(&trig_info->timer);
 	iio_trigger_free(swt->trigger);
 	kfree(trig_info);
 
 	return 0;
 }
 
-struct iio_sw_trigger_ops iio_trig_hrtimer_ops = {
+const struct iio_sw_trigger_ops iio_trig_hrtimer_ops = {
 	.probe		= iio_trig_hrtimer_probe,
 	.remove		= iio_trig_hrtimer_remove,
 };
