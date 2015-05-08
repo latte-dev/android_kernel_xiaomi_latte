@@ -33,7 +33,8 @@ static struct config_group *trigger_make_group(struct config_group *group,
 	type_name = buf;
 	trigger_name = strchr(buf, '-');
 	if (!trigger_name) {
-		pr_err("Unable to locate '-' in %s. Use <type>-<name>.\n", buf);
+		WARN_ONCE(1, "Unable to locate '-' in %s. Use <type>-<name>.\n",
+			  buf);
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -55,8 +56,7 @@ static void trigger_drop_group(struct config_group *group,
 {
 	struct iio_sw_trigger *t = to_iio_sw_trigger(item);
 
-	if (t)
-		iio_sw_trigger_destroy(t);
+	iio_sw_trigger_destroy(t);
 	config_item_put(item);
 }
 
