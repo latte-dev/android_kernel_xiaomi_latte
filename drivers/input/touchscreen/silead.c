@@ -15,6 +15,7 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  * ------------------------------------------------------------------------- */
+#define DEBUG
 
 #include <linux/i2c.h>
 #include <linux/module.h>
@@ -26,8 +27,9 @@
 #include <linux/input.h>
 #include <linux/input/mt.h>
 #include <linux/pm.h>
+#include <linux/of_gpio.h>
 
-#define SILEAD_TS_NAME "SileadTS"
+#define SILEAD_TS_NAME "silead_ts"
 
 #define SILEAD_REG_RESET	0xE0
 #define SILEAD_REG_DATA		0x80
@@ -59,14 +61,16 @@
 #define SILEAD_DT_MAX_FINGERS	"max-fingers"
 #define SILEAD_DT_PRESSURE	"pressure"
 
-#define SILEAD_IRQ_GPIO_NAME	"irq"
-#define SILEAD_PWR_GPIO_NAME	"power"
+#define SILEAD_IRQ_GPIO_NAME	"irq-gpio"
+#define SILEAD_PWR_GPIO_NAME	"power-gpio"
 
 #define SILEAD_FW_NAME		"silead.fw"
-#define SILEAD_X_MAX		480
-#define SILEAD_Y_MAX		800
+#define SILEAD_X_MAX		960
+#define SILEAD_Y_MAX		600
 #define SILEAD_MAX_FINGERS	5
 #define SILEAD_PRESSURE		50
+
+#define GSL1688_CHIP_ID		0xB4820000
 
 enum silead_ts_power {
 	SILEAD_POWER_ON  = 1,
@@ -187,7 +191,11 @@ static void silead_ts_read_data(struct i2c_client *client)
 		x = le16_to_cpup((u16 *) (buf + offset + SILEAD_POINT_X_OFF));
 
 		dev_dbg(dev, "x=%d y=%d id=%d\n", x, y, id);
-		silead_ts_report_touch(data, x, y, id);
+		if (data->chip_id == GSL1688_CHIP_ID)
+			silead_ts_report_touch(data, (id * 256 + x),
+					       data->y_max - y, id);
+		else
+			silead_ts_report_touch(data, x, y, id);
 	}
 
 	input_mt_sync_frame(data->input_dev);
@@ -342,15 +350,16 @@ static int silead_ts_setup(struct i2c_client *client)
 	int ret;
 	u32 status;
 
-	ret = silead_ts_get_id(client);
-	if (ret)
-		return ret;
-	dev_dbg(dev, "Chip ID: 0x%8X", data->chip_id);
-
 	silead_ts_set_power(client, SILEAD_POWER_OFF);
 	msleep(20);
 	silead_ts_set_power(client, SILEAD_POWER_ON);
 	msleep(20);
+
+	ret = silead_ts_get_id(client);
+	if (ret)
+		return ret;
+
+	dev_dbg(dev, "Chip ID: 0x%8X", data->chip_id);
 
 	ret = silead_ts_init(client);
 	if (ret)
@@ -439,10 +448,18 @@ static int silead_ts_probe(struct i2c_client *client,
 	}
 
 	/* Power GPIO pin */
-	data->gpio_power = devm_gpiod_get(dev, SILEAD_PWR_GPIO_NAME);
-	if (IS_ERR(data->gpio_power)) {
-		dev_err(dev, "Shutdown GPIO request failed\n");
-		return -ENODEV;
+	if (client->dev.of_node) {
+		ret = of_get_named_gpio_flags(client->dev.of_node,
+					      SILEAD_PWR_GPIO_NAME, 0, NULL);
+		if (ret <= 0) {
+			dev_err(&client->dev, "error getting gpio for %s\n",
+				SILEAD_PWR_GPIO_NAME);
+			return -ENODEV;
+		}
+
+		data->gpio_power = gpio_to_desc(ret);
+		if (!data->gpio_power)
+			return -ENODEV;
 	}
 
 	ret = gpiod_direction_output(data->gpio_power, 0);
@@ -523,12 +540,14 @@ static int silead_ts_remove(struct i2c_client *client)
 
 static const struct i2c_device_id silead_ts_id[] = {
 	{ "GSL1680", 0 },
+	{ "GSL1688", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, silead_ts_id);
 
 static const struct acpi_device_id silead_ts_acpi_match[] = {
 	{ "GSL1680", 0 },
+	{ "GSL1688", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(acpi, silead_ts_acpi_match);
