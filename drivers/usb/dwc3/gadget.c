@@ -1196,8 +1196,9 @@ static int dwc3_gadget_ep_queue(struct usb_ep *ep, struct usb_request *request,
 	return ret;
 }
 
-static int dwc3_gadget_ep_dequeue(struct usb_ep *ep,
-		struct usb_request *request)
+static int dwc3_gadget_ep_dequeue_forced(struct usb_ep *ep,
+		struct usb_request *request,
+		int forced)
 {
 	struct dwc3_request		*req = to_dwc3_request(request);
 	struct dwc3_request		*r = NULL;
@@ -1221,9 +1222,14 @@ static int dwc3_gadget_ep_dequeue(struct usb_ep *ep,
 				break;
 		}
 		if (r == req) {
-			/* wait until it is processed */
-			dwc3_stop_active_transfer(dwc, dep->number);
-			goto out1;
+			if (!forced) {
+				ret = -EBUSY;
+				goto out0;
+			} else {
+				/* wait until it is processed */
+				dwc3_stop_active_transfer(dwc, dep->number);
+				goto out1;
+			}
 		}
 		dev_err(dwc->dev, "request %p was not queued to %s\n",
 				request, ep->name);
@@ -1239,6 +1245,12 @@ out0:
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	return ret;
+}
+
+static int dwc3_gadget_ep_dequeue(struct usb_ep *ep,
+		struct usb_request *request)
+{
+	return dwc3_gadget_ep_dequeue_forced(ep, request, 1);
 }
 
 int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value, int protocol)
@@ -1335,6 +1347,7 @@ static const struct usb_ep_ops dwc3_gadget_ep0_ops = {
 	.free_request	= dwc3_gadget_ep_free_request,
 	.queue		= dwc3_gadget_ep0_queue,
 	.dequeue	= dwc3_gadget_ep_dequeue,
+	.dequeue_forced	= dwc3_gadget_ep_dequeue_forced,
 	.set_halt	= dwc3_gadget_ep0_set_halt,
 	.set_wedge	= dwc3_gadget_ep_set_wedge,
 };
@@ -1346,6 +1359,7 @@ static const struct usb_ep_ops dwc3_gadget_ep_ops = {
 	.free_request	= dwc3_gadget_ep_free_request,
 	.queue		= dwc3_gadget_ep_queue,
 	.dequeue	= dwc3_gadget_ep_dequeue,
+	.dequeue_forced	= dwc3_gadget_ep_dequeue_forced,
 	.set_halt	= dwc3_gadget_ep_set_halt,
 	.set_wedge	= dwc3_gadget_ep_set_wedge,
 };
