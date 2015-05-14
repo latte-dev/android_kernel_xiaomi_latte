@@ -39,6 +39,9 @@
 #include <media/v4l2-event.h>
 #include <media/videobuf-vmalloc.h>
 
+#define CREATE_TRACE_POINTS
+#include "atomisp_trace_event.h"
+
 #include "atomisp_cmd.h"
 #include "atomisp_common.h"
 #include "atomisp_fops.h"
@@ -339,8 +342,10 @@ done:
 	dev_dbg(isp->dev, "Programming DFS frequency to %d\n", new_freq);
 
 	ret = write_target_freq_to_hw(isp, new_freq);
-	if (!ret)
+	if (!ret) {
 		isp->sw_contex.running_freq = new_freq;
+		trace_ipu_pstate(new_freq, -1);
+	}
 	return ret;
 }
 

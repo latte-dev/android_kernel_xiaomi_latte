@@ -47,6 +47,7 @@
 #include "atomisp_dfs_tables.h"
 #include "atomisp_drvfs.h"
 #include "hmm/hmm.h"
+#include "atomisp_trace_event.h"
 
 #include "hrt/hive_isp_css_mm_hrt.h"
 
@@ -457,8 +458,10 @@ int atomisp_mrfld_power_down(struct atomisp_device *isp)
 				reg_value);
 		/* wait until ISPSSPM0 bit[25:24] shows 0x3 */
 		if ((reg_value >> MRFLD_ISPSSPM0_ISPSSS_OFFSET) ==
-			MRFLD_ISPSSPM0_IUNIT_POWER_OFF)
+			MRFLD_ISPSSPM0_IUNIT_POWER_OFF) {
+			trace_ipu_cstate(0);
 			return 0;
+		}
 
 		if (time_after(jiffies, timeout)) {
 			dev_err(isp->dev, "power-off iunit timeout.\n");
@@ -501,8 +504,10 @@ int atomisp_mrfld_power_up(struct atomisp_device *isp)
 				reg_value);
 		/* wait until ISPSSPM0 bit[25:24] shows 0x0 */
 		if ((reg_value >> MRFLD_ISPSSPM0_ISPSSS_OFFSET) ==
-			MRFLD_ISPSSPM0_IUNIT_POWER_ON)
+			MRFLD_ISPSSPM0_IUNIT_POWER_ON) {
+			trace_ipu_cstate(1);
 			return 0;
+		}
 
 		if (time_after(jiffies, timeout)) {
 			dev_err(isp->dev, "power-on iunit timeout.\n");

@@ -21,6 +21,9 @@
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM atomisp
 
+#if !defined(ATOMISP_TRACE_EVENT_H) || defined(TRACE_HEADER_MULTI_READ)
+#define ATOMISP_TRACE_EVENT_H
+
 #include <linux/tracepoint.h>
 #include <linux/string.h>
 TRACE_EVENT(camera_meminfo,
@@ -85,9 +88,46 @@ TRACE_EVENT(camera_debug,
 		__entry->info)
 );
 
+TRACE_EVENT(ipu_cstate,
+
+		TP_PROTO(int cstate),
+
+		TP_ARGS(cstate),
+
+		TP_STRUCT__entry(
+			__field(int, cstate)
+		),
+
+		TP_fast_assign(
+			__entry->cstate = cstate;
+		),
+
+		TP_printk("cstate=%d", __entry->cstate)
+);
+
+TRACE_EVENT(ipu_pstate,
+
+		TP_PROTO(int freq, int util),
+
+		TP_ARGS(freq, util),
+
+		TP_STRUCT__entry(
+			__field(int, freq)
+			__field(int, util)
+		),
+
+		TP_fast_assign(
+			__entry->freq = freq;
+			__entry->util = util;
+		),
+
+		TP_printk("freq=%d util=%d", __entry->freq, __entry->util)
+);
+#endif
+
 #undef TRACE_INCLUDE_PATH
 #undef TRACE_INCLUDE_FILE
-#define TRACE_INCLUDE_PATH (.)
+#define TRACE_INCLUDE_PATH .
 #define TRACE_INCLUDE_FILE   atomisp_trace_event
 /* This part must be outside protection */
 #include <trace/define_trace.h>
