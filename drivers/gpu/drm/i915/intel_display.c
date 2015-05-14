@@ -10969,17 +10969,12 @@ out_hang:
 	return ret;
 }
 
-static int get_format_config(u32 drm_format, u32 *config, u8 *bpp)
+static int get_format_config(u32 drm_format)
 {
 	int i;
-	for (i = 0; i < ARRAY_SIZE(format_mapping); i++) {
-		if (format_mapping[i].drm_format == drm_format) {
-			*config = format_mapping[i].hw_config;
-			*bpp = format_mapping[i].bpp;
+	for (i = 0; i < ARRAY_SIZE(format_mapping); i++)
+		if (format_mapping[i].drm_format == drm_format)
 			return 0;
-		}
-	}
-
 	return -EINVAL;
 }
 
@@ -11006,9 +11001,7 @@ static int intel_crtc_set_pixel_format(struct drm_crtc *crtc,
 		return hsw_set_pixelformat(crtc, fb->pixel_format);
 	} else if (IS_VALLEYVIEW(dev)) {
 		/* MMIO flip handles this for VLV */
-		u32 *config;
-		u8 *bpp;
-		return get_format_config(fb->pixel_format, config, bpp);
+		return get_format_config(fb->pixel_format);
 	} else {
 		DRM_ERROR("Pixel format change not allowed.\n");
 		return -EINVAL;
