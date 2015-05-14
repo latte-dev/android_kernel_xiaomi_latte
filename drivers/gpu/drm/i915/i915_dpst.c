@@ -218,7 +218,6 @@ i915_dpst_disable_hist_interrupt(struct drm_device *dev)
 	/* Disable histogram logic */
 	blm_hist_ctl = I915_READ(dev_priv->dpst.reg.blm_hist_ctl);
 	blm_hist_ctl &= ~IE_HISTOGRAM_ENABLE;
-	blm_hist_ctl &= ~(dev_priv->dpst.ie_mod_table_enable);
 
 	I915_WRITE(dev_priv->dpst.reg.blm_hist_ctl, blm_hist_ctl);
 
