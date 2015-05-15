@@ -3003,9 +3003,9 @@ enum punit_power_well {
 #define _PORTADDR(dvo_port, b, c, d)	((dvo_port == b) ? GEN4_HDMIB : \
 					((dvo_port == c) ? GEN4_HDMIC : \
 					CHV_HDMID))
-#define PORT_DFT_I9XX				0x61150
+#define PORT_DFT_I9XX				(dev_priv->info.display_mmio_offset + 0x61150)
 #define   DC_BALANCE_RESET			(1 << 25)
-#define PORT_DFT2_G4X				0x61154
+#define PORT_DFT2_G4X				(dev_priv->info.display_mmio_offset + 0x61154)
 #define   DC_BALANCE_RESET_VLV			(1 << 31)
 #define   PIPE_SCRAMBLE_RESET_MASK		(0x3 << 0)
 #define   PIPE_B_SCRAMBLE_RESET			(1 << 1)
