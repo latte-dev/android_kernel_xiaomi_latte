@@ -4593,8 +4593,13 @@ int atomisp_css_isr_thread(struct atomisp_device *isp,
 		asd = __get_atomisp_subdev(current_event.event.pipe,
 					isp, &stream_id);
 		if (!asd) {
-			dev_warn(isp->dev, "%s:no subdev.event:%d",  __func__,
-				current_event.event.type);
+			if (current_event.event.type == CSS_EVENT_TIMER)
+				dev_dbg(isp->dev,
+					"event: Timer event.");
+			else
+				dev_warn(isp->dev, "%s:no subdev.event:%d",
+						__func__,
+						current_event.event.type);
 			continue;
 		}
 
