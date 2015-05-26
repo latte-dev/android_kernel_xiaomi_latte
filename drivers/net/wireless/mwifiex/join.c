@@ -1433,7 +1433,7 @@ int mwifiex_deauthenticate(struct mwifiex_private *priv, u8 *mac)
 		ret = mwifiex_deauthenticate_infra(priv, mac);
 		if (ret)
 			cfg80211_disconnected(priv->netdev, 0, NULL, 0,
-					      GFP_KERNEL);
+					      false, GFP_KERNEL);
 		break;
 	case NL80211_IFTYPE_ADHOC:
 		return mwifiex_send_cmd_sync(priv,

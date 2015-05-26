@@ -2856,7 +2856,8 @@ static void rndis_wlan_do_link_down_work(struct usbnet *usbdev)
 
 		deauthenticate(usbdev);
 
-		cfg80211_disconnected(usbdev->net, 0, NULL, 0, GFP_KERNEL);
+		cfg80211_disconnected(usbdev->net, 0, NULL, 0,
+				      false, GFP_KERNEL);
 	}
 
 	netif_carrier_off(usbdev->net);
