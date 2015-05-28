@@ -1522,6 +1522,9 @@ static void hsu_regs_context(struct uart_hsu_port *up, int op)
 		if (unlikely(retry == 0))
 			pr_err("HSU resume failed\n");
 
+		if (cfg->hw_reset)
+			cfg->hw_reset(up->port.membase);
+
 		serial_out(up, UART_LCR, up->lcr);
 		serial_out(up, UART_LCR, up->lcr | UART_LCR_DLAB);
 		serial_out(up, UART_DLL, up->dll);
