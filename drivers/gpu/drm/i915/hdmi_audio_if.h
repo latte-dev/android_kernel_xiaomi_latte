@@ -120,8 +120,8 @@ extern void mid_hdmi_audio_signal_event(struct drm_device *dev,
 		enum had_event_type event);
 
 extern void hdmi_get_eld(uint8_t *eld);
-extern int i915_enable_hdmi_audio_int(struct drm_device *dev);
-extern int i915_disable_hdmi_audio_int(struct drm_device *dev);
+extern int i915_enable_hdmi_audio_int(struct drm_device *dev, int pipe);
+extern int i915_disable_hdmi_audio_int(struct drm_device *dev, int pipe);
 extern uint32_t set_dp_mode(uint32_t reg, uint32_t val);
 extern int mid_hdmi_audio_setup(
 	had_event_call_back audio_callbacks,

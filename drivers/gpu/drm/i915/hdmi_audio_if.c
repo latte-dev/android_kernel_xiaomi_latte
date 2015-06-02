@@ -307,6 +307,7 @@ static int hdmi_audio_set_caps(enum had_caps_list set_element,
 	u32 int_masks = 0;
 	u32 chicken_bit;
 	u32 audio_enable;
+	int pipe = hdmi_priv->pipe;
 
 	DRM_DEBUG_DRIVER("\n");
 
@@ -352,7 +353,7 @@ static int hdmi_audio_set_caps(enum had_caps_list set_element,
 		if (*((u32 *)capabilties) & HDMI_AUDIO_UNDERRUN)
 			int_masks |= I915_HDMI_AUDIO_UNDERRUN_ENABLE;
 		dev_priv->hdmi_audio_interrupt_mask |= int_masks;
-		i915_enable_hdmi_audio_int(dev);
+		i915_enable_hdmi_audio_int(dev, pipe);
 		break;
 	case HAD_SET_DISABLE_AUDIO_INT:
 		if (*((u32 *)capabilties) & HDMI_AUDIO_UNDERRUN)
@@ -360,9 +361,9 @@ static int hdmi_audio_set_caps(enum had_caps_list set_element,
 		dev_priv->hdmi_audio_interrupt_mask &= ~int_masks;
 
 		if (dev_priv->hdmi_audio_interrupt_mask)
-			i915_enable_hdmi_audio_int(dev);
+			i915_enable_hdmi_audio_int(dev, pipe);
 		else
-			i915_disable_hdmi_audio_int(dev);
+			i915_disable_hdmi_audio_int(dev, pipe);
 		break;
 	default:
 		break;
