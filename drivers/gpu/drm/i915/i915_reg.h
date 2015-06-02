@@ -3018,6 +3018,19 @@ enum punit_power_well {
 #define   HDMI_MODE_SELECT_DVI			(0 << 9) /* HDMI only */
 #define   HDMI_COLOR_RANGE_16_235		(1 << 8) /* HDMI only */
 #define   SDVO_AUDIO_ENABLE			(1 << 6)
+
+/* Enabling LPE Audio */
+#define CHICKEN_BIT_DBG_ENABLE		(1 << 0)
+#define AMP_UNMUTE					(1 << 1)
+#define AUD_CHICKEN_BIT_REG			0x62F38
+#define AUD_PORT_EN_B_DBG			0x62F20
+#define AUD_PORT_EN_C_DBG			0x62F28
+#define AUD_PORT_EN_D_DBG			0x62F2C
+#define VLV_AUD_CHICKEN_BIT_REG		(VLV_DISPLAY_BASE + AUD_CHICKEN_BIT_REG)
+#define VLV_AUD_PORT_EN_B_DBG		(VLV_DISPLAY_BASE + AUD_PORT_EN_B_DBG)
+#define VLV_AUD_PORT_EN_C_DBG		(VLV_DISPLAY_BASE + AUD_PORT_EN_C_DBG)
+#define VLV_AUD_PORT_EN_D_DBG		(VLV_DISPLAY_BASE + AUD_PORT_EN_D_DBG)
+
 /* VSYNC/HSYNC bits new with 965, default is to be set */
 #define   SDVO_VSYNC_ACTIVE_HIGH		(1 << 4)
 #define   SDVO_HSYNC_ACTIVE_HIGH		(1 << 3)

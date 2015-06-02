@@ -305,6 +305,8 @@ static int hdmi_audio_set_caps(enum had_caps_list set_element,
 	int ret = 0;
 	u32 hdmi_reg;
 	u32 int_masks = 0;
+	u32 chicken_bit;
+	u32 audio_enable;
 
 	DRM_DEBUG_DRIVER("\n");
 
@@ -313,6 +315,28 @@ static int hdmi_audio_set_caps(enum had_caps_list set_element,
 		hdmi_reg = I915_READ(hdmi_priv->hdmi_reg);
 		if (hdmi_reg & PORT_ENABLE)
 			hdmi_reg |= SDVO_AUDIO_ENABLE;
+
+#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
+		if (IS_CHERRYVIEW(dev)) {
+			chicken_bit = I915_READ(VLV_AUD_CHICKEN_BIT_REG);
+			I915_WRITE(VLV_AUD_CHICKEN_BIT_REG,
+				chicken_bit | CHICKEN_BIT_DBG_ENABLE);
+
+			if (hdmi_priv->hdmi_reg == VLV_DP_B) {
+				audio_enable = I915_READ(VLV_AUD_PORT_EN_B_DBG);
+				I915_WRITE(VLV_AUD_PORT_EN_B_DBG,
+					audio_enable & ~AMP_UNMUTE);
+			} else if (hdmi_priv->hdmi_reg == VLV_DP_C) {
+				audio_enable = I915_READ(VLV_AUD_PORT_EN_C_DBG);
+				I915_WRITE(VLV_AUD_PORT_EN_C_DBG,
+					audio_enable & ~AMP_UNMUTE);
+			} else if (hdmi_priv->hdmi_reg == CHV_DP_D) {
+				audio_enable = I915_READ(VLV_AUD_PORT_EN_D_DBG);
+				I915_WRITE(VLV_AUD_PORT_EN_D_DBG,
+					audio_enable & ~AMP_UNMUTE);
+			}
+		}
+#endif
 
 		I915_WRITE(hdmi_priv->hdmi_reg, hdmi_reg);
 		I915_READ(hdmi_priv->hdmi_reg);
