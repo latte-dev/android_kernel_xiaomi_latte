@@ -72,6 +72,31 @@
 #define HAD_MAX_DIP_WORDS		16
 #define INTEL_HAD		"IntelHDMI"
 
+/* DP Link Rates */
+#define DP_2_7_GHZ			270000
+#define DP_1_62_GHZ			162000
+
+/* Maud Values */
+#define AUD_SAMPLE_RATE_32_DP_2_7_MAUD_VAL		1988
+#define AUD_SAMPLE_RATE_44_1_DP_2_7_MAUD_VAL	2740
+#define AUD_SAMPLE_RATE_48_DP_2_7_MAUD_VAL		2982
+#define AUD_SAMPLE_RATE_88_2_DP_2_7_MAUD_VAL	5480
+#define AUD_SAMPLE_RATE_96_DP_2_7_MAUD_VAL		5965
+#define AUD_SAMPLE_RATE_176_4_DP_2_7_MAUD_VAL	10961
+#define HAD_MAX_RATE_DP_2_7_MAUD_VAL			11930
+#define AUD_SAMPLE_RATE_32_DP_1_62_MAUD_VAL		3314
+#define AUD_SAMPLE_RATE_44_1_DP_1_62_MAUD_VAL	4567
+#define AUD_SAMPLE_RATE_48_DP_1_62_MAUD_VAL		4971
+#define AUD_SAMPLE_RATE_88_2_DP_1_62_MAUD_VAL	9134
+#define AUD_SAMPLE_RATE_96_DP_1_62_MAUD_VAL		9942
+#define AUD_SAMPLE_RATE_176_4_DP_1_62_MAUD_VAL	18268
+#define HAD_MAX_RATE_DP_1_62_MAUD_VAL			19884
+
+/* ELD DP Connected */
+#define ELD_DP_CONN_TYPE						(1<<2)
+
+/* Naud Value */
+#define DP_NAUD_VAL					32768
 /* _AUD_CONFIG register MASK */
 #define AUD_CONFIG_MASK_UNDERRUN	0xC0000000
 #define AUD_CONFIG_MASK_SRDBG		0x00000002
@@ -564,8 +589,8 @@ struct had_ops {
 	void (*reset_audio)(u8 reset);
 	int (*prog_n)(u32 aud_samp_freq, u32 *n_param,
 			struct snd_intelhad *intelhaddata);
-	void (*prog_cts)(u32 aud_samp_freq, u32 tmds, u32 n_param,
-			struct snd_intelhad *intelhaddata);
+	void (*prog_cts)(u32 aud_samp_freq, u32 tmds, u32 link_rate,
+			u32 n_param, struct snd_intelhad *intelhaddata);
 	int (*audio_ctrl)(struct snd_pcm_substream *substream,
 				struct snd_intelhad *intelhaddata);
 	void (*prog_dip)(struct snd_pcm_substream *substream,

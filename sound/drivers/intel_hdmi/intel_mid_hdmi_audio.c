@@ -913,6 +913,85 @@ inline int snd_intelhad_read_len(struct snd_intelhad *intelhaddata)
 	return retval;
 }
 
+static int had_calculate_maud_value(u32 aud_samp_freq, u32 link_rate)
+{
+	u32 maud_val;
+
+	/* Select maud according to DP 1.2 spec*/
+	if (link_rate == DP_2_7_GHZ) {
+		switch (aud_samp_freq) {
+		case AUD_SAMPLE_RATE_32:
+			maud_val = AUD_SAMPLE_RATE_32_DP_2_7_MAUD_VAL;
+			break;
+
+		case AUD_SAMPLE_RATE_44_1:
+			maud_val = AUD_SAMPLE_RATE_44_1_DP_2_7_MAUD_VAL;
+			break;
+
+		case AUD_SAMPLE_RATE_48:
+			maud_val = AUD_SAMPLE_RATE_48_DP_2_7_MAUD_VAL;
+			break;
+
+		case AUD_SAMPLE_RATE_88_2:
+			maud_val = AUD_SAMPLE_RATE_88_2_DP_2_7_MAUD_VAL;
+			break;
+
+		case AUD_SAMPLE_RATE_96:
+			maud_val = AUD_SAMPLE_RATE_96_DP_2_7_MAUD_VAL;
+			break;
+
+		case AUD_SAMPLE_RATE_176_4:
+			maud_val = AUD_SAMPLE_RATE_176_4_DP_2_7_MAUD_VAL;
+			break;
+
+		case HAD_MAX_RATE:
+			maud_val = HAD_MAX_RATE_DP_2_7_MAUD_VAL;
+			break;
+
+		default:
+			maud_val = -EINVAL;
+			break;
+		}
+	} else if (link_rate == DP_1_62_GHZ) {
+		switch (aud_samp_freq) {
+		case AUD_SAMPLE_RATE_32:
+			maud_val = AUD_SAMPLE_RATE_32_DP_1_62_MAUD_VAL;
+			break;
+
+		case AUD_SAMPLE_RATE_44_1:
+			maud_val = AUD_SAMPLE_RATE_44_1_DP_1_62_MAUD_VAL;
+			break;
+
+		case AUD_SAMPLE_RATE_48:
+			maud_val = AUD_SAMPLE_RATE_48_DP_1_62_MAUD_VAL;
+			break;
+
+		case AUD_SAMPLE_RATE_88_2:
+			maud_val = AUD_SAMPLE_RATE_88_2_DP_1_62_MAUD_VAL;
+			break;
+
+		case AUD_SAMPLE_RATE_96:
+			maud_val = AUD_SAMPLE_RATE_96_DP_1_62_MAUD_VAL;
+			break;
+
+		case AUD_SAMPLE_RATE_176_4:
+			maud_val = AUD_SAMPLE_RATE_176_4_DP_1_62_MAUD_VAL;
+			break;
+
+		case HAD_MAX_RATE:
+			maud_val = HAD_MAX_RATE_DP_1_62_MAUD_VAL;
+			break;
+
+		default:
+			maud_val = -EINVAL;
+			break;
+		}
+	} else
+		maud_val = -EINVAL;
+
+	return maud_val;
+}
+
 /**
  * snd_intelhad_prog_cts_v1 - Program HDMI audio CTS value
  *
@@ -923,7 +1002,8 @@ inline int snd_intelhad_read_len(struct snd_intelhad *intelhaddata)
  *
  * Program CTS register based on the audio and display sampling frequency
  */
-static void snd_intelhad_prog_cts_v1(u32 aud_samp_freq, u32 tmds, u32 n_param,
+static void snd_intelhad_prog_cts_v1(u32 aud_samp_freq, u32 tmds,
+				u32 link_rate, u32 n_param,
 				struct snd_intelhad *intelhaddata)
 {
 	u32 cts_val;
@@ -948,16 +1028,23 @@ static void snd_intelhad_prog_cts_v1(u32 aud_samp_freq, u32 tmds, u32 n_param,
  *
  * Program CTS register based on the audio and display sampling frequency
  */
-static void snd_intelhad_prog_cts_v2(u32 aud_samp_freq, u32 tmds, u32 n_param,
+static void snd_intelhad_prog_cts_v2(u32 aud_samp_freq, u32 tmds,
+				u32 link_rate, u32 n_param,
 				struct snd_intelhad *intelhaddata)
 {
 	u32 cts_val;
 	u64 dividend, divisor;
 
-	/* Calculate CTS according to HDMI 1.3a spec*/
-	dividend = (u64)tmds * n_param*1000;
-	divisor = 128 * aud_samp_freq;
-	cts_val = div64_u64(dividend, divisor);
+	if (intelhaddata->eeld.capabilities & ELD_DP_CONN_TYPE) {
+		/* Substitute cts_val with Maud according to DP 1.2 spec*/
+		cts_val = had_calculate_maud_value(aud_samp_freq, link_rate);
+	} else {
+		/* Calculate CTS according to HDMI 1.3a spec*/
+		dividend = (u64)tmds * n_param * 1000;
+		divisor = 128 * aud_samp_freq;
+		cts_val = div64_u64(dividend, divisor);
+	}
+
 	pr_debug("TMDS value=%d, N value=%d, CTS Value=%d\n",
 			tmds, n_param, cts_val);
 	had_write_register(AUD_HDMI_CTS, (BIT(24) | cts_val));
@@ -1044,7 +1131,18 @@ static int snd_intelhad_prog_n_v2(u32 aud_samp_freq, u32 *n_param,
 {
 	s32 n_val;
 
-	n_val =	had_calculate_n_value(aud_samp_freq);
+	if (intelhaddata->eeld.capabilities & ELD_DP_CONN_TYPE)
+		/*
+		 * According to DP specs, Maud and Naud values hold
+		 * a relationship, which is stated as:
+		 * Maud/Naud = 512 * fs / f_LS_Clk
+		 * where, fs is the sampling frequency of the audio stream
+		 * and Naud is 32768 for Async clock.
+		*/
+
+		n_val = DP_NAUD_VAL;
+	else
+		n_val =	had_calculate_n_value(aud_samp_freq);
 
 	if (n_val < 0)
 		return n_val;
@@ -1421,6 +1519,7 @@ static int snd_intelhad_pcm_prepare(struct snd_pcm_substream *substream)
 {
 	int retval;
 	u32 disp_samp_freq, n_param;
+	u32 link_rate = 0;
 	struct snd_intelhad *intelhaddata;
 	struct snd_pcm_runtime *runtime;
 	struct had_pvt_data *had_stream;
@@ -1473,8 +1572,13 @@ static int snd_intelhad_pcm_prepare(struct snd_pcm_substream *substream)
 		pr_err("programming N value failed %#x\n", retval);
 		goto prep_end;
 	}
+
+	if (intelhaddata->eeld.capabilities & ELD_DP_CONN_TYPE)
+		had_get_caps(HAD_GET_LINK_RATE, &link_rate);
+
 	intelhaddata->ops->prog_cts(substream->runtime->rate,
-					disp_samp_freq, n_param, intelhaddata);
+					disp_samp_freq, link_rate, n_param,
+					intelhaddata);
 
 	intelhaddata->ops->prog_dip(substream, intelhaddata);
 
@@ -1549,6 +1653,7 @@ int hdmi_audio_mode_change(struct snd_pcm_substream *substream)
 {
 	int retval = 0;
 	u32 disp_samp_freq, n_param;
+	u32 link_rate = 0;
 	struct snd_intelhad *intelhaddata;
 
 	intelhaddata = snd_pcm_substream_chip(substream);
@@ -1569,8 +1674,13 @@ int hdmi_audio_mode_change(struct snd_pcm_substream *substream)
 		pr_err("programming N value failed %#x\n", retval);
 		goto out;
 	}
+
+	if (intelhaddata->eeld.capabilities & ELD_DP_CONN_TYPE)
+		had_get_caps(HAD_GET_LINK_RATE, &link_rate);
+
 	intelhaddata->ops->prog_cts(substream->runtime->rate,
-					disp_samp_freq, n_param, intelhaddata);
+					disp_samp_freq, link_rate, n_param,
+					intelhaddata);
 
 	/* Enable Audio */
 	intelhaddata->ops->enable_audio(substream, 1);
