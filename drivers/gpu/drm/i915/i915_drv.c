@@ -910,6 +910,7 @@ int i915_handle_hung_ring(struct drm_device *dev, uint32_t ringid)
 	struct intel_context *current_context = NULL;
 	uint32_t hw_context_id1 = ~0u;
 	uint32_t hw_context_id2 = ~0u;
+	int guilty = 1;
 
 	acthd = intel_ring_get_active_head(ring);
 	completed_seqno = ring->get_seqno(ring, false);
@@ -946,8 +947,10 @@ int i915_handle_hung_ring(struct drm_device *dev, uint32_t ringid)
 	/* Search the request list to see which batch buffer caused
 	* the hang. Only checks requests that haven't yet completed.*/
 	list_for_each_entry(request, &ring->request_list, list) {
-		if (request && (request->seqno > completed_seqno))
-			i915_set_reset_status(dev_priv, request->ctx, false);
+		if (request && (request->seqno > completed_seqno)) {
+			i915_set_reset_status(dev_priv, request->ctx, guilty);
+			guilty = 0;
+		}
 	}
 
 	if (i915.enable_execlists) {
