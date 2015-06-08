@@ -1936,6 +1936,13 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	i915_adf_wrapper_init(dev_priv);
 #endif
 
+	/*
+	 * i915.enable_dpst_wa is intended for a dpst workaround. This W/A is
+	 * required only for CHV. Sanitize prevents it from affecting other
+	 * HWs.
+	 */
+	i915.enable_dpst_wa = i915_dpst_sanitize_wa(dev, i915.enable_dpst_wa);
+
 	return 0;
 
 out_power_well:

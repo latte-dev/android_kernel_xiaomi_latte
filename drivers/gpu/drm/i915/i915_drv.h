@@ -2498,6 +2498,7 @@ struct i915_params {
 	int use_mmio_flip;
 	int memtrack_debug;
 	int scheduler_override;
+	int enable_dpst_wa;
 };
 extern struct i915_params i915 __read_mostly;
 
@@ -3130,6 +3131,7 @@ void intel_panel_actually_set_backlight(struct intel_connector *conn, u32 level)
 void i915_dpst_display_on(struct drm_device *dev);
 void i915_dpst_display_off(struct drm_device *dev);
 int i915_dpst_enable_disable(struct drm_device *dev, unsigned int val);
+int i915_dpst_sanitize_wa(struct drm_device *dev, int enable_dpst_wa);
 
 /* intel_acpi.c */
 #ifdef CONFIG_ACPI

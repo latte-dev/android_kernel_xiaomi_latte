@@ -78,6 +78,15 @@ i915_dpst_save_conn_on_edp(struct drm_device *dev)
 	return false;
 }
 
+int i915_dpst_sanitize_wa(struct drm_device *dev, int enable_dpst_wa)
+{
+	/* This W/A should be enabled only on CHV */
+	if (IS_CHERRYVIEW(dev) && enable_dpst_wa)
+		return 1;
+
+	return 0;
+}
+
 static int
 i915_dpst_clear_hist_interrupt(struct drm_device *dev)
 {
