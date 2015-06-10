@@ -2902,6 +2902,7 @@ int atomisp_calculate_real_zoom_region(struct atomisp_sub_device *asd,
 	struct atomisp_stream_env *stream_env =
 			&asd->stream_env[ATOMISP_INPUT_STREAM_GENERAL];
 	struct atomisp_resolution  eff_res, out_res;
+	int w_offset, h_offset;
 
 	memset(&eff_res, 0, sizeof(eff_res));
 	memset(&out_res, 0, sizeof(out_res));
@@ -2943,27 +2944,6 @@ int atomisp_calculate_real_zoom_region(struct atomisp_sub_device *asd,
 	 * to firmware limitation.
 	 * map real crop region base on above calculating base max crop region.
 	 */
-	dz_config->zoom_region.origin.x =
-			dz_config->zoom_region.origin.x
-			* eff_res.width
-			/ asd->sensor_array_res.width;
-	dz_config->zoom_region.origin.y =
-			dz_config->zoom_region.origin.y
-			* eff_res.height
-			/ asd->sensor_array_res.height;
-	dz_config->zoom_region.resolution.width =
-			dz_config->zoom_region.resolution.width
-			* eff_res.width
-			/ asd->sensor_array_res.width;
-	dz_config->zoom_region.resolution.height =
-			dz_config->zoom_region.resolution.height
-			* eff_res.height
-			/ asd->sensor_array_res.height;
-
-	/*
-	  * Set same ratio of crop region resolution and current pipe output
-	  * resolution
-	  */
 	out_res.width =
 		stream_env->pipe_configs[css_pipe_id].output_info[0].res.width;
 	out_res.height =
@@ -2974,6 +2954,55 @@ int atomisp_calculate_real_zoom_region(struct atomisp_sub_device *asd,
 		return -EINVAL;
 	}
 
+	if (asd->sensor_array_res.width * out_res.height
+			< out_res.width * asd->sensor_array_res.height) {
+		h_offset = asd->sensor_array_res.height -
+				asd->sensor_array_res.width
+				* out_res.height / out_res.width;
+		h_offset = h_offset / 2;
+		if (dz_config->zoom_region.origin.y < h_offset)
+			dz_config->zoom_region.origin.y = 0;
+		else
+			dz_config->zoom_region.origin.y =
+				dz_config->zoom_region.origin.y - h_offset;
+		w_offset = 0;
+	} else {
+		w_offset = asd->sensor_array_res.width -
+				asd->sensor_array_res.height
+				* out_res.width / out_res.height;
+		w_offset = w_offset / 2;
+		if (dz_config->zoom_region.origin.x < w_offset)
+			dz_config->zoom_region.origin.x = 0;
+		else
+			dz_config->zoom_region.origin.x =
+				dz_config->zoom_region.origin.x - w_offset;
+		h_offset = 0;
+	}
+	dz_config->zoom_region.origin.x =
+			dz_config->zoom_region.origin.x
+			* eff_res.width
+			/ (asd->sensor_array_res.width -
+			2 * w_offset);
+	dz_config->zoom_region.origin.y =
+			dz_config->zoom_region.origin.y
+			* eff_res.height
+			/ (asd->sensor_array_res.height -
+			2 * h_offset);
+	dz_config->zoom_region.resolution.width =
+			dz_config->zoom_region.resolution.width
+			* eff_res.width
+			/ (asd->sensor_array_res.width -
+			2 * w_offset);
+	dz_config->zoom_region.resolution.height =
+			dz_config->zoom_region.resolution.height
+			* eff_res.height
+			/ (asd->sensor_array_res.height -
+			2 * h_offset);
+
+	/*
+	  * Set same ratio of crop region resolution and current pipe output
+	  * resolution
+	  */
 	if (out_res.width * dz_config->zoom_region.resolution.height
 		> dz_config->zoom_region.resolution.width * out_res.height) {
 		dz_config->zoom_region.resolution.height =
