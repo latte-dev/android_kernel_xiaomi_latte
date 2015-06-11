@@ -719,6 +719,7 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 {
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+	struct drm_device *dev = encoder->base.dev;
 	u32 val;
 
 	DRM_DEBUG_KMS("\n");
@@ -746,7 +747,9 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 	if (intel_dsi->gem_obj != NULL) {
 		kunmap(intel_dsi->cmd_buff);
 		i915_gem_object_ggtt_unpin(intel_dsi->gem_obj);
+		mutex_lock(&dev->struct_mutex);
 		drm_gem_object_unreference(&intel_dsi->gem_obj->base);
+		mutex_unlock(&dev->struct_mutex);
 	}
 }
 
