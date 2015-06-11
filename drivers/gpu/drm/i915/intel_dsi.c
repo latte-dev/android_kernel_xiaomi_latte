@@ -371,6 +371,7 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	u32 temp;
 	u32 val;
 	u32 count = 1;
+	int ret;
 
 	DRM_DEBUG_KMS("\n");
 
@@ -381,13 +382,14 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 			return;
 		}
 
-		i915_gem_object_set_cache_level(intel_dsi->gem_obj,
+		ret = i915_gem_object_set_cache_level(intel_dsi->gem_obj,
 							I915_CACHE_LLC);
+		if (ret)
+			goto err_unref;
 
-		if (i915_gem_obj_ggtt_pin(intel_dsi->gem_obj, 4096, 0)) {
-			DRM_ERROR("MIPI command buffer GTT pin failed");
-			return;
-		}
+		ret = i915_gem_obj_ggtt_pin(intel_dsi->gem_obj, 4096, 0);
+		if (ret)
+			goto err_unref;
 
 		intel_dsi->cmd_buff =
 				kmap(sg_page(intel_dsi->gem_obj->pages->sgl));
@@ -484,6 +486,11 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	/* Enable port in pre-enable phase itself because as per hw team
 	 * recommendation, port should be enabled befor plane & pipe */
 	intel_dsi_send_enable_cmds(encoder);
+	return;
+
+err_unref:
+	drm_gem_object_unreference(&intel_dsi->gem_obj->base);
+	return;
 }
 
 static void intel_dsi_enable(struct intel_encoder *encoder)
