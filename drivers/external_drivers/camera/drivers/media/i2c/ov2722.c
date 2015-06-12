@@ -404,6 +404,8 @@ static long __ov2722_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 	u16 hts, vts;
 	int ret;
 
+	dev_dbg(&client->dev, "set_exposure without group hold\n");
+
 	/* clear VTS_DIFF on manual mode */
 	ret = ov2722_write_reg(client, OV2722_16BIT, OV2722_VTS_DIFF_H, 0);
 	if (ret)
@@ -417,11 +419,6 @@ static long __ov2722_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 
 	coarse_itg <<= 4;
 	digitgain <<= 2;
-
-	/* group hold start */
-	ret = ov2722_write_reg(client, OV2722_8BIT, OV2722_GROUP_ACCESS, 0);
-	if (ret)
-		return ret;
 
 	ret = ov2722_write_reg(client, OV2722_16BIT,
 				OV2722_VTS_H, vts);
@@ -465,19 +462,6 @@ static long __ov2722_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 
 	ret = ov2722_write_reg(client, OV2722_16BIT,
 				OV2722_MWB_GAIN_B_H, digitgain);
-	if (ret)
-		return ret;
-
-	/* group hold end */
-	ret = ov2722_write_reg(client, OV2722_8BIT,
-					OV2722_GROUP_ACCESS, 0x10);
-	if (ret)
-		return ret;
-
-	/* group hold launch */
-	ret = ov2722_write_reg(client, OV2722_8BIT,
-					OV2722_GROUP_ACCESS, 0xa0);
-
 	return ret;
 }
 
