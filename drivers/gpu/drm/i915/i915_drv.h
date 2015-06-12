@@ -1699,6 +1699,7 @@ struct drm_i915_private {
 		bool enabled;		/* actual functional state */
 		bool pipe_mismatch;	/* Indicates pipe mismatch between user mode and kernel */
 		bool display_off;	/* Indicates that Display is off (could be power gated also) */
+		bool disabled_by_hdmi;	/* Indicates that HDMI connect has disabled DPST */
 		bool is_video_mode_enabled;
 		struct {
 			bool is_valid;
@@ -3132,6 +3133,7 @@ void i915_dpst_display_on(struct drm_device *dev);
 void i915_dpst_display_off(struct drm_device *dev);
 int i915_dpst_enable_disable(struct drm_device *dev, unsigned int val);
 int i915_dpst_sanitize_wa(struct drm_device *dev, int enable_dpst_wa);
+void i915_dpst_wa_action(struct drm_device *dev, bool enable);
 
 /* intel_acpi.c */
 #ifdef CONFIG_ACPI

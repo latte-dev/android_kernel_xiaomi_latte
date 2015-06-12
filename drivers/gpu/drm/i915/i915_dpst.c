@@ -58,6 +58,7 @@ i915_dpst_save_conn_on_edp(struct drm_device *dev)
 	struct intel_connector *i_connector = NULL;
 	struct drm_connector *d_connector;
 	enum pipe new_pipe;
+	bool ret = false;
 
 	list_for_each_entry(d_connector, &dev->mode_config.connector_list, head)
 	{
@@ -72,10 +73,16 @@ i915_dpst_save_conn_on_edp(struct drm_device *dev)
 			if (new_pipe != dev_priv->dpst.pipe)
 				dev_priv->dpst.pipe_mismatch = true;
 			dev_priv->dpst.pipe = new_pipe;
-			return true;
+			ret = true;
 		}
 	}
-	return false;
+
+	/* Sanitize disabled_by_hdmi if we know correct dpst pipe */
+	if (ret && i915.enable_dpst_wa && dev_priv->dpst.disabled_by_hdmi
+			&& dev_priv->dpst.pipe != PIPE_B)
+		dev_priv->dpst.disabled_by_hdmi = false;
+
+	return ret;
 }
 
 int i915_dpst_sanitize_wa(struct drm_device *dev, int enable_dpst_wa)
@@ -85,6 +92,30 @@ int i915_dpst_sanitize_wa(struct drm_device *dev, int enable_dpst_wa)
 		return 1;
 
 	return 0;
+}
+
+void i915_dpst_wa_action(struct drm_device *dev, bool hdmi_enabled)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	bool dpst_pipe_known = i915_dpst_save_conn_on_edp(dev);
+
+	if (!hdmi_enabled && dev_priv->dpst.disabled_by_hdmi) {
+		/* HDMI display unplugged, so we can re-enable DPST again */
+		dev_priv->dpst.disabled_by_hdmi = false;
+		i915_dpst_display_on(dev);
+	} else if (hdmi_enabled && dpst_pipe_known &&
+				dev_priv->dpst.pipe == PIPE_B) {
+		/* Do not use DPST on PIPE_B if a HDMI display is connected */
+		if (dev_priv->dpst.user_enable)
+			i915_dpst_enable_disable(dev, 0);
+		dev_priv->dpst.disabled_by_hdmi = true;
+	} else if (hdmi_enabled && !dpst_pipe_known) {
+		/*
+		 * We will make sure to sanitize disabled_by_hdmi when we have
+		 * correct DPST pipe information.
+		 */
+		dev_priv->dpst.disabled_by_hdmi = true;
+	}
 }
 
 static int
@@ -105,6 +136,13 @@ i915_dpst_enable_hist_interrupt(struct drm_device *dev)
 
 	if (dev_priv->dpst.is_video_mode_enabled &&
 			!dev_priv->is_video_playing)
+		return 0;
+
+	/*
+	 * Do not switch on the DPST when it is disabled by HDMI WA
+	 * Only HDMI disconnect event should be able to re-enable DPST.
+	 */
+	if (i915.enable_dpst_wa && dev_priv->dpst.disabled_by_hdmi)
 		return 0;
 
 	dev_priv->dpst.enabled = true;
@@ -544,9 +582,11 @@ i915_dpst_set_brightness(struct drm_device *dev, u32 brightness_val)
 
 	/*
 	 * When DPST is enabled only for video mode, we want to phase out when
-	 * video ends even though DPST is disabled.
+	 * video ends even though DPST is disabled. The same is true when we
+	 * disable dpst as part of pipe B - pipe C workaround.
 	 */
-	if (!(dev_priv->dpst.enabled || dev_priv->dpst.is_video_mode_enabled))
+	if (!(dev_priv->dpst.enabled || dev_priv->dpst.is_video_mode_enabled
+				|| dev_priv->dpst.disabled_by_hdmi))
 		return;
 
 	/* Calculate the backlight after it has been reduced by "dpst

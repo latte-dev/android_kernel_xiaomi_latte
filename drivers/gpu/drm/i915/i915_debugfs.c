@@ -1889,7 +1889,7 @@ static int i915_dpst_disable_get(void *data, u64 *val)
 	struct drm_device *dev = data;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	*val = dev_priv->dpst.kernel_disable;
+	*val = !dev_priv->dpst.enabled;
 
 	return 0;
 }

@@ -5546,6 +5546,10 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 	/* Update DPST context after mode change */
 	if (I915_HAS_DPST(dev)) {
 		for_each_encoder_on_crtc(dev, crtc, encoder) {
+			if (i915.enable_dpst_wa &&
+					encoder->type == INTEL_OUTPUT_HDMI)
+				i915_dpst_wa_action(dev, true);
+
 			if (encoder->type == INTEL_OUTPUT_EDP ||
 			    encoder->type == INTEL_OUTPUT_DSI)
 				i915_dpst_display_on(dev);
@@ -5759,6 +5763,10 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 
 	if (I915_HAS_DPST(dev)) {
 		for_each_encoder_on_crtc(dev, crtc, encoder) {
+			if (i915.enable_dpst_wa &&
+				encoder->type == INTEL_OUTPUT_HDMI)
+				i915_dpst_wa_action(dev, false);
+
 			if (encoder->type == INTEL_OUTPUT_EDP ||
 			    encoder->type == INTEL_OUTPUT_DSI)
 				i915_dpst_display_off(dev);
