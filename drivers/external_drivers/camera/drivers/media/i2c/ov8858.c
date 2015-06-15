@@ -1770,7 +1770,6 @@ static int ov8858_s_ctrl(struct v4l2_ctrl *ctrl)
 	 * doesn't need to be taken here.
 	 */
 
-	/* We only handle V4L2_CID_RUN_MODE for now. */
 	switch (ctrl->id) {
 	case V4L2_CID_RUN_MODE:
 		switch (ctrl->val) {
@@ -1792,12 +1791,6 @@ static int ov8858_s_ctrl(struct v4l2_ctrl *ctrl)
 		dev->fps_index = 0;
 
 		return 0;
-	case V4L2_CID_TEST_PATTERN:
-		dev_dbg(&client->dev,
-			"%s: V4L2_CID_TEST_PATTERN = %d, val = 0x%04X\n",
-			__func__, V4L2_CID_TEST_PATTERN, ctrl->val);
-		return ov8858_write_reg(client, OV8858_16BIT,
-					OV8858_TEST_PATTERN_REG, ctrl->val);
 	case V4L2_CID_FOCUS_ABSOLUTE:
 		if (dev->vcm_driver && dev->vcm_driver->t_focus_abs)
 			return dev->vcm_driver->t_focus_abs(&dev->sd,
@@ -2097,13 +2090,6 @@ static const struct v4l2_ctrl_config ctrls[] = {
 		.step = 1,
 		.def = 0x00,
 		.flags = V4L2_CTRL_FLAG_READ_ONLY | V4L2_CTRL_FLAG_VOLATILE,
-	}, {
-		.ops = &ctrl_ops,
-		.id = V4L2_CID_TEST_PATTERN,
-		.name = "Test pattern",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.step = 1,
-		.max = 0xffff,
 	}, {
 		.ops = &ctrl_ops,
 		.id = V4L2_CID_FOCUS_ABSOLUTE,
