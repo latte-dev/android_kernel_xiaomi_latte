@@ -763,6 +763,7 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 		mutex_lock(&dev->struct_mutex);
 		drm_gem_object_unreference(&intel_dsi->gem_obj->base);
 		mutex_unlock(&dev->struct_mutex);
+		intel_dsi->gem_obj = NULL;
 	}
 }
 
