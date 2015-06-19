@@ -1691,7 +1691,11 @@ enum punit_power_well {
 #define I915_HDMI_AUDIO_UNDERRUN_ENABLE	(1UL<<15)
 #define I915_HDMI_AUDIO_LPE_C_CONFIG	0x65900
 #define I915_HDMI_AUDIO_LPE_B_CONFIG	0x65800
+#define I915_HDMI_AUDIO_LPE_A_CONFIG	0x65000
 #define GEN6_BSD_RNCID			0x12198
+#define AUD_CONFIG_VALID_BIT			(1<<9)
+#define AUD_CONFIG_DP_MODE				(1<<15)
+#define AUD_CONFIG_BLOCK_BIT			(1<<7)
 
 #define GEN7_FF_THREAD_MODE		0x20a0
 #define   GEN7_FF_SCHED_MASK		0x0077070
@@ -2956,7 +2960,12 @@ enum punit_power_well {
 #define HDMIC	(dev_priv->info.display_mmio_offset + 0x61160)
 #define GEN4_HDMIB	GEN3_SDVOB
 #define GEN4_HDMIC	GEN3_SDVOC
+#define CHV_HDMIB	0x61140
+#define CHV_HDMIC	0x61160
 #define CHV_HDMID	0x6116C
+#define VLV_CHV_HDMIB	(VLV_DISPLAY_BASE + CHV_HDMIB)
+#define VLV_CHV_HDMIC	(VLV_DISPLAY_BASE + CHV_HDMIC)
+#define VLV_CHV_HDMID	(VLV_DISPLAY_BASE + CHV_HDMID)
 #define PCH_SDVOB	0xe1140
 #define PCH_HDMIB	PCH_SDVOB
 #define PCH_HDMIC	0xe1150
@@ -3793,6 +3802,9 @@ enum punit_power_well {
 #define DP_B				0x64100
 #define DP_C				0x64200
 #define DP_D				0x64300
+#define VLV_DP_B			(VLV_DISPLAY_BASE + DP_B)
+#define VLV_DP_C			(VLV_DISPLAY_BASE + DP_C)
+#define CHV_DP_D			(VLV_DISPLAY_BASE + DP_D)
 
 #define   DP_PORT_EN			(1 << 31)
 #define   DP_PIPEB_SELECT		(1 << 30)

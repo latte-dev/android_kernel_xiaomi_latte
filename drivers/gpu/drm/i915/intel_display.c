@@ -5494,13 +5494,24 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 
 	vlv_update_watermarks(dev_priv);
 
-	if (IS_VALLEYVIEW(dev) &&
-			intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
-		dev_priv->tmds_clock_speed =
+#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
+	if (IS_VALLEYVIEW(dev)) {
+		if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
+			dev_priv->tmds_clock_speed =
 				intel_crtc->config.port_clock;
-		mid_hdmi_audio_signal_event
+			mid_hdmi_audio_signal_event
 				(dev_priv->dev, HAD_EVENT_MODE_CHANGING);
+		} else if (intel_pipe_has_type(crtc,
+					INTEL_OUTPUT_DISPLAYPORT)) {
+			dev_priv->tmds_clock_speed =
+				intel_crtc->config.adjusted_mode.crtc_clock;
+			dev_priv->link_rate =
+				intel_crtc->config.port_clock;
+			mid_hdmi_audio_signal_event
+				(dev_priv->dev, HAD_EVENT_MODE_CHANGING);
+		}
 	}
+#endif
 
 	intel_enable_pipe(intel_crtc);
 
@@ -13205,6 +13216,7 @@ static void intel_setup_outputs_vbt(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int hdmi_ports = 0;
+	int dp_ports = 0;
 	int port = 0;
 	int i;
 
@@ -13241,9 +13253,7 @@ static void intel_setup_outputs_vbt(struct drm_device *dev)
 
 			if (devtype == DEVICE_TYPE_DP_HDMI_DVI ||
 						devtype == DEVICE_TYPE_DP) {
-				intel_dp_init(dev, VLV_DISPLAY_BASE
-						+ DDI_BUF_CTL(dvo_port),
-							dvo_port);
+				dp_ports |= (1 << dvo_port);
 			}
 			break;
 		default:
@@ -13279,9 +13289,30 @@ static void intel_setup_outputs_vbt(struct drm_device *dev)
 				+ PORT_ADDR(port);
 		}
 
+		/*
+		 * Since audio is supported only on one external
+		 * panel, either HDMI or DP, we are giving
+		 * preference to HDMI over DP.
+		 */
+		dev_priv->support_dp_audio = false;
+
 		intel_hdmi_init(dev, hdmi_reg, port);
 		DRM_DEBUG_DRIVER("HDMI port=%c\n",
 			port_name(port));
+	} else {
+		dev_priv->support_dp_audio = true;
+	}
+
+	if (dp_ports) {
+		if (dp_ports & (1 << DVO_PORT_HDMIB))
+			port = DVO_PORT_HDMIB;
+		else if (dp_ports & (1 << DVO_PORT_HDMIC))
+			port = DVO_PORT_HDMIC;
+		else if (dp_ports & (1 << DVO_PORT_HDMID))
+			port = DVO_PORT_HDMID;
+
+		intel_dp_init(dev, VLV_DISPLAY_BASE + DDI_BUF_CTL(port), port);
+		DRM_DEBUG_KMS("DP on port=%c\n", port_name(port));
 	}
 }
 

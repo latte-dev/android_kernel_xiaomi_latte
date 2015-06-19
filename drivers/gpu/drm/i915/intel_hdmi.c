@@ -43,8 +43,6 @@
 #define LIMIT_BW_MAX_HDISPLAY	1280
 #define LIMIT_BW_MAX_VDISPLAY	800
 
-static int i915_notify_had;
-
 /* CEA Mode 4 - 1280x720@60Hz */
 struct drm_display_mode hdmi_fallback_mode = {
 	DRM_MODE("1280x720", DRM_MODE_TYPE_DRIVER,
@@ -1273,7 +1271,7 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 		if ((status != i915_hdmi_state) && (IS_VALLEYVIEW(dev))) {
 			if (intel_hdmi->has_audio)
-				i915_notify_had = 1;
+				intel_hdmi->notify_had = 1;
 		}
 #endif
 		if (intel_hdmi->force_audio != HDMI_AUDIO_AUTO)
@@ -1349,7 +1347,7 @@ static int intel_hdmi_get_modes(struct drm_connector *connector)
 		ret = drm_add_edid_modes(connector, edid);
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 		drm_edid_to_eld(connector, edid);
-		if (i915_notify_had) {
+		if (intel_hdmi->notify_had) {
 			hdmi_get_eld(connector->eld);
 #ifdef CONFIG_EXTCON
 			if (strlen(intel_connector->hotplug_switch.name) != 0) {
@@ -1357,7 +1355,7 @@ static int intel_hdmi_get_modes(struct drm_connector *connector)
 				&intel_connector->hotplug_switch, 1);
 			}
 #endif
-			i915_notify_had = 0;
+			intel_hdmi->notify_had = 0;
 		}
 #endif
 	}
@@ -2040,25 +2038,12 @@ void intel_hdmi_init_connector(struct intel_digital_port *intel_dig_port,
 	intel_hdmi->skip_port_check = false;
 }
 
-#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
-void i915_had_wq(struct work_struct *work)
-{
-	struct drm_i915_private *dev_priv = container_of(work,
-		struct drm_i915_private, hdmi_audio_wq);
-
-	if (i915_hdmi_state == connector_status_connected)
-		mid_hdmi_audio_signal_event(dev_priv->dev,
-			HAD_EVENT_HOT_PLUG);
-}
-#endif
-
 void intel_hdmi_init(struct drm_device *dev, int hdmi_reg, enum port port)
 {
 	struct intel_digital_port *intel_dig_port;
 	struct intel_encoder *intel_encoder;
 	struct intel_connector *intel_connector;
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct hdmi_audio_priv *hdmi_priv;
 #endif
 
@@ -2120,17 +2105,56 @@ void intel_hdmi_init(struct drm_device *dev, int hdmi_reg, enum port port)
 	intel_dig_port->dp.output_reg = 0;
 
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
-	INIT_WORK(&dev_priv->hdmi_audio_wq, i915_had_wq);
 	hdmi_priv = kzalloc(sizeof(struct hdmi_audio_priv), GFP_KERNEL);
 	if (!hdmi_priv) {
 		pr_err("failed to allocate memory");
 	} else {
 		hdmi_priv->dev = dev;
 		hdmi_priv->hdmi_reg = hdmi_reg;
-		if (IS_CHERRYVIEW(dev))
-			hdmi_priv->hdmi_lpe_audio_reg =
+		if (IS_CHERRYVIEW(dev)) {
+			/*
+			 * Due to hardware limitaion, Port D will always
+			 * be driven by Pipe C. So Port B and Port C will
+			 * be driven by either Pipe A or PipeB, depending
+			 * on whether the LFP is MIPI or EDP.
+			 */
+			if (port == PORT_D) {
+				hdmi_priv->hdmi_lpe_audio_reg =
 					I915_HDMI_AUDIO_LPE_C_CONFIG;
-		else
+				hdmi_priv->pipe = PIPE_C;
+				hdmi_priv->hdmi_reg =
+						VLV_CHV_HDMID;
+			} else {
+				list_for_each_entry(intel_encoder,
+					&dev->mode_config.encoder_list,
+					base.head) {
+				/*
+				 * MIPI always comes on Pipe A and EDP on
+				 * Pipe B. So the other pipe will only be
+				 * able to drive the DP.
+				 */
+					if (intel_encoder->type ==
+							INTEL_OUTPUT_EDP) {
+						hdmi_priv->hdmi_lpe_audio_reg =
+						I915_HDMI_AUDIO_LPE_A_CONFIG;
+						hdmi_priv->pipe = PIPE_A;
+						break;
+					} else if (intel_encoder->type ==
+							INTEL_OUTPUT_DSI) {
+						hdmi_priv->hdmi_lpe_audio_reg =
+						I915_HDMI_AUDIO_LPE_B_CONFIG;
+						hdmi_priv->pipe = PIPE_B;
+						break;
+					}
+				}
+				if (port == PORT_B)
+					hdmi_priv->hdmi_reg =
+						VLV_CHV_HDMIB;
+				else
+					hdmi_priv->hdmi_reg =
+						VLV_CHV_HDMIC;
+			}
+		} else
 			hdmi_priv->hdmi_lpe_audio_reg =
 					I915_HDMI_AUDIO_LPE_B_CONFIG;
 		hdmi_priv->monitor_type = MONITOR_TYPE_HDMI;

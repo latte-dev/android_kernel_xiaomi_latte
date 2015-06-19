@@ -1714,8 +1714,10 @@ struct drm_i915_private {
 	struct snd_intel_had_interface *had_interface;
 	void *had_pvt_data;
 	int tmds_clock_speed;
+	int link_rate;
 	int hdmi_audio_interrupt_mask;
 	struct work_struct hdmi_audio_wq;
+	bool support_dp_audio;
 #endif
 
 	/* Atomicity fixes */

@@ -4544,12 +4544,26 @@ static int
 intel_dp_get_edid_modes(struct drm_connector *connector, struct i2c_adapter *adapter)
 {
 	struct intel_connector *intel_connector = to_intel_connector(connector);
+	struct intel_dp *intel_dp = intel_attached_dp(connector);
 
 	/* use cached edid if we have one */
 	if (intel_connector->edid) {
 		/* invalid edid */
 		if (IS_ERR(intel_connector->edid))
 			return 0;
+
+#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
+		drm_edid_to_eld(connector, intel_connector->edid);
+		if (intel_dp->notify_had) {
+			hdmi_get_eld(connector->eld);
+#ifdef CONFIG_EXTCON
+			if (strlen(intel_connector->hotplug_switch.name) != 0)
+				extcon_set_state(&intel_connector->
+					hotplug_switch, true);
+#endif
+			intel_dp->notify_had = false;
+		}
+#endif
 
 		return intel_connector_update_modes(connector,
 						    intel_connector->edid);
@@ -4571,6 +4585,9 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	enum intel_display_power_domain power_domain;
 	struct edid *edid = NULL;
 	struct intel_crtc *intel_crtc = NULL;
+#ifdef CONFIG_EXTCON
+	struct intel_connector *intel_connector = to_intel_connector(connector);
+#endif
 
 	intel_runtime_pm_get(dev_priv);
 
@@ -4603,7 +4620,7 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 		edid = intel_dp_get_edid(connector, &intel_dp->aux.ddc);
 		if (edid) {
 			intel_dp->has_audio = drm_detect_monitor_audio(edid);
-			kfree(edid);
+			intel_connector->edid = edid;
 		}
 	}
 
@@ -4628,9 +4645,42 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	status = connector_status_connected;
 
 out:
+#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
+	if (IS_VALLEYVIEW(dev) && !is_edp(intel_dp) &&
+		dev_priv->support_dp_audio && status != i915_hdmi_state) {
+
+		/*
+		 * If HDMI status is conencted, the event to audio
+		 * will be sent on basis of current audio status,
+		 * but if its disconnected, the status will be
+		 * sent based on previous audio status
+		 */
+		if (status == connector_status_connected) {
+			if (intel_dp->has_audio)
+				intel_dp->notify_had = true;
+		} else {
+#ifdef CONFIG_EXTCON
+			if (strlen(intel_connector->hotplug_switch.name) != 0)
+				extcon_set_state(
+				&intel_connector->hotplug_switch, false);
+#endif
+			/* Send a disconnect event to audio */
+			DRM_DEBUG_DRIVER("Sending event to audio");
+			mid_hdmi_audio_signal_event(dev_priv->dev,
+						HAD_EVENT_HOT_UNPLUG);
+		}
+		i915_hdmi_state = status;
+	}
+#endif
+
 	intel_display_power_put(dev_priv, power_domain);
 
 	intel_runtime_pm_put(dev_priv);
+
+	if (intel_connector && status == connector_status_disconnected) {
+		kfree(intel_connector->edid);
+		intel_connector->edid = NULL;
+	}
 
 	return status;
 }
@@ -4815,6 +4865,12 @@ static void
 intel_dp_connector_destroy(struct drm_connector *connector)
 {
 	struct intel_connector *intel_connector = to_intel_connector(connector);
+
+#ifdef CONFIG_EXTCON
+	extcon_dev_unregister(&intel_connector->hotplug_switch);
+	if (&intel_connector->hotplug_switch)
+		kfree(intel_connector->hotplug_switch.name);
+#endif
 
 	if (!IS_ERR_OR_NULL(intel_connector->edid))
 		kfree(intel_connector->edid);
@@ -5301,6 +5357,20 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 			intel_dp_init_panel_power_timestamps(intel_dp);
 			intel_dp_init_panel_power_sequencer(dev, intel_dp, &power_seq);
 		}
+	} else {
+#ifdef CONFIG_EXTCON
+		/* use the same name as hdmi for now  */
+		intel_connector->hotplug_switch.name =
+			kasprintf(GFP_KERNEL, "hdmi_%c", 'a' + port);
+#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
+		if (IS_VALLEYVIEW(dev))
+			intel_connector->hotplug_switch.name = "hdmi";
+#endif
+		if (!intel_connector->hotplug_switch.name)
+			DRM_ERROR("Couldn't allocate memory for audio");
+
+		extcon_dev_register(&intel_connector->hotplug_switch);
+#endif
 	}
 
 	intel_dp_aux_init(intel_dp, intel_connector);
@@ -5339,6 +5409,10 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 	struct intel_encoder *intel_encoder;
 	struct drm_encoder *encoder;
 	struct intel_connector *intel_connector;
+#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
+	struct hdmi_audio_priv *hdmi_priv;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+#endif
 
 	intel_dig_port = kzalloc(sizeof(*intel_dig_port), GFP_KERNEL);
 	if (!intel_dig_port)
@@ -5393,6 +5467,69 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 	intel_encoder->cloneable = 0;
 	intel_encoder->hot_plug = intel_dp_hot_plug;
 
+#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
+	if (dev_priv->support_dp_audio) {
+		hdmi_priv = kzalloc(sizeof(struct hdmi_audio_priv),
+					GFP_KERNEL);
+		if (!hdmi_priv) {
+			pr_err("failed to allocate memory");
+			goto mem_err;
+		}
+		hdmi_priv->dev = dev;
+
+		if (IS_CHERRYVIEW(dev)) {
+			/*
+			 * Due to hardware limitaion, Port D will always
+			 * be driven by Pipe C. So Port B and Port C will
+			 * be driven by either Pipe A or PipeB, depending
+			 * on whether the LFP is MIPI or EDP.
+			 */
+			if (port == PORT_D) {
+				hdmi_priv->hdmi_lpe_audio_reg =
+					I915_HDMI_AUDIO_LPE_C_CONFIG;
+				hdmi_priv->pipe = PIPE_C;
+				hdmi_priv->hdmi_reg = CHV_DP_D;
+			} else {
+				list_for_each_entry(intel_encoder, &dev->
+					mode_config.encoder_list, base.head) {
+					/*
+					 * MIPI always comes on Pipe A and EDP
+					 * on Pipe B. So the other pipe will
+					 * only be able to drive the DP.
+					 */
+					if (intel_encoder->type ==
+						INTEL_OUTPUT_EDP) {
+						hdmi_priv->hdmi_lpe_audio_reg =
+						I915_HDMI_AUDIO_LPE_A_CONFIG;
+						hdmi_priv->pipe = PIPE_A;
+						break;
+					} else if (intel_encoder->type ==
+						INTEL_OUTPUT_DSI) {
+						hdmi_priv->hdmi_lpe_audio_reg =
+						I915_HDMI_AUDIO_LPE_B_CONFIG;
+						hdmi_priv->pipe = PIPE_B;
+						break;
+					}
+				}
+
+				if (port == PORT_B)
+					hdmi_priv->hdmi_reg = VLV_DP_B;
+				else
+					hdmi_priv->hdmi_reg = VLV_DP_C;
+			}
+		} else {
+			hdmi_priv->hdmi_lpe_audio_reg =
+				I915_HDMI_AUDIO_LPE_B_CONFIG;
+		}
+
+		/* HACK */
+		hdmi_priv->monitor_type = MONITOR_TYPE_HDMI;
+		hdmi_priv->is_hdcp_supported = false;
+		i915_hdmi_audio_init(hdmi_priv);
+	}
+#endif
+
+mem_err:
 	intel_connector->panel.fitting_mode = 0;
 	if (!intel_dp_init_connector(intel_dig_port, intel_connector)) {
 		drm_encoder_cleanup(encoder);

@@ -50,6 +50,17 @@ void i915_hdmi_audio_init(struct hdmi_audio_priv *p_hdmi_priv)
 	hdmi_priv = p_hdmi_priv;
 }
 
+void i915_had_wq(struct work_struct *work)
+{
+	struct drm_i915_private *dev_priv = container_of(work,
+		struct drm_i915_private, hdmi_audio_wq);
+
+	if (i915_hdmi_state == connector_status_connected) {
+		mid_hdmi_audio_signal_event(dev_priv->dev,
+			HAD_EVENT_HOT_PLUG);
+	}
+}
+
 void hdmi_get_eld(uint8_t *eld)
 {
 	struct drm_device *dev = hdmi_priv->dev;
@@ -147,6 +158,22 @@ void mid_hdmi_audio_signal_event(struct drm_device *dev,
 			dev_priv->had_pvt_data);
 }
 
+uint32_t set_dp_mode(uint32_t reg, uint32_t val)
+{
+	if (hdmi_priv->hdmi_reg == VLV_DP_B ||
+		hdmi_priv->hdmi_reg == VLV_DP_C ||
+		hdmi_priv->hdmi_reg == CHV_DP_D) {
+			if (reg == I915_HDMI_AUDIO_LPE_A_CONFIG ||
+				reg == I915_HDMI_AUDIO_LPE_B_CONFIG ||
+				reg == I915_HDMI_AUDIO_LPE_C_CONFIG) {
+					if (val & AUD_CONFIG_VALID_BIT)
+						val = val | AUD_CONFIG_DP_MODE |
+							AUD_CONFIG_BLOCK_BIT;
+			}
+	}
+	return val;
+}
+
 /**
  * hdmi_audio_write:
  * used to write into display controller HDMI audio registers.
@@ -162,8 +189,10 @@ static int hdmi_audio_write(uint32_t reg, uint32_t val)
 	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)
 		return 0;
 
-	if (IS_HDMI_AUDIO_I915(reg))
+	if (IS_HDMI_AUDIO_I915(reg)) {
+		val = set_dp_mode(reg, val);
 		I915_WRITE((VLV_DISPLAY_BASE + reg), val);
+	}
 	else
 		ret = -EINVAL;
 
@@ -209,6 +238,7 @@ static int hdmi_audio_rmw(uint32_t reg, uint32_t val, uint32_t mask)
 	if (IS_HDMI_AUDIO_I915(reg)) {
 		val_tmp = (val & mask) |
 			(I915_READ((VLV_DISPLAY_BASE + reg)) & ~mask);
+		val_tmp = set_dp_mode(reg, val_tmp);
 		I915_WRITE((VLV_DISPLAY_BASE + reg), val_tmp);
 	} else {
 		ret = -EINVAL;
@@ -240,6 +270,9 @@ static int hdmi_audio_get_caps(enum had_caps_list get_element,
 		/* ToDo: Verify if sampling freq logic is correct */
 		memcpy(capabilities, &(dev_priv->tmds_clock_speed),
 			sizeof(uint32_t));
+		break;
+	case HAD_GET_LINK_RATE:
+		memcpy(capabilities, &dev_priv->link_rate, sizeof(uint32_t));
 		break;
 	default:
 		break;
@@ -390,6 +423,7 @@ int mid_hdmi_audio_register(struct snd_intel_had_interface *driver,
 	/* The Audio driver is loading now and we need to notify
 	 * it if there is an HDMI device attached
 	 */
+	INIT_WORK(&dev_priv->hdmi_audio_wq, i915_had_wq);
 	DRM_INFO("%s: Scheduling HDMI audio work queue\n", __func__);
 	schedule_work(&dev_priv->hdmi_audio_wq);
 

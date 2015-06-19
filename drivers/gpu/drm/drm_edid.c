@@ -3141,6 +3141,13 @@ void drm_edid_to_eld(struct drm_connector *connector, struct edid *edid)
 		}
 	}
 	eld[5] |= sad_count << 4;
+	/*
+	 * Audio driver expects the second and third bits
+	 * of fifth byte of ELD to be 01 for DP.
+	 * So, setting second bit to be 1.
+	 */
+	if (connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort)
+		eld[5] |= ELD_DP_CONNECTION_TYPE;
 	eld[2] = (20 + mnl + sad_count * 3 + 3) / 4;
 
 	DRM_DEBUG_KMS("ELD size %d, SAD count %d\n", (int)eld[2], sad_count);

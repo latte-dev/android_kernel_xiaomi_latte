@@ -52,6 +52,7 @@ enum had_caps_list {
 	HAD_SET_DISABLE_AUDIO,
 	HAD_SET_ENABLE_AUDIO_INT,
 	HAD_SET_DISABLE_AUDIO_INT,
+	HAD_GET_LINK_RATE,
 	OTHERS_TBD,
 };
 
@@ -107,6 +108,7 @@ struct hdmi_audio_priv {
 	bool hdmi_hpd_connected;
 	int monitor_type;
 	void *context;
+	int pipe;
 };
 
 extern void i915_hdmi_audio_init(struct hdmi_audio_priv *p_hdmi_priv);
@@ -120,6 +122,7 @@ extern void mid_hdmi_audio_signal_event(struct drm_device *dev,
 extern void hdmi_get_eld(uint8_t *eld);
 extern int i915_enable_hdmi_audio_int(struct drm_device *dev);
 extern int i915_disable_hdmi_audio_int(struct drm_device *dev);
+extern uint32_t set_dp_mode(uint32_t reg, uint32_t val);
 extern int mid_hdmi_audio_setup(
 	had_event_call_back audio_callbacks,
 	struct hdmi_audio_registers_ops *reg_ops,
