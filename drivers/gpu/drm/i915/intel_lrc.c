@@ -2230,7 +2230,7 @@ static inline int wa_ctx_end(struct i915_wa_ctx_bb *wa_ctx,
  *
  *  The number of WA applied are not known at the beginning; we use this field
  *  to return the no of DWORDS written.
-
+ *
  *  It is to be noted that this batch does not contain MI_BATCH_BUFFER_END
  *  so it adds NOOPs as padding to make it cacheline aligned.
  *  MI_BATCH_BUFFER_END will be added to perctx batch and both of them together
@@ -2307,6 +2307,7 @@ static int gen8_init_indirectctx_bb(struct intel_engine_cs *ring,
  * @wa_ctx: structure representing wa_ctx
  *  offset: specifies start of the batch, should be cache-aligned.
  *  size: size of the batch in DWORDS but HW expects in terms of cachelines
+ * @batch: page in which WA are loaded
  * @offset: This field specifies the start of this batch.
  *   This batch is started immediately after indirect_ctx batch. Since we ensure
  *   that indirect_ctx ends on a cacheline this batch is aligned automatically.
