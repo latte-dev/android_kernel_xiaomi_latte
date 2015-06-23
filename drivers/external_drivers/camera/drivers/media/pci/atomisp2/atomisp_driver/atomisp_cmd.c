@@ -4695,6 +4695,9 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 		fmt = atomisp_output_fmts;
 	}
 
+	if (f->fmt.pix.width <= 0 || f->fmt.pix.height <= 0)
+		return -EINVAL;
+
 	snr_mbus_fmt.code = fmt->mbus_code;
 	snr_mbus_fmt.width = f->fmt.pix.width;
 	snr_mbus_fmt.height = f->fmt.pix.height;
