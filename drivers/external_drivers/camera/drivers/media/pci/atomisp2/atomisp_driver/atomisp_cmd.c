@@ -273,6 +273,10 @@ int atomisp_freq_scaling(struct atomisp_device *isp,
 		return -EINVAL;
 	}
 
+	if ((isp->pdev->device & ATOMISP_PCI_DEVICE_SOC_MASK) ==
+		ATOMISP_PCI_DEVICE_SOC_CHT && ATOMISP_USE_YUVPP(asd))
+		isp->dfs = &dfs_config_cht_soc;
+
 	if (isp->dfs->lowest_freq == 0 || isp->dfs->max_freq_at_vmin == 0 ||
 	    isp->dfs->highest_freq == 0 || isp->dfs->dfs_table_size == 0 ||
 	    !isp->dfs->dfs_table) {
