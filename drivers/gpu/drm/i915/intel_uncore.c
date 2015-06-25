@@ -1084,9 +1084,12 @@ int i915_get_reset_stats_ioctl(struct drm_device *dev,
 	}
 	hs = &ctx->hang_stats;
 
-	if (capable(CAP_SYS_ADMIN))
+	if (capable(CAP_SYS_ADMIN)) {
+		int i;
 		args->reset_count = i915_reset_count(&dev_priv->gpu_error);
-	else
+		for (i = 0; i < I915_NUM_RINGS; ++i)
+			args->reset_count += dev_priv->ring[i].hangcheck.total;
+	} else
 		args->reset_count = 0;
 
 	args->batch_active = hs->batch_active;
