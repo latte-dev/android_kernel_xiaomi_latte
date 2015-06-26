@@ -1393,6 +1393,7 @@ static struct acpi_device_id max17042_acpi_match[] = {
 	{"MAX17042", 0},
 	{"MAX17047", 0},
 	{"MAX17050", 0},
+	{ }
 };
 MODULE_DEVICE_TABLE(acpi, max17042_acpi_match);
 #endif
