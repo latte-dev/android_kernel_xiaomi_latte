@@ -692,9 +692,6 @@ struct intel_context {
 
 	/* Execlists */
 	bool rcs_initialized;
-	struct intel_ringbuffer *indirect_ctx_wa_bb;
-	struct intel_ringbuffer *per_ctx_wa_bb;
-
 	struct {
 		struct drm_i915_gem_object *state;
 		struct intel_ringbuffer *ringbuf;
