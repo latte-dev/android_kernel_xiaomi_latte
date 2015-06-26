@@ -239,7 +239,7 @@ store_i915_videostatus(struct device *kdev, struct device_attribute *attr,
 	return n;
 }
 
-static DEVICE_ATTR(i915_videostatus, (S_IRUGO | S_IWOTH),
+static DEVICE_ATTR(i915_videostatus, (S_IRUGO | S_IWUSR),
 		show_i915_videostatus, store_i915_videostatus);
 static struct attribute *i915_videostatus_attrs[] = {
 	&dev_attr_i915_videostatus.attr,
