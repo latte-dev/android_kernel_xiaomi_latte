@@ -1729,6 +1729,7 @@ struct drm_i915_private {
 	u32 vblcount;
 
 	bool is_first_modeset;
+	bool quick_modeset;
 	bool maxfifo_enabled;
 	bool gamma_enabled[I915_MAX_PIPES];
 	bool csc_enabled[I915_MAX_PIPES];

@@ -5227,7 +5227,6 @@ static void cherryview_set_cdclk(struct drm_device *dev, int new_cdclk)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 cmd, val, vco;
 
-	WARN_ON(valleyview_cur_cdclk(dev_priv) != dev_priv->vlv_cdclk_freq);
 	dev_priv->vlv_cdclk_freq = new_cdclk;
 
 	/*
@@ -5473,9 +5472,15 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 
 	intel_set_cpu_fifo_underrun_reporting(dev, pipe, true);
 
-	for_each_encoder_on_crtc(dev, crtc, encoder)
-		if (encoder->pre_pll_enable)
+	for_each_encoder_on_crtc(dev, crtc, encoder) {
+		if (encoder->pre_pll_enable) {
+			if (encoder->type == INTEL_OUTPUT_DSI) {
+				if (dev_priv->quick_modeset)
+					continue;
+			}
 			encoder->pre_pll_enable(encoder);
+		}
+	}
 
 	if (!is_dsi) {
 		if (IS_CHERRYVIEW(dev))
@@ -5484,9 +5489,15 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 			vlv_enable_pll(intel_crtc);
 	}
 
-	for_each_encoder_on_crtc(dev, crtc, encoder)
-		if (encoder->pre_enable)
+	for_each_encoder_on_crtc(dev, crtc, encoder) {
+		if (encoder->pre_enable) {
+			if (encoder->type == INTEL_OUTPUT_DSI) {
+				if (dev_priv->quick_modeset)
+					continue;
+			}
 			encoder->pre_enable(encoder);
+		}
+	}
 
 	i9xx_pfit_enable(intel_crtc);
 
@@ -5522,9 +5533,13 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 
 	intel_crtc_enable_planes(crtc);
 
-	for_each_encoder_on_crtc(dev, crtc, encoder)
-		if (encoder->type == INTEL_OUTPUT_DSI)
+	for_each_encoder_on_crtc(dev, crtc, encoder) {
+		if (encoder->type == INTEL_OUTPUT_DSI) {
+			if (dev_priv->quick_modeset)
+				continue;
 			encoder->enable(encoder);
+		}
+	}
 
 	drm_crtc_vblank_on(crtc);
 
@@ -5750,8 +5765,13 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 		}
 	}
 
-	for_each_encoder_on_crtc(dev, crtc, encoder)
+	for_each_encoder_on_crtc(dev, crtc, encoder) {
+		if (encoder->type == INTEL_OUTPUT_DSI) {
+			if (dev_priv->quick_modeset)
+				continue;
+		}
 		encoder->disable(encoder);
+	}
 
 	/* Disable plane after backlight goes off */
 	intel_crtc_disable_planes(crtc);
@@ -5769,9 +5789,15 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 
 	i9xx_pfit_disable(intel_crtc);
 
-	for_each_encoder_on_crtc(dev, crtc, encoder)
-		if (encoder->post_disable)
+	for_each_encoder_on_crtc(dev, crtc, encoder) {
+		if (encoder->post_disable) {
+			if (encoder->type == INTEL_OUTPUT_DSI) {
+				if (dev_priv->quick_modeset)
+					continue;
+			}
 			encoder->post_disable(encoder);
+		}
+	}
 
 	if (!intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI)) {
 		if (IS_CHERRYVIEW(dev))
@@ -6046,8 +6072,11 @@ void intel_connector_dpms(struct drm_connector *connector, int mode)
 	struct intel_encoder *intel_encoder = intel_connector->encoder;
 
 	/* All the simple cases only support two dpms states. */
-	if (mode != DRM_MODE_DPMS_ON)
+	if (mode != DRM_MODE_DPMS_ON) {
 		mode = DRM_MODE_DPMS_OFF;
+		if (dev_priv->is_first_modeset)
+			dev_priv->quick_modeset = false;
+	}
 
 	if (mode == connector->dpms) {
 		intel_connector->dpms_off_pending = false;
@@ -9528,6 +9557,7 @@ bool intel_get_load_detect_pipe(struct drm_connector *connector,
 	struct drm_encoder *encoder = &intel_encoder->base;
 	struct drm_crtc *crtc = NULL;
 	struct drm_device *dev = encoder->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_framebuffer *fb;
 	struct drm_mode_config *config = &dev->mode_config;
 	int ret, i = -1;
@@ -9625,6 +9655,8 @@ retry:
 		goto fail;
 	}
 
+	dev_priv->quick_modeset = false;
+
 	if (intel_set_mode(crtc, mode, 0, 0, fb)) {
 		DRM_DEBUG_KMS("failed to set mode on load-detect pipe\n");
 		if (old->release_fb)
@@ -9662,6 +9694,8 @@ void intel_release_load_detect_pipe(struct drm_connector *connector,
 		intel_attached_encoder(connector);
 	struct drm_encoder *encoder = &intel_encoder->base;
 	struct drm_crtc *crtc = encoder->crtc;
+	struct drm_device *dev = crtc->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
 	DRM_DEBUG_KMS("[CONNECTOR:%d:%s], [ENCODER:%d:%s]\n",
@@ -9673,6 +9707,7 @@ void intel_release_load_detect_pipe(struct drm_connector *connector,
 		intel_encoder->new_crtc = NULL;
 		intel_crtc->new_enabled = false;
 		intel_crtc->new_config = NULL;
+		dev_priv->quick_modeset = false;
 		intel_set_mode(crtc, NULL, 0, 0, NULL);
 
 		if (old->release_fb) {
@@ -12317,7 +12352,7 @@ static int __intel_set_mode(struct drm_crtc *crtc,
 	struct intel_crtc *intel_crtc;
 	struct drm_connector *connector;
 	unsigned disable_pipes, prepare_pipes, modeset_pipes;
-	int val, ret = 0;
+	int val, ret = 0, vcoval;
 
 	saved_mode = kmalloc(sizeof(*saved_mode), GFP_KERNEL);
 	if (!saved_mode)
@@ -12328,6 +12363,13 @@ static int __intel_set_mode(struct drm_crtc *crtc,
 
 	if (!(modeset_pipes | prepare_pipes | disable_pipes))
 		goto out;
+
+	/* FIXME: If BIOS did not enable DSI PLL */
+	mutex_lock(&dev_priv->dpio_lock);
+	vcoval = vlv_cck_read(dev_priv, CCK_REG_DSI_PLL_CONTROL);
+	mutex_unlock(&dev_priv->dpio_lock);
+	if (!(vcoval & DSI_PLL_VCO_EN))
+		dev_priv->quick_modeset = false;
 
 	*saved_mode = crtc->mode;
 
@@ -12482,11 +12524,6 @@ static int __intel_set_mode(struct drm_crtc *crtc,
 				intel_crtc->skip_check_state = true;
 		}
 	}
-
-	/* DO it only once */
-	if (IS_VALLEYVIEW(dev))
-		if (dev_priv->is_first_modeset)
-			valleyview_update_wm_pm5(intel_crtc);
 
 	/* FIXME: add subpixel order */
 done:
@@ -12836,7 +12873,9 @@ static int intel_crtc_set_config(struct drm_mode_set *set)
 	struct drm_device *dev;
 	struct drm_mode_set save_set;
 	struct intel_set_config *config;
+	struct drm_i915_private *dev_priv;
 	int ret;
+	int pipe;
 
 	BUG_ON(!set);
 	BUG_ON(!set->crtc);
@@ -12855,6 +12894,14 @@ static int intel_crtc_set_config(struct drm_mode_set *set)
 	}
 
 	dev = set->crtc->dev;
+	dev_priv = dev->dev_private;
+	pipe = to_intel_crtc(set->crtc)->pipe;
+
+	/* if BIOS did not initialize LFP */
+	if ((I915_READ(MIPI_CTRL(pipe)) == 0) ||
+		(I915_READ(MIPI_CTRL(pipe)) & READ_REQUEST_PRIORITY_MASK) !=
+			READ_REQUEST_PRIORITY_HIGH)
+		dev_priv->quick_modeset = false;
 
 	ret = -ENOMEM;
 	config = kzalloc(sizeof(*config), GFP_KERNEL);
@@ -12905,6 +12952,7 @@ static int intel_crtc_set_config(struct drm_mode_set *set)
 		DRM_DEBUG_KMS("failed to set mode on [CRTC:%d], err = %d\n",
 			      set->crtc->base.id, ret);
 fail:
+		dev_priv->quick_modeset = false;
 		intel_set_config_restore_state(dev, config);
 
 		/*
@@ -12925,6 +12973,7 @@ fail:
 
 out_config:
 	intel_set_config_free(config);
+	dev_priv->quick_modeset = false;
 	return ret;
 }
 
@@ -14382,6 +14431,9 @@ void intel_modeset_setup_hw_state(struct drm_device *dev,
 
 	if (force_restore) {
 		i915_redisable_vga(dev);
+
+		/* No quick modeset during force restore */
+		dev_priv->quick_modeset = false;
 
 		/*
 		 * We need to use raw interfaces for restoring state to avoid
