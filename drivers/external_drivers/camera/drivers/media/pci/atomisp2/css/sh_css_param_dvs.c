@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #include "sh_css_param_dvs.h"
 #include <assert_support.h>
@@ -23,6 +24,9 @@
 #if defined(IS_ISP_2500_SYSTEM)
 #include <components/acc_cluster/acc_dvs_stat/dvs_stat_private.h>
 #include <components/acc_cluster/acc_dvs_stat/host/dvs_stat.host.h>
+void dump_mv(struct dvs_stat_private_motion_vec *p_private_mv,
+			 struct ia_css_dvs_stat_grid_info *cfg);
+#define DVS_STAT_MV_DEBUG 0
 #endif
 
 static struct ia_css_dvs_6axis_config *
@@ -253,6 +257,61 @@ void copy_dvs_6axis_table(struct ia_css_dvs_6axis_config *dvs_config_dst,
 }
 
 #if defined(IS_ISP_2500_SYSTEM)
+void dump_mv(struct dvs_stat_private_motion_vec *p_private_mv,
+			 struct ia_css_dvs_stat_grid_info *cfg)
+{
+	int i, j;
+
+	if (p_private_mv == NULL || cfg == NULL) {
+		ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "dump_mv() - Wrong parameters: mv %p, cfg %p",
+			p_private_mv, cfg);
+		return;
+	}
+
+	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "Level 0:\n");
+	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "level xPos  yPos  HarrisGrade  xMatch   yMatch   MatchGrade\n");
+	for (i = 0; i < cfg->grd_cfg[0].grd_cfg.grid_width; i++) {
+		for (j = 0; j < cfg->grd_cfg[0].grd_cfg.grid_height; j++) {
+			ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "%-1d     %-5d %-5d %-10d   %-5d    %-5d     %-10d\n",
+				0,
+				p_private_mv->dvs_mv_output_l0[i].mv_entry[i].part0.vec_fe_x_pos,
+				p_private_mv->dvs_mv_output_l0[j].mv_entry[i].part0.vec_fe_y_pos,
+				p_private_mv->dvs_mv_output_l0[j].mv_entry[i].part2.harris_grade,
+				p_private_mv->dvs_mv_output_l0[j].mv_entry[i].part1.vec_fm_x_pos,
+				p_private_mv->dvs_mv_output_l0[j].mv_entry[i].part1.vec_fm_y_pos,
+				p_private_mv->dvs_mv_output_l0[j].mv_entry[i].part3.match_grade);
+		}
+	}
+	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "Level 1:\n");
+	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "level xPos  yPos  HarrisGrade  xMatch   yMatch   MatchGrade\n");
+	for (i = 0; i < cfg->grd_cfg[1].grd_cfg.grid_width; i++) {
+		for (j = 0; j < cfg->grd_cfg[1].grd_cfg.grid_height; j++) {
+			ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "%-1d     %-5d %-5d %-10d   %-5d    %-5d     %-10d\n",
+				1,
+				p_private_mv->dvs_mv_output_l1[i].mv_entry[i].part0.vec_fe_x_pos,
+				p_private_mv->dvs_mv_output_l1[j].mv_entry[i].part0.vec_fe_y_pos,
+				p_private_mv->dvs_mv_output_l1[j].mv_entry[i].part2.harris_grade,
+				p_private_mv->dvs_mv_output_l1[j].mv_entry[i].part1.vec_fm_x_pos,
+				p_private_mv->dvs_mv_output_l1[j].mv_entry[i].part1.vec_fm_y_pos,
+				p_private_mv->dvs_mv_output_l1[j].mv_entry[i].part3.match_grade);
+		}
+	}
+	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "Level 2:\n");
+	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "level xPos  yPos  HarrisGrade  xMatch   yMatch   MatchGrade\n");
+	for (i = 0; i < cfg->grd_cfg[2].grd_cfg.grid_width; i++) {
+		for (j = 0; j < cfg->grd_cfg[2].grd_cfg.grid_height; j++) {
+			ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "%-1d     %-5d %-5d %-10d   %-5d    %-5d     %-10d\n",
+				2,
+				p_private_mv->dvs_mv_output_l2[i].mv_entry[i].part0.vec_fe_x_pos,
+				p_private_mv->dvs_mv_output_l2[j].mv_entry[i].part0.vec_fe_y_pos,
+				p_private_mv->dvs_mv_output_l2[j].mv_entry[i].part2.harris_grade,
+				p_private_mv->dvs_mv_output_l2[j].mv_entry[i].part1.vec_fm_x_pos,
+				p_private_mv->dvs_mv_output_l2[j].mv_entry[i].part1.vec_fm_y_pos,
+				p_private_mv->dvs_mv_output_l2[j].mv_entry[i].part3.match_grade);
+		}
+	}
+}
+
 enum ia_css_err ia_css_get_skc_dvs_statistics(struct ia_css_skc_dvs_statistics *host_stats,
 				   const struct ia_css_isp_skc_dvs_statistics *isp_stats)
 {
@@ -302,6 +361,10 @@ enum ia_css_err ia_css_get_skc_dvs_statistics(struct ia_css_skc_dvs_statistics *
 
 	/* Translate between private and public configuration */
 	ia_css_dvs_stat_private_to_public_cfg(&host_stats->dvs_stat_cfg, &dvs_stat_cfg);
+#if DVS_STAT_MV_DEBUG
+	ia_css_dvs_stat_public_cfg_dump((const struct ia_css_2500_dvs_statistics_kernel_config *)&host_stats->dvs_stat_cfg);
+	dump_mv(dvs_stat_mv_p, &host_stats->dvs_stat_cfg);
+#endif
 
 	/* Translate between private and public motion vectors */
 	for (i = 0; i < IA_CSS_SKC_DVS_STAT_NUM_OF_LEVELS; i++) {

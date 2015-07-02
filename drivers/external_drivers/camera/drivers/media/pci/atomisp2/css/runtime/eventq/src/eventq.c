@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #include "ia_css_types.h"
 #include "assert_support.h"
@@ -63,6 +64,10 @@ int ia_css_eventq_send(
 	ia_css_event_encode(tmp, 4, &sw_event);
 
 	/* queue the software event (busy-waiting) */
+#ifdef IS_ISP_2500_SYSTEM
+	/* due to the buffer handling in Skycam we should never reach a Full queue at this point */
+	error = ia_css_queue_enqueue(eventq_handle, sw_event);
+#else
 	for ( ; ; ) {
 		error = ia_css_queue_enqueue(eventq_handle, sw_event);
 		if (ENOBUFS != error) {
@@ -73,6 +78,7 @@ int ia_css_eventq_send(
 		/* Wait for the queue to be not full and try again*/
 		hrt_sleep();
 	}
+#endif
 
 	return error;
 }

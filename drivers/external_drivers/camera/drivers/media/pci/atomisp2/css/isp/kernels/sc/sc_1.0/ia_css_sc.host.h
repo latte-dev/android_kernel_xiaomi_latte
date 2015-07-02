@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #ifndef __IA_CSS_SC_HOST_H
 #define __IA_CSS_SC_HOST_H
@@ -30,6 +31,37 @@ void
 ia_css_sc_dump(
 	const struct sh_css_isp_sc_params *sc,
 	unsigned level);
+
+/** @brief Configure the shading correction.
+ * @param[out]	to	Parameters used in the shading correction kernel in the isp.
+ * @param[in]	from	Parameters passed from the host.
+ * @param[in]	size	Size of the sh_css_isp_sc_isp_config structure.
+ *
+ * This function passes the parameters for the shading correction from the host to the isp.
+ */
+void
+ia_css_sc_config(
+	struct sh_css_isp_sc_isp_config *to,
+	const struct ia_css_sc_configuration *from,
+	unsigned size);
+
+/** @brief Configure the shading correction.
+ * @param[in]	binary	The binary, which has the shading correction.
+ * @param[in]	internal_frame_origin_x_bqs_on_sctbl
+ *			X coordinate (in bqs) of the origin of the internal frame on the shading table.
+ * @param[in]	internal_frame_origin_y_bqs_on_sctbl
+ *			Y coordinate (in bqs) of the origin of the internal frame on the shading table.
+ *
+ * This function calls the ia_css_configure_sc() function.
+ * (The ia_css_configure_sc() function is automatically generated in ia_css_isp.configs.c.)
+ * The ia_css_configure_sc() function calls the ia_css_sc_config() function
+ * to pass the parameters for the shading correction from the host to the isp.
+ */
+void
+ia_css_sc_configure(
+	const struct ia_css_binary *binary,
+	uint32_t internal_frame_origin_x_bqs_on_sctbl,
+	uint32_t internal_frame_origin_y_bqs_on_sctbl);
 
 /* ------ deprecated(bz675) : from ------ */
 void

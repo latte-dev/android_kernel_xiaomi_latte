@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #include "ia_css_debug.h"
 #include "sw_event_global.h"		/* encode_sw_event */
@@ -138,11 +139,11 @@ void ia_css_pipeline_start(enum ia_css_pipe_id pipe_id,
 	sh_css_sp_init_pipeline(pipeline, pipe_id, pipe_num,
 				false, false, false, true, SH_CSS_BDS_FACTOR_1_00,
 				SH_CSS_PIPE_CONFIG_OVRD_NO_OVRD,
-				IA_CSS_INPUT_MODE_MEMORY, NULL, NULL
+				IA_CSS_INPUT_MODE_MEMORY, NULL, NULL,
 #if !defined(HAS_NO_INPUT_SYSTEM)
-				, (mipi_port_ID_t) 0
+				(mipi_port_ID_t) 0,
 #endif
-				);
+				NULL, NULL);
 	ia_css_pipeline_get_sp_thread_id(pipe_num, &thread_id);
 	if (!sh_css_sp_is_running()) {
 		ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE,

@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #ifndef __IA_CSS_SC_TYPES_H
 #define __IA_CSS_SC_TYPES_H
@@ -117,5 +118,17 @@ struct ia_css_shading_settings {
 };
 /* ------ deprecated(bz675) : to ------ */
 
-#endif /* __IA_CSS_SC_TYPES_H */
+/** Shading Correction configuration.
+ *
+ *  NOTE: The shading table size is larger than or equal to the internal frame size.
+ */
+struct ia_css_sc_configuration {
+	uint32_t internal_frame_origin_x_bqs_on_sctbl; /**< Origin X (in bqs) of internal frame on shading table. */
+	uint32_t internal_frame_origin_y_bqs_on_sctbl; /**< Origin Y (in bqs) of internal frame on shading table. */
+						/**< NOTE: bqs = size in BQ(Bayer Quad) unit.
+							1BQ means {Gr,R,B,Gb}(2x2 pixels).
+							Horizontal 1 bqs corresponds to horizontal 2 pixels.
+							Vertical 1 bqs corresponds to vertical 2 pixels. */
+};
 
+#endif /* __IA_CSS_SC_TYPES_H */

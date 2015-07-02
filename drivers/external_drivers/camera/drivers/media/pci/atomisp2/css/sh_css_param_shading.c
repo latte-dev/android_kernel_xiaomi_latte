@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #include <math_support.h>
 #include "sh_css_param_shading.h"
@@ -196,17 +197,15 @@ crop_and_interpolate(unsigned int cropped_width,
 void
 sh_css_params_shading_id_table_generate(
 	struct ia_css_shading_table **target_table,
-	const struct ia_css_binary *binary)
+	unsigned int table_width,
+	unsigned int table_height)
 {
 	/* initialize table with ones, shift becomes zero */
-	unsigned int i, j, table_width, table_height;
+	unsigned int i, j;
 	struct ia_css_shading_table *result;
 
 	assert(target_table != NULL);
-	assert(binary != NULL);
 
-	table_width  = binary->sctbl_width_per_color;
-	table_height = binary->sctbl_height;
 	result = ia_css_shading_table_alloc(table_width, table_height);
 	if (result == NULL) {
 		*target_table = NULL;
@@ -246,7 +245,8 @@ prepare_shading_table(const struct ia_css_shading_table *in_table,
 	assert(binary != NULL);
 
 	if (!in_table) {
-		sh_css_params_shading_id_table_generate(target_table, binary);
+		sh_css_params_shading_id_table_generate(target_table,
+			binary->sctbl_legacy_width_per_color, binary->sctbl_legacy_height);
 		return;
 	}
 
@@ -271,6 +271,15 @@ prepare_shading_table(const struct ia_css_shading_table *in_table,
 	right_padding = (binary->internal_frame_info.res.width - binary->effective_in_frame_res.width * bds_denominator / bds_numerator - left_cropping) * bds_numerator / bds_denominator;
 	top_padding = binary->info->sp.pipeline.top_cropping * bds_numerator / bds_denominator - binary->info->sp.pipeline.top_cropping;
 
+#if !defined(USE_WINDOWS_BINNING_FACTOR)
+	/* @deprecated{This part of the code will be replaced by the code
+	 * in the #else section below to make the calculation same across
+	 * all platforms.
+	 * Android and Windows platforms interpret the binning_factor parameter
+	 * differently. In Android, the binning factor is expressed in the form
+	 * 2^N * 2^N, whereas in Windows platform, the binning factor is N*N}
+	 */
+
 	/* We take into account the binning done by the sensor. We do this
 	   by cropping the non-binned part of the shading table and then
 	   increasing the size of a grid cell with this same binning factor. */
@@ -282,14 +291,23 @@ prepare_shading_table(const struct ia_css_shading_table *in_table,
 	left_padding  <<= sensor_binning;
 	right_padding <<= sensor_binning;
 	top_padding   <<= sensor_binning;
+#else
+	input_width   *= sensor_binning;
+	input_height  *= sensor_binning;
+	left_padding  *= sensor_binning;
+	right_padding *= sensor_binning;
+	top_padding   *= sensor_binning;
+#endif /*USE_WINDOWS_BINNING_FACTOR*/
 
 	/* during simulation, the used resolution can exceed the sensor
 	   resolution, so we clip it. */
 	input_width  = min(input_width,  in_table->sensor_width);
 	input_height = min(input_height, in_table->sensor_height);
 
-	table_width  = binary->sctbl_width_per_color;
-	table_height = binary->sctbl_height;
+	/* This prepare_shading_table() function is called only in legacy API (not in new API).
+	   Then, the legacy shading table width and height should be used. */
+	table_width  = binary->sctbl_legacy_width_per_color;
+	table_height = binary->sctbl_legacy_height;
 
 	result = ia_css_shading_table_alloc(table_width, table_height);
 	if (result == NULL) {

@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #include "ia_css_refcount.h"
 #include "memory_access/memory_access.h"
@@ -196,6 +197,7 @@ bool ia_css_refcount_decrement(int32_t id, hrt_vaddress ptr)
 			id, ptr, entry, entry->id, entry->count);
 	else
 		IA_CSS_ERROR("entry NULL\n");
+	assert(false);
 
 	return false;
 }
@@ -245,7 +247,7 @@ void ia_css_refcount_clear(int32_t id, clear_func clear_func_ptr)
 						    "no clear_func\n");
 				mmgr_free(entry->data);
 			}
-
+			assert(entry->count == 0);
 			if (entry->count != 0) {
 				IA_CSS_WARNING("Ref count for entry %x is not zero!", entry->id);
 			}

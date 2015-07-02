@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #include "ia_css_memory_access.h"
 #include <type_support.h>
@@ -33,12 +34,12 @@ ia_css_memory_access_init(const struct ia_css_css_mem_env *env)
 }
 
 hrt_vaddress
-mmgr_malloc(const size_t size)
+mmgr_malloc_ex(const size_t size, const char *caller_func, int caller_line)
 {
-	return mmgr_alloc_attr(size, 0);
+	return mmgr_alloc_attr_ex(size, 0, caller_func, caller_line);
 }
 
-hrt_vaddress mmgr_alloc_attr(const size_t size, const uint16_t attrs)
+hrt_vaddress mmgr_alloc_attr_ex(const size_t size, const uint16_t attrs, const char *caller_func, int caller_line)
 {
 	uint32_t my_attrs = 0;
 	uint16_t masked_attrs = attrs & MMGR_ATTRIBUTE_MASK;
@@ -53,38 +54,85 @@ hrt_vaddress mmgr_alloc_attr(const size_t size, const uint16_t attrs)
 	if (masked_attrs & MMGR_ATTRIBUTE_PAGEALIGN)
 		my_attrs |= IA_CSS_MEM_ATTR_PAGEALIGN;
 
+#if defined(IS_ISP_2500_SYSTEM)
+#if defined(_MSC_VER)
+/*
+    SKC has snooping enabled by default on the ISP side,
+    so there should be no risk in enabing caching on all buffers.
+    Support for non-cached/non-snooped transactions will be added later.
+*/
+	my_attrs |= IA_CSS_MEM_ATTR_CACHED;
+#endif /* MSC_VER */
+#endif /* 2500 */
+
+#if defined(HAS_MMGR_DEBUG)
+	ptr = my_env.alloc_ex(size, my_attrs, caller_func, caller_line);
+#else
+	(void)caller_func;
+	(void)caller_line;
 	ptr = my_env.alloc(size, my_attrs);
+#endif
 	return ptr;
 }
 
 hrt_vaddress
-mmgr_calloc(const size_t N, const size_t size)
+mmgr_calloc_ex(const size_t N, const size_t size, const char *caller_func, int caller_line)
 {
+#if defined(HAS_MMGR_DEBUG)
+	return mmgr_alloc_attr_ex(size * N, MMGR_ATTRIBUTE_CLEARED, caller_func, caller_line);
+#else
+	(void)caller_func;
+	(void)caller_line;
 	return mmgr_alloc_attr(size * N, MMGR_ATTRIBUTE_CLEARED);
+#endif
 }
 
 void
-mmgr_free(hrt_vaddress vaddr)
+mmgr_free_ex(hrt_vaddress vaddr, const char *caller_func, int caller_line)
 {
+#if defined(HAS_MMGR_DEBUG)
+	my_env.free_ex(vaddr, caller_func, caller_line);
+#else
+	(void)caller_func;
+	(void)caller_line;
 	my_env.free(vaddr);
+#endif
 }
 
 void
-mmgr_clear(hrt_vaddress vaddr, const size_t size)
+mmgr_clear_ex(hrt_vaddress vaddr, const size_t size, const char *caller_func, int caller_line)
 {
+#if defined(HAS_MMGR_DEBUG)
+	my_env.set_ex(vaddr, 0, size, caller_func, caller_line);
+#else
+	(void)caller_func;
+	(void)caller_line;
 	my_env.set(vaddr, 0, size);
+#endif
 }
 
 void
-mmgr_load(const hrt_vaddress vaddr, void *data, const size_t size)
+mmgr_load_ex(const hrt_vaddress vaddr, void *data, const size_t size, const char *caller_func, int caller_line)
 {
+#if defined(HAS_MMGR_DEBUG)
+	my_env.load_ex(vaddr, data, size, caller_func, caller_line);
+#else
+	(void)caller_func;
+	(void)caller_line;
 	my_env.load(vaddr, data, size);
+#endif
 }
 
 void
-mmgr_store(const hrt_vaddress vaddr, const void *data, const size_t size)
+mmgr_store_ex(const hrt_vaddress vaddr, const void *data, const size_t size, const char *caller_func, int caller_line)
 {
+#if defined(HAS_MMGR_DEBUG)
+	my_env.store_ex(vaddr, data, size, caller_func, caller_line);
+#else
+	(void)caller_func;
+	(void)caller_line;
 	my_env.store(vaddr, data, size);
+#endif
 }
 
 hrt_vaddress

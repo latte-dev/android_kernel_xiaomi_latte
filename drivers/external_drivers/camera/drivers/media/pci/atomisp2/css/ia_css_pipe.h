@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #ifndef __IA_CSS_PIPE_H__
 #define __IA_CSS_PIPE_H__
@@ -29,6 +30,8 @@ struct ia_css_preview_settings {
 	struct ia_css_binary copy_binary;
 	struct ia_css_binary preview_binary;
 	struct ia_css_binary vf_pp_binary;
+	struct ia_css_frame *delay_frames[MAX_NUM_DELAY_FRAMES];	/* Needed for SkyCam DVS */
+	struct ia_css_frame *tnr_frames[NUM_TNR_FRAMES];		/* Needed for SkyCam TNR */
 	struct ia_css_pipe *copy_pipe;
 	struct ia_css_pipe *capture_pipe;
 	struct ia_css_pipe *acc_pipe;
@@ -39,6 +42,8 @@ struct ia_css_preview_settings {
 	IA_CSS_BINARY_DEFAULT_SETTINGS,	/* copy_binary */\
 	IA_CSS_BINARY_DEFAULT_SETTINGS,	/* preview_binary */\
 	IA_CSS_BINARY_DEFAULT_SETTINGS,	/* vf_pp_binary */\
+	{ NULL },			/* dvs_frames */ \
+	{ NULL },			/* tnr_frames */ \
 	NULL,				/* copy_pipe */\
 	NULL,				/* capture_pipe */\
 	NULL,				/* acc_pipe */\
@@ -86,7 +91,7 @@ struct ia_css_video_settings {
 	struct ia_css_binary vf_pp_binary;
 	struct ia_css_binary *yuv_scaler_binary;
 	struct ia_css_frame *delay_frames[MAX_NUM_VIDEO_DELAY_FRAMES];
-	struct ia_css_frame *tnr_frames[NUM_VIDEO_TNR_FRAMES];
+	struct ia_css_frame *tnr_frames[NUM_TNR_FRAMES];
 	struct ia_css_frame *vf_pp_in_frame;
 	struct ia_css_pipe *copy_pipe;
 	struct ia_css_pipe *capture_pipe;

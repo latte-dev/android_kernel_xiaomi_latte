@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #ifndef _REF_VECTOR_FUNC_H_INCLUDED_
 #define _REF_VECTOR_FUNC_H_INCLUDED_
@@ -308,6 +309,32 @@ STORAGE_CLASS_REF_VECTOR_FUNC_H tvector1w fir1x3m_6dB_nrm_calc_coeff (
 STORAGE_CLASS_REF_VECTOR_FUNC_H tvector1w fir1x3m_9dB_nrm (
 	const s_1w_1x3_matrix		m);
 
+/** @brief      symmetric 3 tap FIR acts as LPF or BSF
+ *
+ * @param[in] m 1x3 matrix with pixels
+ * @param[in] k filter coefficient shift
+ * @param[in] bsf_flag 1 for BSF and 0 for LPF
+ *
+ * @return    filtered output
+ *
+ * This function performs variable coefficient symmetric 3 tap filter which can
+ * be either used as Low Pass Filter or Band Stop Filter.
+ * Symmetric 3tap tap filter with DC gain 1 has filter coefficients [a, 1-2a, a]
+ * For LPF 'a' can be approximated as (1 - 2^(-k))/4, k = 0, 1, 2, ...
+ * and filter output can be approximated as:
+ * out_LPF = ((v00 + v02) - ((v00 + v02) >> k) + (2 * (v01 + (v01 >> k)))) >> 2
+ * For BSF 'a' can be approximated as (1 + 2^(-k))/4, k = 0, 1, 2, ...
+ * and filter output can be approximated as:
+ * out_BSF = ((v00 + v02) + ((v00 + v02) >> k) + (2 * (v01 - (v01 >> k)))) >> 2
+ * For a given filter coefficient shift 'k' and bsf_flag this function
+ * behaves either as LPF or BSF.
+ * All computation is done using 1w arithmetic and implementation does not use
+ * any multiplication.
+ */
+STORAGE_CLASS_REF_VECTOR_FUNC_H tvector1w
+sym_fir1x3m_lpf_bsf(s_1w_1x3_matrix m,
+		    tscalar1w k,
+		    tscalar_bool bsf_flag);
 
 /** @brief Normalised 2D FIR with coefficients  [1;2;1] * [1,2,1]
  *
@@ -926,7 +953,7 @@ STORAGE_CLASS_REF_VECTOR_FUNC_H int generic_block_matching_algorithm(
 	int search_block_sz,
 	tscalar1w_4bit_bma_shift shift);
 
-/** @brief OP_1w_asp_bma_16_1_32way
+/** @brief OP_1w_asp_bma_16_1_32way_nomask
  *
  * @param[in] search_area input search window of 16x16 pixels
  * @param[in] input_block input reference block of 8x8 pixels, where N<=M
@@ -943,12 +970,12 @@ STORAGE_CLASS_REF_VECTOR_FUNC_H int generic_block_matching_algorithm(
  *
  */
 
-STORAGE_CLASS_REF_VECTOR_FUNC_H bma_output_16_1 OP_1w_asp_bma_16_1_32way(
+STORAGE_CLASS_REF_VECTOR_FUNC_H bma_output_16_1 OP_1w_asp_bma_16_1_32way_nomask(
 	bma_16x16_search_window search_area,
 	ref_block_8x8 input_block,
 	tscalar1w_4bit_bma_shift shift);
 
-/** @brief OP_1w_asp_bma_16_2_32way
+/** @brief OP_1w_asp_bma_16_2_32way_nomask
  *
  * @param[in] search_area input search window of 16x16 pixels
  * @param[in] input_block input reference block of 8x8 pixels, where N<=M
@@ -963,11 +990,11 @@ STORAGE_CLASS_REF_VECTOR_FUNC_H bma_output_16_1 OP_1w_asp_bma_16_1_32way(
  *
  */
 
-STORAGE_CLASS_REF_VECTOR_FUNC_H bma_output_16_2 OP_1w_asp_bma_16_2_32way(
+STORAGE_CLASS_REF_VECTOR_FUNC_H bma_output_16_2 OP_1w_asp_bma_16_2_32way_nomask(
 	bma_16x16_search_window search_area,
 	ref_block_8x8 input_block,
 	tscalar1w_4bit_bma_shift shift);
-/** @brief OP_1w_asp_bma_14_1_32way
+/** @brief OP_1w_asp_bma_14_1_32way_nomask
  *
  * @param[in] search_area input search block of 16x16 pixels with search window of 14x14 pixels
  * @param[in] input_block input reference block of 8x8 pixels, where N<=M
@@ -984,12 +1011,12 @@ STORAGE_CLASS_REF_VECTOR_FUNC_H bma_output_16_2 OP_1w_asp_bma_16_2_32way(
  *
  */
 
-STORAGE_CLASS_REF_VECTOR_FUNC_H bma_output_14_1 OP_1w_asp_bma_14_1_32way(
+STORAGE_CLASS_REF_VECTOR_FUNC_H bma_output_14_1 OP_1w_asp_bma_14_1_32way_nomask(
 	bma_16x16_search_window search_area,
 	ref_block_8x8 input_block,
 	tscalar1w_4bit_bma_shift shift);
 
-/** @brief OP_1w_asp_bma_14_2_32way
+/** @brief OP_1w_asp_bma_14_2_32way_nomask
  *
  * @param[in] search_area input search block of 16x16 pixels with search window of 14x14 pixels
  * @param[in] input_block input reference block of 8x8 pixels, where N<=M
@@ -1004,10 +1031,26 @@ STORAGE_CLASS_REF_VECTOR_FUNC_H bma_output_14_1 OP_1w_asp_bma_14_1_32way(
  *
  */
 
-STORAGE_CLASS_REF_VECTOR_FUNC_H bma_output_14_2 OP_1w_asp_bma_14_2_32way(
+STORAGE_CLASS_REF_VECTOR_FUNC_H bma_output_14_2 OP_1w_asp_bma_14_2_32way_nomask(
 	bma_16x16_search_window search_area,
 	ref_block_8x8 input_block,
 	tscalar1w_4bit_bma_shift shift);
+
+/** @brief multiplex addition and passing
+ *
+ *  @param[in] _a first pixel
+ *  @param[in] _b second pixel
+ *  @param[in] _c condition flag
+ *
+ *  @return (_a + _b) if condition flag is true
+ *	    _a if condition flag is false
+ *
+ * This function does multiplex addition depending on the input condition flag
+ */
+STORAGE_CLASS_REF_VECTOR_FUNC_H tvector1w OP_1w_cond_add(
+	tvector1w _a,
+	tvector1w _b,
+	tflags _c);
 
 #ifdef HAS_bfa_unit
 /** @brief OP_1w_single_bfa_7x7
@@ -1105,6 +1148,29 @@ STORAGE_CLASS_REF_VECTOR_FUNC_H void bbb_bfa_gen_range_weight_lut(
 	tvector1w in[BFA_RW_LUT_SIZE+1],
 	tvector1w out[BFA_RW_LUT_SIZE]);
 #endif
+
+/** @brief OP_1w_imax32
+ *
+ * @param[in] src - structure that holds an array of 32 elements.
+ *
+ * @return  maximum element among input array.
+ *
+ *This function gets maximum element from an array of 32 elements.
+ */
+STORAGE_CLASS_REF_VECTOR_FUNC_H int OP_1w_imax32(
+	imax32_ref_in_vector src);
+
+/** @brief OP_1w_imaxidx32
+ *
+ * @param[in] src - structure that holds a vector of elements.
+ *
+ * @return  index of first element with maximum value among array.
+ *
+ * This function gets index of first element with maximum value
+ * from 32 elements.
+ */
+STORAGE_CLASS_REF_VECTOR_FUNC_H int OP_1w_imaxidx32(
+	imax32_ref_in_vector src);
 
 #ifndef INLINE_VECTOR_FUNC
 #define STORAGE_CLASS_REF_VECTOR_FUNC_C

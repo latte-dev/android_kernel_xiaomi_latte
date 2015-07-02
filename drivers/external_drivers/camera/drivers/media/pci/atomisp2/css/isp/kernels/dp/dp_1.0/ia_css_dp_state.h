@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -12,13 +12,14 @@
  * more details.
  */
 
+
 #ifndef __IA_CSS_DP_STATE_H
 #define __IA_CSS_DP_STATE_H
 
 #include "type_support.h"
 
 #include "vmem.h"
-#if NEED_BDS_OTHER_THAN_1_00
+#if ENABLE_FIXED_BAYER_DS
 #define MAX_VECTORS_PER_DP_LINE MAX_VECTORS_PER_BUF_INPUT_LINE
 #else
 #define MAX_VECTORS_PER_DP_LINE MAX_VECTORS_PER_BUF_LINE

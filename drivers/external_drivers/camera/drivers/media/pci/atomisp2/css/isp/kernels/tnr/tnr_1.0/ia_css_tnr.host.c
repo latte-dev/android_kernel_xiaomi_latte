@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #include "ia_css_types.h"
 #include "ia_css_frame.h"
@@ -84,7 +85,7 @@ ia_css_tnr_config(
 	ia_css_dma_configure_from_info(&to->port_b, &from->tnr_frames[0]->info);
 	to->width_a_over_b = elems_a / to->port_b.elems;
 	to->frame_height = from->tnr_frames[0]->info.res.height;
-	for (i = 0; i < NUM_VIDEO_TNR_FRAMES; i++) {
+	for (i = 0; i < NUM_TNR_FRAMES; i++) {
 		to->tnr_frame_addr[i] = from->tnr_frames[i]->data + from->tnr_frames[i]->planes.yuyv.offset;
 	}
 
@@ -100,7 +101,7 @@ ia_css_tnr_configure(
 	struct ia_css_tnr_configuration config;
 	unsigned i;
 
-	for (i = 0; i < NUM_VIDEO_TNR_FRAMES; i++)
+	for (i = 0; i < NUM_TNR_FRAMES; i++)
 		config.tnr_frames[i] = frames[i];
 
 	ia_css_configure_tnr(binary, &config);
@@ -113,7 +114,6 @@ ia_css_init_tnr_state(
 {
 	(void)size;
 
-	assert(NUM_VIDEO_TNR_FRAMES >= 2);
 	assert(sizeof(*state) == size);
 	state->tnr_in_buf_idx = 0;
 	state->tnr_out_buf_idx = 1;

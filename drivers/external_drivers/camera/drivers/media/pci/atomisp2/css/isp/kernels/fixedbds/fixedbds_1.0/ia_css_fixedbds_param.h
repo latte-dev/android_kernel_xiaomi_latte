@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -12,10 +12,18 @@
  * more details.
  */
 
+
 #ifndef __IA_CSS_FIXEDBDS_PARAM_H
 #define __IA_CSS_FIXEDBDS_PARAM_H
 
 #include "type_support.h"
+
+#define BDS_UNIT 8
+#define FRAC_LOG 3
+#define FRAC_ACC (1<<FRAC_LOG)
+#if FRAC_ACC != BDS_UNIT
+#error "FRAC_ACC and BDS_UNIT need to be merged into one define"
+#endif
 
 struct sh_css_isp_bds_params {
 	int baf_strength;

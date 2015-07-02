@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -12,6 +12,7 @@
  * more details.
  */
 
+
 #include "ia_css_types.h"
 #include "sh_css_defs.h"
 #include "ia_css_debug.h"
@@ -19,6 +20,18 @@
 
 #include "ia_css_dp.host.h"
 
+/* We use a different set of DPC configuration parameters when
+ * DPC is used before OBC and NORM. Currently these parameters
+ * are used in usecases which selects both BDS and DPC.
+ **/
+const struct ia_css_dp_config default_dp_10bpp_config = {
+	1024,
+	2048,
+	32768,
+	32768,
+	32768,
+	32768
+};
 const struct ia_css_dp_config default_dp_config = {
 	8192,
 	2048,

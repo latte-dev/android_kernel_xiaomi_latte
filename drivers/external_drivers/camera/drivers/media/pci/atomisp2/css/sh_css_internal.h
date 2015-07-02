@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #ifndef _SH_CSS_INTERNAL_H_
 #define _SH_CSS_INTERNAL_H_
@@ -320,7 +321,7 @@ struct ia_css_isp_parameter_set_info {
 struct sh_css_binary_args {
 	struct ia_css_frame *in_frame;	     /* input frame */
 	struct ia_css_frame *delay_frames[MAX_NUM_VIDEO_DELAY_FRAMES];   /* reference input frame */
-	struct ia_css_frame *tnr_frames[NUM_VIDEO_TNR_FRAMES];   /* tnr frames */
+	struct ia_css_frame *tnr_frames[NUM_TNR_FRAMES];   /* tnr frames */
 	struct ia_css_frame *out_frame[IA_CSS_BINARY_MAX_OUTPUT_PORTS];      /* output frame */
 	struct ia_css_frame *out_vf_frame;   /* viewfinder output frame */
 	bool                 copy_vf;
@@ -475,7 +476,6 @@ struct sh_css_sp_pipeline_terminal {
 	} context;
 
 	/*
-	 * zhengjie.lu@intel.com:
 	 * TODO
 	 * - Remove "virtual_input_system_cfg" when the ISYS2401 DLI is ready.
 	 */
@@ -551,6 +551,7 @@ ia_css_metadata_free_multiple(unsigned int num_bufs, struct ia_css_metadata **bu
 #define SH_CSS_QOS_STAGE_ENABLE(pipe, num)     ((pipe)->pipe_qos_config |= QOS_STAGE_MASK(num))
 #define SH_CSS_QOS_STAGE_DISABLE(pipe, num)    ((pipe)->pipe_qos_config &= ~QOS_STAGE_MASK(num))
 #define SH_CSS_QOS_STAGE_IS_ENABLED(pipe, num) ((pipe)->pipe_qos_config & QOS_STAGE_MASK(num))
+#define SH_CSS_QOS_STAGE_IS_ALL_DISABLED(pipe) ((pipe)->pipe_qos_config == QOS_ALL_STAGES_DISABLED)
 #define SH_CSS_QOS_MODE_PIPE_ADD(mode, pipe)    ((mode) |= (0x1 << (pipe)->pipe_id))
 #define SH_CSS_QOS_MODE_PIPE_REMOVE(mode, pipe) ((mode) &= ~(0x1 << (pipe)->pipe_id))
 #define SH_CSS_IS_QOS_ONLY_MODE(mode)           ((mode) == (0x1 << IA_CSS_PIPE_ID_ACC))
@@ -607,6 +608,12 @@ struct sh_css_sp_pipeline {
 			uint32_t	raw_bit_depth;
 		} raw;
 	} copy;
+
+	/* Parameters passed to Shading Correction kernel. */
+	struct {
+		uint32_t internal_frame_origin_x_bqs_on_sctbl; /* Origin X (bqs) of internal frame on shading table */
+		uint32_t internal_frame_origin_y_bqs_on_sctbl; /* Origin Y (bqs) of internal frame on shading table */
+	} shading;
 };
 
 /*
@@ -709,13 +716,11 @@ struct sh_css_sp_stage {
 
 /*
  * Time: 2012-07-19, 17:40.
- * Author: zhengjie.lu@intel.com
  * Note: Add a new data memeber "debug" in "sh_css_sp_group". This
  * data member is used to pass the debugging command from the
  * Host to the SP.
  *
  * Time: Before 2012-07-19.
- * Author: unknown
  * Note:
  * Group all host initialized SP variables into this struct.
  * This is initialized every stage through dma.
@@ -768,7 +773,12 @@ struct sh_css_config_on_frame_enqueue {
  */
 /* Variable Sized Buffer Queue Elements */
 
+#if defined(IS_ISP_2500_SYSTEM)
+#define  IA_CSS_NUM_ELEMS_HOST2SP_BUFFER_QUEUE    5
+#else
 #define  IA_CSS_NUM_ELEMS_HOST2SP_BUFFER_QUEUE    6
+#endif
+
 #define  IA_CSS_NUM_ELEMS_HOST2SP_PARAM_QUEUE    3
 #define  IA_CSS_NUM_ELEMS_HOST2SP_TAG_CMD_QUEUE  6
 #if !defined(HAS_NO_INPUT_SYSTEM)
@@ -790,7 +800,12 @@ struct sh_css_config_on_frame_enqueue {
 #define  IA_CSS_NUM_ELEMS_SP2HOST_BUFFER_QUEUE        19
 #define  IA_CSS_NUM_ELEMS_SP2HOST_PSYS_EVENT_QUEUE    26 /* holds events for all type of buffers, hence deeper */
 #else
+#if defined(IS_ISP_2500_SYSTEM)
+/*Skycam need to support 4 pipes with 7 queues max 2 buffers/queue and 4 simple commands per pipe*/
+#define  IA_CSS_NUM_ELEMS_HOST2SP_PSYS_EVENT_QUEUE    72
+#else
 #define  IA_CSS_NUM_ELEMS_HOST2SP_PSYS_EVENT_QUEUE    6
+#endif
 #define  IA_CSS_NUM_ELEMS_SP2HOST_BUFFER_QUEUE        6
 #define  IA_CSS_NUM_ELEMS_SP2HOST_PSYS_EVENT_QUEUE    6
 #endif

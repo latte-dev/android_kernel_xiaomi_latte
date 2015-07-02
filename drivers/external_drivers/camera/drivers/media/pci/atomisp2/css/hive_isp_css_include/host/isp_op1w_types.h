@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #ifndef __ISP_OP1W_TYPES_H_INCLUDED__
 #define __ISP_OP1W_TYPES_H_INCLUDED__
@@ -42,6 +43,7 @@ typedef mpudata_t       tvector1w_unsigned;
 typedef mpsdata_t       tscalar1w_weight;
 typedef mpsdata_t       tvector1w_signed_positive;
 typedef mpsdata_t       tvector1w_weight;
+typedef bool            tscalar_bool;
 
 typedef  struct {
   tvector1w       d;

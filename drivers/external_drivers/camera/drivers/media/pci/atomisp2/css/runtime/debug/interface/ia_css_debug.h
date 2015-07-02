@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #ifndef _IA_CSS_DEBUG_H_
 #define _IA_CSS_DEBUG_H_
@@ -26,6 +27,9 @@
 #include "ia_css_stream_public.h"
 #include "ia_css_metadata.h"
 #include "sh_css_internal.h"
+#if defined(IS_ISP_2500_SYSTEM)
+#include "ia_css_pipe.h"
+#endif
 
 /* available levels */
 /*! Level for tracing errors */
@@ -180,6 +184,13 @@ void ia_css_debug_dump_isp_state(void);
  * @return	None
  */
 void ia_css_debug_dump_sp_state(void);
+
+/*! @brief Dump GAC hardware state.
+ * Dumps the GAC ACB hardware registers. may be useful for
+ * detecting a GAC which got hang.
+ * @return	None
+ */
+void ia_css_debug_dump_gac_state(void);
 
 /*! @brief Dump dma controller state.
  * Dumps the dma controller state to tracing output.
@@ -467,5 +478,28 @@ bool ia_css_debug_mode_enable_dma_channel(
  */
 void ia_css_debug_dump_trace(void);
 
+/**
+ * @brief Program counter dumping (in loop)
+ *
+ * @param[in]	id		The ID of the SP
+ * @param[in]	num_of_dumps	The number of dumps
+ *
+ * @return
+ *	- none
+ */
+void ia_css_debug_pc_dump(sp_ID_t id, unsigned int num_of_dumps);
+
+#if defined(IS_ISP_2500_SYSTEM)
+/*! @brief Dump all states for ISP hang case.
+ * Dumps the ISP previous and current configurations
+ * GACs status, SP0/1 statuses.
+ *
+ * @param[in]	pipe	The current pipe
+ *
+ * @return	None
+ */
+void ia_css_debug_dump_hang_status(
+	struct ia_css_pipe *pipe);
+#endif
 
 #endif /* _IA_CSS_DEBUG_H_ */

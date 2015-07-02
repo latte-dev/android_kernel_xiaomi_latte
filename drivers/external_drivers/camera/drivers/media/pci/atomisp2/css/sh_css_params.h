@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #ifndef _SH_CSS_PARAMS_H_
 #define _SH_CSS_PARAMS_H_
@@ -76,7 +77,17 @@ struct ia_css_isp_parameters {
 	struct ia_css_cc_config     rgb2yuv_cc_config;
 	struct ia_css_tnr_config    tnr_config;
 	struct ia_css_ob_config     ob_config;
+	/*----- DPC configuration -----*/
+	/* The default DPC configuration is retained and currently set
+	 * using the stream configuration. The code generated from genparams
+	 * uses this configuration to set the DPC parameters per stage but this
+	 * will be overwritten by the per pipe configuration */
 	struct ia_css_dp_config     dp_config;
+	/* ------ pipe specific DPC configuration ------ */
+	/* Please note that this implementation is a temporary solution and
+	 * should be replaced by CSS per pipe configuration when the support
+	 * is ready (HSD 1303967698)*/
+	struct ia_css_dp_config     pipe_dp_config[IA_CSS_PIPE_ID_NUM];
 	struct ia_css_nr_config     nr_config;
 	struct ia_css_ee_config     ee_config;
 	struct ia_css_de_config     de_config;
@@ -108,6 +119,7 @@ struct ia_css_isp_parameters {
 #if defined(IS_ISP_2500_SYSTEM)
 	struct ia_css_2500_lin_kernel_config  lin_2500_config;
 	struct ia_css_2500_tnr_kernel_config  tnr_2500_config;
+	struct ia_css_tnr3_kernel_config      tnr3_config;
 #endif
 	struct ia_css_dvs_6axis_config  *pipe_dvs_6axis_config[IA_CSS_PIPE_ID_NUM];
 /* ------ deprecated(bz675) : from ------ */
@@ -125,9 +137,18 @@ struct ia_css_isp_parameters {
 	bool dvs2_coef_table_changed;
 	bool morph_table_changed;
 	bool sc_table_changed;
+#if !defined(IS_ISP_2500_SYSTEM)
+	bool sc_table_dirty;
+	unsigned int sc_table_last_pipe_num;
+#endif
 	bool anr_thres_changed;
 /* ---- deprecated: replaced with pipe_dvs_6axis_config_changed ---- */
 	bool dvs_6axis_config_changed;
+	/* ------ pipe specific DPC configuration ------ */
+	/* Please note that this implementation is a temporary solution and
+	 * should be replaced by CSS per pipe configuration when the support
+	 * is ready (HSD 1303967698) */
+	bool pipe_dpc_config_changed[IA_CSS_PIPE_ID_NUM];
 /* ------ deprecated(bz675) : from ------ */
 	bool shading_settings_changed;
 /* ------ deprecated(bz675) : to ------ */
@@ -163,6 +184,14 @@ ia_css_params_alloc_convert_sctbl(
 
 struct ia_css_isp_config *
 sh_css_pipe_isp_config_get(struct ia_css_pipe *pipe);
+
+#if !defined(IS_ISP_2500_SYSTEM)
+/* ipu address allocation/free for gdc lut */
+hrt_vaddress
+sh_css_params_alloc_gdc_lut(void);
+void
+sh_css_params_free_gdc_lut(hrt_vaddress addr);
+#endif
 
 enum ia_css_err
 sh_css_params_map_and_store_default_gdc_lut(void);

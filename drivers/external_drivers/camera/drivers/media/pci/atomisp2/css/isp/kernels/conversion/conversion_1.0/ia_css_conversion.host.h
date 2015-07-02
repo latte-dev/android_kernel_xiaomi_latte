@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #ifndef __IA_CSS_CONVERSION_HOST_H
 #define __IA_CSS_CONVERSION_HOST_H
@@ -26,4 +27,6 @@ ia_css_conversion_encode(
 	const struct ia_css_conversion_config *from,
 	unsigned size);
 
+/* workaround until code generation in isp_kernelparameters.host.c is fixed */
+#define ia_css_conversion_par_encode(to, from, size) ia_css_conversion_encode(to, from, size)
 #endif /* __IA_CSS_CONVERSION_HOST_H */

@@ -1,6 +1,6 @@
 /*
  * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2015, Intel Corporation.
+ * Copyright (c) 2010 - 2015, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  */
+
 
 #ifndef __IA_CSS_ENV_H
 #define __IA_CSS_ENV_H
@@ -81,6 +82,18 @@ struct ia_css_css_mem_env {
 	ia_css_ptr (*mmap)(const void *ptr, const size_t size,
 			   uint16_t attribute, void *context);
 	/**< Map an pre-allocated memory region to an address. */
+
+	/* a set of matching functions with additional debug params */
+	ia_css_ptr(*alloc_ex)(size_t bytes, uint32_t attributes, const char *caller_func, int caller_line);
+	/**< same as alloc above, only with additional debug parameters */
+	void (*free_ex)(ia_css_ptr ptr, const char *caller_func, int caller_line);
+	/**< same as free above, only with additional debug parameters */
+	int (*load_ex)(ia_css_ptr ptr, void *data, size_t bytes, const char *caller_func, int caller_line);
+	/**< same as load above, only with additional debug parameters */
+	int (*store_ex)(ia_css_ptr ptr, const void *data, size_t bytes, const char *caller_func, int caller_line);
+	/**< same as store above, only with additional debug parameters */
+	int (*set_ex)(ia_css_ptr ptr, int c, size_t bytes, const char *caller_func, int caller_line);
+	/**< same as set above, only with additional debug parameters */
 };
 
 /** Environment with function pointers to access the CSS hardware. This includes
