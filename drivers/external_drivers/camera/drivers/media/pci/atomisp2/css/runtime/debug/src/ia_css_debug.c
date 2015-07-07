@@ -2025,13 +2025,6 @@ static void debug_print_isys_capture_unit_state(capture_unit_state_t *state)
 
 	ia_css_debug_dtrace(2, "\t\t%-32s: %d\n",
 			    "Num_Mem_Regions", state->Num_Mem_Regions);
-#if 0
-	ia_css_debug_dtrace(2, "\t\t%-32s: %d\n", "Init", state->Init);
-
-	ia_css_debug_dtrace(2, "\t\t%-32s: %d\n", "Start", state->Start);
-
-	ia_css_debug_dtrace(2, "\t\t%-32s: %d\n", "Stop", state->Stop);
-#endif
 	return;
 }
 
@@ -2039,9 +2032,6 @@ static void debug_print_isys_acquisition_unit_state(
 				acquisition_unit_state_t *state)
 {
 	assert(state != NULL);
-#if 0
-	ia_css_debug_dtrace(2, "\t\t%-32s: %d\n", "Init", state->Init);
-#endif
 	ia_css_debug_dtrace(2, "\t\t%-32s: %d\n",
 			    "Received_Short_Packets",
 			    state->Received_Short_Packets);
@@ -2145,10 +2135,6 @@ static void debug_print_isys_ctrl_unit_state(ctrl_unit_state_t *state)
 
 	ia_css_debug_dtrace(2, "\t\t%-32s: %d\n",
 			    "acq_num_mem_regions", state->acq_num_mem_regions);
-#if 0
-	ia_css_debug_dtrace(2, "\t\t%-32s: %d\n",
-			    "ctrl_init", state->ctrl_init);
-#endif
 	ia_css_debug_dtrace(2, "\t\t%-32s: %d\n",
 			    "capt_reserve_one_mem_region",
 			    state->capt_reserve_one_mem_region);
@@ -3373,6 +3359,8 @@ static void debug_dump_one_trace(TRACE_CORE_ID proc_id)
 	uint32_t start_addr_data;
 	uint32_t item_size;
 	uint32_t tmp;
+	uint8_t tid_val;
+	TRACE_DUMP_FORMAT dump_format;
 	int i, j, max_trace_points, point_num, limit = -1;
 	/* using a static buffer here as the driver has issues allocating memory */
 	static uint32_t trace_read_buf[TRACE_BUFF_SIZE] = {0};
@@ -3442,49 +3430,67 @@ static void debug_dump_one_trace(TRACE_CORE_ID proc_id)
 		j = (limit + i) % point_num;
 		if (trace_read_buf[j])
 		{
-			TRACE_DUMP_FORMAT dump_format = FIELD_FORMAT_UNPACK(trace_read_buf[j]);
+
+			tid_val = FIELD_TID_UNPACK(trace_read_buf[j]);
+			dump_format = TRACE_DUMP_FORMAT_POINT;
+
+			/*
+			 * When tid value is 111b, the data will be interpreted differently:
+			 * tid val is ignored, major field contains 2 bits (msb) for format type
+			 */
+			if (tid_val == FIELD_TID_SEL_FORMAT_PAT) {
+				dump_format = FIELD_FORMAT_UNPACK(trace_read_buf[j]);
+			}
 			switch (dump_format)
 			{
 			case TRACE_DUMP_FORMAT_POINT:
 				ia_css_debug_dtrace(
-						IA_CSS_DEBUG_TRACE,	"\t\t%d %d:%d value - %d\n",
-						j, FIELD_MAJOR_UNPACK(trace_read_buf[j]),
+						IA_CSS_DEBUG_TRACE,	"\t\t%d T%d %d:%d value - %x (%d)\n",
+						j,
+						tid_val,
+						FIELD_MAJOR_UNPACK(trace_read_buf[j]),
 						FIELD_MINOR_UNPACK(trace_read_buf[j]),
+						FIELD_VALUE_UNPACK(trace_read_buf[j]),
 						FIELD_VALUE_UNPACK(trace_read_buf[j]));
 				break;
-			case TRACE_DUMP_FORMAT_VALUE24_HEX:
+			case TRACE_DUMP_FORMAT_POINT_NO_TID:
 				ia_css_debug_dtrace(
-						IA_CSS_DEBUG_TRACE,	"\t\t%d, %d, 24bit value %x H\n",
+						IA_CSS_DEBUG_TRACE,	"\t\t%d %d:%d value - %x (%d)\n",
+						j,
+						FIELD_MAJOR_W_FMT_UNPACK(trace_read_buf[j]),
+						FIELD_MINOR_UNPACK(trace_read_buf[j]),
+						FIELD_VALUE_UNPACK(trace_read_buf[j]),
+						FIELD_VALUE_UNPACK(trace_read_buf[j]));
+				break;
+			case TRACE_DUMP_FORMAT_VALUE24:
+				ia_css_debug_dtrace(
+						IA_CSS_DEBUG_TRACE,	"\t\t%d, %d, 24bit value %x (%d)\n",
 						j,
 						FIELD_MAJOR_UNPACK(trace_read_buf[j]),
+						FIELD_MAJOR_W_FMT_UNPACK(trace_read_buf[j]),
+						FIELD_VALUE_24_UNPACK(trace_read_buf[j]),
 						FIELD_VALUE_24_UNPACK(trace_read_buf[j]));
 				break;
-			case TRACE_DUMP_FORMAT_VALUE24_DEC:
-				ia_css_debug_dtrace(
-						IA_CSS_DEBUG_TRACE,	"\t\t%d, %d, 24bit value %d D\n",
-						j,
-						FIELD_MAJOR_UNPACK(trace_read_buf[j]),
-						FIELD_VALUE_24_UNPACK(trace_read_buf[j]));
-				break;
+
 			case TRACE_DUMP_FORMAT_VALUE24_TIMING:
 				ia_css_debug_dtrace(
 						IA_CSS_DEBUG_TRACE,	"\t\t%d, %d, timing %x\n",
 						j,
-						FIELD_MAJOR_UNPACK(trace_read_buf[j]),
+						FIELD_MAJOR_W_FMT_UNPACK(trace_read_buf[j]),
 						FIELD_VALUE_24_UNPACK(trace_read_buf[j]));
 				break;
 			case TRACE_DUMP_FORMAT_VALUE24_TIMING_DELTA:
 				ia_css_debug_dtrace(
 						IA_CSS_DEBUG_TRACE,	"\t\t%d, %d, timing delta %x\n",
 						j,
-						FIELD_MAJOR_UNPACK(trace_read_buf[j]),
+						FIELD_MAJOR_W_FMT_UNPACK(trace_read_buf[j]),
 						FIELD_VALUE_24_UNPACK(trace_read_buf[j]));
 				break;
 			default:
 				ia_css_debug_dtrace(
 						IA_CSS_DEBUG_TRACE,
 						"no such trace dump format %d",
-						FIELD_FORMAT_UNPACK(trace_read_buf[j]));
+						dump_format);
 				break;
 			}
 		}

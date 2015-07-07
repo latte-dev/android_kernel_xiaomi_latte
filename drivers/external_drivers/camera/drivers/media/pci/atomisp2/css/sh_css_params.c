@@ -123,11 +123,6 @@
 	(sizeof(unsigned short) * max((binary)->sctbl_height, (binary)->sctbl_legacy_height) * \
 			/* height should be the larger height between new api and legacy api */ \
 	 (binary)->sctbl_aligned_width_per_color * IA_CSS_SC_NUM_COLORS)
-#if 0
-#define S3ATBL_BYTES(binary) \
-	(sizeof(struct ia_css_3a_output) * (binary)->s3atbl_isp_width * \
-	 (binary)->s3atbl_isp_height)
-#endif
 /* TODO: check if the stride is always the same max value or whether
  * it varies per resolution. */
 #if 0
@@ -2227,33 +2222,6 @@ void ia_css_get_lace_statistics(struct ia_css_lace_statistics *host_stats,
 }
 #endif
 
-#if 0
-static void
-dump_3a_statistics(const struct ia_css_3a_statistics *host_stats)
-{
-	/* This function is written to dump the host_stats.
-	 * It is not intended to be used in daily operation
-	 * but it might be useful to debug problems so it is
-	 * proposed to leave it in
-	 */
-	int w, h;
-	int width = host_stats->grid.width;
-	int height = host_stats->grid.height;
-
-	for (h = 0; h < height; h++) {
-		for (w = 0; w < width; w++) {
-			IA_CSS_LOG("3A: (%2d,%2d) %10d %10d %10d %10d %10d",
-				   h, w,
-				   host_stats->data[h*width + w].awb_r,
-				   host_stats->data[h*width + w].awb_gr,
-				   host_stats->data[h*width + w].awb_gb,
-				   host_stats->data[h*width + w].awb_b,
-				   host_stats->data[h*width + w].awb_cnt);
-		}
-	}
-}
-#endif
-
 #if !defined(IS_ISP_2500_SYSTEM)
 void
 ia_css_translate_3a_statistics(
@@ -2274,9 +2242,6 @@ ia_css_translate_3a_statistics(
 	ia_css_s3a_hmem_decode(host_stats, isp_stats->hmem_stats);
 #endif
 
-#if 0
-	dump_3a_statistics(host_stats);
-#endif
 	IA_CSS_LEAVE("void");
 }
 

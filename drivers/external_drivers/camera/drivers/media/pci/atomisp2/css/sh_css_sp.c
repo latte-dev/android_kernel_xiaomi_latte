@@ -823,31 +823,44 @@ is_sp_stage(struct ia_css_pipeline_stage *stage)
 
 static void
 configure_isp_from_args(
-	const struct sh_css_sp_pipeline *pipe,
+	const struct sh_css_sp_pipeline *pipeline,
 	const struct ia_css_binary      *binary,
 	const struct sh_css_binary_args *args,
 	bool two_ppc,
 	bool deinterleaved)
 {
+	struct ia_css_pipe *pipe = find_pipe_by_num(pipeline->pipe_num);
+	const struct ia_css_resolution *res;
 #if !defined(IS_ISP_2500_SYSTEM)
 	ia_css_fpn_configure(binary,  &binary->in_frame_info);
 	ia_css_crop_configure(binary, &args->delay_frames[0]->info);
-	ia_css_qplane_configure(pipe, binary, &binary->in_frame_info);
+	ia_css_qplane_configure(pipeline, binary, &binary->in_frame_info);
 	ia_css_output0_configure(binary, &args->out_frame[0]->info);
 	ia_css_output1_configure(binary, &args->out_vf_frame->info);
 	ia_css_copy_output_configure(binary, args->copy_output);
 	ia_css_output0_configure(binary, &args->out_frame[0]->info);
-	ia_css_sc_configure(binary, pipe->shading.internal_frame_origin_x_bqs_on_sctbl,
-				    pipe->shading.internal_frame_origin_y_bqs_on_sctbl);
+	ia_css_sc_configure(binary, pipeline->shading.internal_frame_origin_x_bqs_on_sctbl,
+				    pipeline->shading.internal_frame_origin_y_bqs_on_sctbl);
 #else
 	/* Currently this is a 2500 only kernel */
-	ia_css_input_yuv_configure(pipe, binary, &args->in_frame->info);
+	ia_css_input_yuv_configure(pipeline, binary, &args->in_frame->info);
 #endif
 	ia_css_iterator_configure(binary, &args->in_frame->info);
+#if !defined(IS_ISP_2500_SYSTEM)
+	(void) res;
+	(void) pipe;
 	ia_css_dvs_configure(binary, &args->out_frame[0]->info);
+#else
+	if (pipe->config.output_system_in_res.width && pipe->config.output_system_in_res.height) {
+		res = &pipe->config.output_system_in_res;
+	} else {
+		res = &args->out_frame[0]->info.res;
+	}
+	ia_css_dvs_configure(binary, res);
+#endif
 	ia_css_output_configure(binary, &args->out_frame[0]->info);
-	ia_css_raw_configure(pipe, binary, &args->in_frame->info, &binary->in_frame_info, two_ppc, deinterleaved);
-	ia_css_ref_configure(binary, (const struct ia_css_frame **)args->delay_frames, pipe->dvs_frame_delay);
+	ia_css_raw_configure(pipeline, binary, &args->in_frame->info, &binary->in_frame_info, two_ppc, deinterleaved);
+	ia_css_ref_configure(binary, (const struct ia_css_frame **)args->delay_frames, pipeline->dvs_frame_delay);
 	ia_css_tnr_configure(binary, (const struct ia_css_frame **)args->tnr_frames);
 #if !defined(IS_ISP_2500_SYSTEM)
 	ia_css_bayer_io_config(binary, args);
