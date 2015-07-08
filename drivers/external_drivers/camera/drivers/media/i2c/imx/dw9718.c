@@ -113,11 +113,6 @@ int dw9718_vcm_power_up(struct v4l2_subdev *sd)
 		dev_err(&client->dev, "DW9718_PD power_ctrl failed %d\n", ret);
 		return ret;
 	}
-	ret = dw9718_i2c_wr8(client, DW9718_PD, 0);
-	if (ret < 0) {
-		dev_err(&client->dev, "write DW9718_PD to 0 failed %d\n", ret);
-		goto fail_powerdown;
-	}
 	/* Wait for VBAT to stabilize */
 	udelay(100);
 
@@ -177,11 +172,6 @@ int dw9718_vcm_power_down(struct v4l2_subdev *sd)
 
 	if (!dw9718_dev.power_on)
 		return 0;
-
-	ret = dw9718_i2c_wr8(client, DW9718_PD, 1);
-	if (ret)
-		dev_err(&client->dev, "%s: write DW9718_PD to 1 failed\n",
-				__func__);
 
 	ret =  dw9718_dev.platform_data->power_ctrl(sd, 0);
 	if (ret) {
