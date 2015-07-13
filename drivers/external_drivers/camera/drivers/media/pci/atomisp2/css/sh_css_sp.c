@@ -821,7 +821,7 @@ is_sp_stage(struct ia_css_pipeline_stage *stage)
 	return stage->sp_func != IA_CSS_PIPELINE_NO_FUNC;
 }
 
-static void
+static enum ia_css_err
 configure_isp_from_args(
 	const struct sh_css_sp_pipeline *pipeline,
 	const struct ia_css_binary      *binary,
@@ -829,8 +829,10 @@ configure_isp_from_args(
 	bool two_ppc,
 	bool deinterleaved)
 {
+	enum ia_css_err err = IA_CSS_SUCCESS;
 	struct ia_css_pipe *pipe = find_pipe_by_num(pipeline->pipe_num);
 	const struct ia_css_resolution *res;
+
 #if !defined(IS_ISP_2500_SYSTEM)
 	ia_css_fpn_configure(binary,  &binary->in_frame_info);
 	ia_css_crop_configure(binary, &args->delay_frames[0]->info);
@@ -851,6 +853,9 @@ configure_isp_from_args(
 	(void) pipe;
 	ia_css_dvs_configure(binary, &args->out_frame[0]->info);
 #else
+	if (pipe == NULL) {
+		return IA_CSS_ERR_INTERNAL_ERROR;
+	}
 	if (pipe->config.output_system_in_res.width && pipe->config.output_system_in_res.height) {
 		res = &pipe->config.output_system_in_res;
 	} else {
@@ -869,7 +874,7 @@ configure_isp_from_args(
 	/* Remove support for TNR2 once TNR3 fully integrated */
 	ia_css_tnr3_configure(binary, (const struct ia_css_frame **)args->tnr_frames);
 #endif
-
+	return err;
 }
 
 static void
@@ -1063,8 +1068,11 @@ sh_css_sp_init_stage(struct ia_css_binary *binary,
 	(void)pipe; /*avoid build warning*/
 #endif
 
-	configure_isp_from_args(&sh_css_sp_group.pipe[thread_id],
+	err = configure_isp_from_args(&sh_css_sp_group.pipe[thread_id],
 			binary, args, two_ppc, sh_css_sp_stage.deinterleaved);
+	if (err != IA_CSS_SUCCESS)
+		return err;
+
 	initialize_isp_states(binary);
 
 	/* we do this only for preview pipe because in fill_binary_info function

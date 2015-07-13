@@ -556,4 +556,28 @@ ia_css_pipe_set_bci_scaler_lut( struct ia_css_pipe *pipe,
  */
 bool ia_css_pipe_has_dvs_stats(struct ia_css_pipe_info *pipe_info);
 
+/** @brief Override the frameformat set on the output pins.
+ * @param[in]  pipe        Pipe handle.
+ * @param[in]  output_pin  Pin index to set the format on
+ *                         0 - main output pin
+ *                         1 - display output pin
+ * @param[in]  format      Format to set
+ *
+ * @return
+ * IA_CSS_SUCCESS		: Success
+ * IA_CSS_ERR_INVALID_ARGUMENTS	: Invalid Parameters
+ * IA_CSS_ERR_INTERNAL_ERROR	: Pipe misses binary info
+ *
+ * Note:
+ * 1) This is an optional function to override the formats set in the pipe.
+ * 2) Only overriding with IA_CSS_FRAME_FORMAT_NV12_TILEY is currently allowed.
+ * 3) This function is only to be used on pipes that use the output system.
+ * 4) If this function is used, it MUST be called after ia_css_pipe_create.
+ * 5) If this function is used, this function MUST be called before ia_css_stream_start.
+ */
+enum ia_css_err
+ia_css_pipe_override_frame_format(struct ia_css_pipe *pipe,
+				int output_pin,
+				enum ia_css_frame_format format);
+
 #endif /* __IA_CSS_PIPE_PUBLIC_H */

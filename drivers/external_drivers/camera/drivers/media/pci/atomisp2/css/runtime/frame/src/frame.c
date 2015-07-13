@@ -137,9 +137,13 @@ enum ia_css_err ia_css_frame_allocate(struct ia_css_frame **frame,
 	err = frame_allocate_with_data(frame, width, height, format,
 				       padded_width, raw_bit_depth, false);
 
-	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE,
+	if ((*frame != NULL) && err == IA_CSS_SUCCESS)
+		ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE,
+		      "ia_css_frame_allocate() leave: frame=%p, data(DDR address)=0x%x\n", *frame, (*frame)->data);
+	else
+		ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE,
 		      "ia_css_frame_allocate() leave: frame=%p, data(DDR address)=0x%x\n",
-		      frame ? *frame : (void *)-1, frame ? (*frame)->data : (unsigned int)-1);
+		      (void *)-1, (unsigned int)-1);
 
 	return err;
 }
@@ -171,7 +175,7 @@ enum ia_css_err ia_css_frame_map(struct ia_css_frame **frame,
 
 	if (err != IA_CSS_SUCCESS) {
 		sh_css_free(me);
-		return err;
+		me = NULL;
 	}
 
 	*frame = me;
@@ -209,10 +213,12 @@ enum ia_css_err ia_css_frame_create_from_info(struct ia_css_frame **frame,
 
 	err = ia_css_frame_init_planes(me);
 
-	if (err == IA_CSS_SUCCESS)
-		*frame = me;
-	else
+	if (err != IA_CSS_SUCCESS) {
 		sh_css_free(me);
+		me = NULL;
+	}
+
+	*frame = me;
 
 	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "ia_css_frame_create_from_info() leave:\n");
 
@@ -528,7 +534,7 @@ enum ia_css_err ia_css_frame_allocate_with_buffer_size(
 
 	if (err != IA_CSS_SUCCESS) {
 		sh_css_free(me);
-		return err;
+		me = NULL;
 	}
 
 	*frame = me;
@@ -810,7 +816,7 @@ static enum ia_css_err frame_allocate_with_data(struct ia_css_frame **frame,
 
 	if (err != IA_CSS_SUCCESS) {
 		sh_css_free(me);
-		return err;
+		me = NULL;
 	}
 
 	*frame = me;

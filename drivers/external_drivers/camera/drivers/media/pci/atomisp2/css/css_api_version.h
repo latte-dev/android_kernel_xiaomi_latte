@@ -35,7 +35,7 @@ The version string has four dot-separated numbers, read left to right:
 
 */
 
-#define CSS_API_VERSION_STRING	"2.1.20.4"
+#define CSS_API_VERSION_STRING	"2.1.20.5"
 
 /*
 Change log
@@ -414,6 +414,12 @@ v2.1.20.4 (53 changes parallel), add input feeder calculations getter
 
 v2.1.20.4 (3 changes parallel), Enable runtime updating mapped args for QoS extension pipe
 - added ia_css_pipe_update_qos_ext_mapped_arg()
+
+v2.1.20.5, Frame format override
+- Added a function call to the pipe interface for overriding
+- the frame format as set in the pipe.
+- This is an optional interface that can be used under
+- some strict conditions.
 
 */
 

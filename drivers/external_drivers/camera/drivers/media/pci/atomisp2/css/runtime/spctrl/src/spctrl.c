@@ -124,6 +124,34 @@ enum ia_css_err ia_css_spctrl_load_fw(sp_ID_t sp_id,
 	return IA_CSS_SUCCESS;
 }
 
+/* reload pre-loaded FW */
+void sh_css_spctrl_reload_fw(sp_ID_t sp_id)
+{
+#ifdef HRT_CSIM
+	/* Secondary SP is named as SP2 in SDK, however we are using secondary
+	SP as SP1 in the HSS and secondary SP Firmware */
+	if (sp_id == SP0_ID) {
+		hrt_cell_set_icache_base_address(SP, spctrl_cofig_info[sp_id].code_addr);
+		hrt_cell_invalidate_icache(SP);
+		hrt_cell_load_program(SP, spctrl_cofig_info[sp_id].program_name);
+	}
+#if defined(HAS_SEC_SP)
+	else {
+		hrt_cell_set_icache_base_address(SP2, spctrl_cofig_info[sp_id].code_addr);
+		hrt_cell_invalidate_icache(SP2);
+		hrt_cell_load_program(SP2, spctrl_cofig_info[sp_id].program_name);
+	}
+#endif /* HAS_SEC_SP */
+#else
+	/* now we program the base address into the icache and
+	* invalidate the cache.
+	*/
+	sp_ctrl_store(sp_id, SP_ICACHE_ADDR_REG, (hrt_data)spctrl_cofig_info[sp_id].code_addr);
+	sp_ctrl_setbit(sp_id, SP_ICACHE_INV_REG, SP_ICACHE_INV_BIT);
+#endif
+	spctrl_loaded[sp_id] = true;
+}
+
 hrt_vaddress get_sp_code_addr(sp_ID_t  sp_id)
 {
 	return spctrl_cofig_info[sp_id].code_addr;

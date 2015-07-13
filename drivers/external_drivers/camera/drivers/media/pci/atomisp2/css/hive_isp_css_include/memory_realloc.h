@@ -12,19 +12,28 @@
  * more details.
  */
 
+#ifndef __MEMORY_REALLOC_H_INCLUDED__
+#define __MEMORY_REALLOC_H_INCLUDED__
 
-//
-// This file contains the version data for the CSS
-//
-// === Do not change - automatically generated ===
-//
+/*!
+ * \brief
+ * Define the internal reallocation of private css memory
+ *
+ */
 
-#ifndef __IA_CSS_VERSION_DATA_H
-#define __IA_CSS_VERSION_DATA_H
+#include <type_support.h>
+/*
+ * User provided file that defines the (sub)system address types:
+ *	- hrt_vaddress	a type that can hold the (sub)system virtual address range
+ */
+#include "system_types.h"
+#include "ia_css_err.h"
 
+bool reallocate_buffer(
+	hrt_vaddress *curr_buf,
+	size_t *curr_size,
+	size_t needed_size,
+	bool force,
+	enum ia_css_err *err);
 
-#define CSS_VERSION_STRING "REL:20150711_28.6_0644; API:2.1.20.5; GIT:scci_20150709_1800_#bc45558ef177470ac522d82ef3124d61b1422f1f; SDK:; USER:viedifw; "
-
-
-#endif
-
+#endif /*__MEMORY_REALLOC_H_INCLUDED__*/

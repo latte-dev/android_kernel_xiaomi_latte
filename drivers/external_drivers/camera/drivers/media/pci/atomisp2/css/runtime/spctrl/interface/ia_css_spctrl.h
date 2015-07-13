@@ -43,6 +43,9 @@ hrt_vaddress get_sp_code_addr(sp_ID_t  sp_id);
 enum ia_css_err ia_css_spctrl_load_fw(sp_ID_t sp_id,
 			ia_css_spctrl_cfg *spctrl_cfg);
 
+/*! Setup registers for reloading FW */
+void sh_css_spctrl_reload_fw(sp_ID_t sp_id);
+
 /*!  Unload/release any memory allocated to hold the firmware
 */
 enum ia_css_err ia_css_spctrl_unload_fw(sp_ID_t sp_id);
