@@ -1839,6 +1839,12 @@ static int i915_dpst_status(struct seq_file *m, void *unused)
 		return 0;
 	}
 
+	/* Check if dpst is initialized by UMD? */
+	if (!dev_priv->dpst.reg.blm_hist_ctl) {
+		seq_puts(m, "DPST feature not enabled\n");
+		return 0;
+	}
+
 	mutex_lock(&dev_priv->dpst.ioctl_lock);
 
 	intel_display_power_get(dev_priv, PIPE_A);
