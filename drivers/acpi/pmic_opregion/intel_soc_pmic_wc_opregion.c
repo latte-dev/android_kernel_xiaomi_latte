@@ -43,6 +43,13 @@ static struct pmic_pwr_table pwr_table[] = {
 		},
 	}, /* V18X -> V1P8SX */
 	{
+		.address = 0x0c,
+		.pwr_reg = {
+			.reg = 0x59,
+			.bit = VR_MODE_NORMAL,
+		},
+	}, /* V12A -> V1P2ACNT */
+	{
 		.address = 0x10,
 		.pwr_reg = {
 			.reg = 0x5a,
