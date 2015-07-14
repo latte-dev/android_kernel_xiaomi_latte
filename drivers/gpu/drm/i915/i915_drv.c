@@ -1041,6 +1041,9 @@ int i915_handle_hung_ring(struct drm_device *dev, uint32_t ringid)
 		DRM_DEBUG_TDR("Simulated gpu hang, rst stop_rings bits %08x\n",
 			(0x1 << ringid));
 		dev_priv->gpu_error.stop_rings &= ~(0x1 << ringid);
+		/* if all hangs are cleared, then clear the ALLOW_BAN/ERROR bits */
+		if ((dev_priv->gpu_error.stop_rings & ((1 << I915_NUM_RINGS) - 1)) == 0)
+			dev_priv->gpu_error.stop_rings = 0;
 	}
 
 	ret = intel_ring_disable(ring, current_context);
