@@ -129,12 +129,10 @@ static int
 i915_dpst_disable_hist_interrupt(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_panel *panel = &dev_priv->dpst.connector->panel;
 
 	u32 blm_hist_guard, blm_hist_ctl;
 
 	dev_priv->dpst.enabled = false;
-	dev_priv->dpst.blc_adjustment = DPST_MAX_FACTOR;
 
 	/* Disable histogram interrupts. It is OK to clear pending interrupts
 	 * and disable interrupts at the same time. */
@@ -151,12 +149,6 @@ i915_dpst_disable_hist_interrupt(struct drm_device *dev)
 	I915_WRITE(dev_priv->dpst.reg.blm_hist_ctl, blm_hist_ctl);
 
 	/* DPST interrupt in DE_IER register is disabled in irq_uninstall */
-
-	/* Setting blc level to what it would be without dpst adjustment */
-	mutex_lock(&dev_priv->backlight_lock);
-	intel_panel_actually_set_backlight(dev_priv->dpst.connector
-			, panel->backlight.level);
-	mutex_unlock(&dev_priv->backlight_lock);
 
 	return 0;
 }
@@ -541,7 +533,11 @@ i915_dpst_set_brightness(struct drm_device *dev, u32 brightness_val)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 backlight_level = brightness_val;
 
-	if (!dev_priv->dpst.enabled)
+	/*
+	 * When DPST is enabled only for video mode, we want to phase out when
+	 * video ends even though DPST is disabled.
+	 */
+	if (!(dev_priv->dpst.enabled || dev_priv->dpst.is_video_mode_enabled))
 		return;
 
 	/* Calculate the backlight after it has been reduced by "dpst
@@ -661,6 +657,7 @@ int
 i915_dpst_set_kernel_disable(struct drm_device *dev, bool disable)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_panel *panel = &dev_priv->dpst.connector->panel;
 	int ret = 0;
 
 	if (!I915_HAS_DPST(dev))
@@ -674,6 +671,12 @@ i915_dpst_set_kernel_disable(struct drm_device *dev, bool disable)
 	if (disable && dev_priv->dpst.enabled) {
 		i915_dpst_save_luma(dev);
 		ret = i915_dpst_disable_hist_interrupt(dev);
+		/* Setting blc level to default */
+		dev_priv->dpst.blc_adjustment = DPST_MAX_FACTOR;
+		mutex_lock(&dev_priv->backlight_lock);
+		intel_panel_actually_set_backlight(dev_priv->dpst.connector,
+				panel->backlight.level);
+		mutex_unlock(&dev_priv->backlight_lock);
 	} else if (!disable && dev_priv->dpst.user_enable) {
 		ret = i915_dpst_enable_hist_interrupt(dev);
 		if (!ret)
