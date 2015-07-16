@@ -3352,18 +3352,19 @@ ia_css_debug_dump_stream_config(
 	byte 2-3: data
 */
 #if TRACE_ENABLE_SP0 || TRACE_ENABLE_SP1 || TRACE_ENABLE_ISP
-static void debug_dump_one_trace(TRACE_CORE_ID proc_id)
+static void debug_dump_one_trace(enum TRACE_CORE_ID proc_id)
 {
 #if defined(HAS_TRACER_V2)
 	uint32_t start_addr;
 	uint32_t start_addr_data;
 	uint32_t item_size;
-	uint32_t tmp;
 	uint8_t tid_val;
-	TRACE_DUMP_FORMAT dump_format;
+	enum TRACE_DUMP_FORMAT dump_format;
 	int i, j, max_trace_points, point_num, limit = -1;
 	/* using a static buffer here as the driver has issues allocating memory */
 	static uint32_t trace_read_buf[TRACE_BUFF_SIZE] = {0};
+	static struct trace_header_t header;
+	uint8_t *header_arr;
 
 	/* read the header and parse it */
 	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "~~~ Tracer ");
@@ -3394,11 +3395,16 @@ static void debug_dump_one_trace(TRACE_CORE_ID proc_id)
 		ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "\t\ttraces are not supported for this processor ID - exiting\n");
 		return;
 	}
-	tmp = ia_css_device_load_uint32(start_addr);
-	point_num = (tmp >> 16) & 0xFFFF;
 
-	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, " ver %d %d points\n", tmp & 0xFF, point_num);
-	if ((tmp & 0xFF) != TRACER_VER) {
+	/* Loading byte-by-byte as using the master routine had issues */
+	header_arr = (uint8_t *)&header;
+	for (i = 0; i < (int)sizeof(struct trace_header_t); i++)
+		header_arr[i] = ia_css_device_load_uint8(start_addr + (i));
+
+	point_num = header.max_tracer_points;
+
+	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, " ver %d %d points\n", header.version, point_num);
+	if ((header.version & 0xFF) != TRACER_VER) {
 		ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "\t\tUnknown version - exiting\n");
 		return;
 	}
@@ -3412,6 +3418,18 @@ static void debug_dump_one_trace(TRACE_CORE_ID proc_id)
 		if ((limit == (-1)) && (trace_read_buf[i] == 0))
 			limit = i;
 	}
+	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "Status:\n");
+	for (i = 0; i < SH_CSS_MAX_SP_THREADS; i++)
+		ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "\tT%d: %3d (%02x)  %6d (%04x)  %10d (%08x)\n", i,
+				header.thr_status_byte[i], header.thr_status_byte[i],
+				header.thr_status_word[i], header.thr_status_word[i],
+				header.thr_status_dword[i], header.thr_status_dword[i]);
+	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "Scratch:\n");
+	for (i = 0; i < MAX_SCRATCH_DATA; i++)
+		ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "%10d (%08x)  ",
+			header.scratch_debug[i], header.scratch_debug[i]);
+	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "\n");
+
 	/* two 0s in the beginning: empty buffer */
 	if ((trace_read_buf[0] == 0) && (trace_read_buf[1] == 0)) {
 		ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "\t\tEmpty tracer - exiting\n");
@@ -3589,21 +3607,21 @@ void ia_css_debug_dump_hang_status(
 	ia_css_debug_pc_dump(SP0_ID, 20);
 	ia_css_debug_pc_dump(SP1_ID, 20);
 
-	reg = ia_css_device_load_uint32(GP_REGS_BASE[0] + SP0_STREAM_MON_STAT_OFFSET);
+	reg = ia_css_device_load_uint32(GP_DEVICE_BASE[0] + SP0_STREAM_MON_STAT_OFFSET);
 	ia_css_debug_dtrace(0, "=>=>=>=> SP0 streaming monitor status: 0x%X", reg);
-	reg = ia_css_device_load_uint32(GP_REGS_BASE[0] + SP1_STREAM_MON_STAT_OFFSET);
+	reg = ia_css_device_load_uint32(GP_DEVICE_BASE[0] + SP1_STREAM_MON_STAT_OFFSET);
 	ia_css_debug_dtrace(0, "=>=>=>=> SP1 streaming monitor status: 0x%X", reg);
-	reg = ia_css_device_load_uint32(GP_REGS_BASE[0] + ISP_STREAM_MON_STAT_OFFSET);
+	reg = ia_css_device_load_uint32(GP_DEVICE_BASE[0] + ISP_STREAM_MON_STAT_OFFSET);
 	ia_css_debug_dtrace(0, "=>=>=>=> ISP streaming monitor status: 0x%X", reg);
-	reg = ia_css_device_load_uint32(GP_REGS_BASE[0] + MODULE_ISP_STREAM_MON_STAT_OFFSET);
+	reg = ia_css_device_load_uint32(GP_DEVICE_BASE[0] + MODULE_ISP_STREAM_MON_STAT_OFFSET);
 	ia_css_debug_dtrace(0, "=>=>=>=> Module ISP streaming monitor status: 0x%X", reg);
-	reg = ia_css_device_load_uint32(GP_REGS_BASE[0] + ACC_STREAM_MON_STAT_OFFSET);
+	reg = ia_css_device_load_uint32(GP_DEVICE_BASE[0] + ACC_STREAM_MON_STAT_OFFSET);
 	ia_css_debug_dtrace(0, "=>=>=>=> ACC streaming monitor status: 0x%X", reg);
-	reg = ia_css_device_load_uint32(GP_REGS_BASE[0] + ACC_SP0_STREAM_MON_STAT_OFFSET);
+	reg = ia_css_device_load_uint32(GP_DEVICE_BASE[0] + ACC_SP0_STREAM_MON_STAT_OFFSET);
 	ia_css_debug_dtrace(0, "=>=>=>=> ACC to SP0 streaming monitor status: 0x%X", reg);
-	reg = ia_css_device_load_uint32(GP_REGS_BASE[0] + ACC_SP1_STREAM_MON_STAT_OFFSET);
+	reg = ia_css_device_load_uint32(GP_DEVICE_BASE[0] + ACC_SP1_STREAM_MON_STAT_OFFSET);
 	ia_css_debug_dtrace(0, "=>=>=>=> ACC to SP1 streaming monitor status: 0x%X", reg);
-	reg = ia_css_device_load_uint32(GP_REGS_BASE[0] + MODULE_STREAM_MON_STAT_OFFSET);
+	reg = ia_css_device_load_uint32(GP_DEVICE_BASE[0] + MODULE_STREAM_MON_STAT_OFFSET);
 	ia_css_debug_dtrace(0, "=>=>=>=> Module streaming monitor status: 0x%X", reg);
 }
 #endif

@@ -38,6 +38,7 @@
 
 #ifdef PIPE_GENERATION
 #define PIPEMEM(x) MEM(x)
+#define ISP_NWAY   (1<<ISP_NWAY_LOG2)
 #else
 #define PIPEMEM(x)
 #endif
