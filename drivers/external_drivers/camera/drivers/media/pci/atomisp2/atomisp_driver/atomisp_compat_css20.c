@@ -3392,6 +3392,8 @@ int atomisp_css_offline_capture_configure(struct atomisp_sub_device *asd,
 {
 	enum ia_css_err ret;
 
+	dev_dbg(asd->isp->dev, "%s num_capture:%d skip:%d offset:%d\n",
+			__func__, num_captures, skip, offset);
 	ret = ia_css_stream_capture(
 		asd->stream_env[ATOMISP_INPUT_STREAM_GENERAL].stream,
 		num_captures, skip, offset);

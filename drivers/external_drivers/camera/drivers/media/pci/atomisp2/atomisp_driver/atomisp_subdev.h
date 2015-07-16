@@ -398,7 +398,7 @@ struct atomisp_sub_device {
 	struct atomisp_resolution sensor_array_res;
 	bool high_speed_mode; /* Indicate whether now is a high speed mode */
 	int pending_capture_request; /* Indicates the number of pending capture requests. */
-
+	bool re_trigger_capture;
 	unsigned int preview_exp_id;
 	unsigned int postview_exp_id;
 };
