@@ -1,17 +1,16 @@
 /*
- * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2010 - 2015, Intel Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- */
+Support for Intel Camera Imaging ISP subsystem.
+Copyright (c) 2010 - 2015, Intel Corporation.
 
+This program is free software; you can redistribute it and/or modify it
+under the terms and conditions of the GNU General Public License,
+version 2, as published by the Free Software Foundation.
+
+This program is distributed in the hope it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+more details.
+*/
 /*! \file */
 #include "ia_css.h"
 #include "sh_css_hrt.h"		/* only for file 2 MIPI */
@@ -1666,6 +1665,34 @@ ia_css_reset_defaults(struct sh_css* css)
 	*css = default_css;
 }
 
+struct ia_css_pipe* sh_css_get_next_saved_pipe(unsigned int *curr_stream_num,
+		unsigned int *curr_pipe_num)
+{
+	int i;
+	int j;
+	struct ia_css_pipe *curr_pipe = NULL;
+
+	for (i = *curr_stream_num; i < MAX_ACTIVE_STREAMS; i++) {
+		if (my_css_save.streams[i] == NULL) {
+			continue;
+		}
+		for (j = *curr_pipe_num; j < my_css_save.streams[i]->num_pipes; j++) {
+			curr_pipe = my_css_save.streams[i]->pipes[j];
+			if (curr_pipe != NULL) {
+				if ((j + 1) < my_css_save.streams[i]->num_pipes) {
+					*curr_pipe_num = j + 1;
+				} else {
+					*curr_stream_num = i + 1;
+					*curr_pipe_num = 0;
+				}
+				return curr_pipe;
+			}
+		}
+		*curr_pipe_num = 0;
+	}
+	return NULL;
+}
+
 bool
 ia_css_check_firmware_version(const struct ia_css_fw  *fw)
 {
@@ -1694,14 +1721,18 @@ ia_css_load_firmware(const struct ia_css_env *env,
 
 	/* make sure we initialize my_css */
 	if ((my_css.malloc != env->cpu_mem_env.alloc) ||
-	    (my_css.free != env->cpu_mem_env.free) ||
-	    (my_css.flush != env->cpu_mem_env.flush)
-	    )
+		(my_css.free != env->cpu_mem_env.free) ||
+		(my_css.malloc_ex != env->cpu_mem_env.alloc_ex) ||
+		(my_css.free_ex != env->cpu_mem_env.free_ex) ||
+		(my_css.flush != env->cpu_mem_env.flush)
+		)
 	{
 		ia_css_reset_defaults(&my_css);
 
 		my_css.malloc = env->cpu_mem_env.alloc;
 		my_css.free = env->cpu_mem_env.free;
+		my_css.malloc_ex = env->cpu_mem_env.alloc_ex;
+		my_css.free_ex = env->cpu_mem_env.free_ex;
 		my_css.flush = env->cpu_mem_env.flush;
 	}
 
@@ -1733,9 +1764,11 @@ ia_css_init(const struct ia_css_env *env,
 	ia_css_spctrl_cfg sp1ctrl_cfg;
 #endif /* HAS_SEC_SP */
 
-	void *(*malloc_func) (size_t size, bool zero_mem);
-	void (*free_func) (void *ptr);
-	void (*flush_func) (struct ia_css_acc_fw *fw);
+	void *(*malloc_func)(size_t size, bool zero_mem);
+	void (*free_func)(void *ptr);
+	void *(*malloc_func_ex)(size_t size, bool zero_mem, const char *caller_func, int caller_line);
+	void (*free_func_ex)(void *ptr, const char *caller_func, int caller_line);
+	void (*flush_func)(struct ia_css_acc_fw *fw);
 #if !defined(HAS_NO_GPIO)
 	hrt_data select, enable;
 #endif
@@ -1787,9 +1820,11 @@ ia_css_init(const struct ia_css_env *env,
 
 	IA_CSS_ENTER("void");
 
-	malloc_func = env->cpu_mem_env.alloc;
-	free_func   = env->cpu_mem_env.free;
-	flush_func  = env->cpu_mem_env.flush;
+	malloc_func    = env->cpu_mem_env.alloc;
+	free_func      = env->cpu_mem_env.free;
+	malloc_func_ex = env->cpu_mem_env.alloc_ex;
+	free_func_ex   = env->cpu_mem_env.free_ex;
+	flush_func     = env->cpu_mem_env.flush;
 
 	pipe_global_init();
 	ia_css_pipeline_init();
@@ -1814,9 +1849,11 @@ ia_css_init(const struct ia_css_env *env,
 
 	ia_css_reset_defaults(&my_css);
 
-	my_css.malloc = malloc_func;
-	my_css.free = free_func;
-	my_css.flush = flush_func;
+	my_css.malloc    = malloc_func;
+	my_css.free      = free_func;
+	my_css.malloc_ex = malloc_func_ex;
+	my_css.free_ex   = free_func_ex;
+	my_css.flush     = flush_func;
 
 	err = ia_css_rmgr_init();
 	if (err != IA_CSS_SUCCESS) {
@@ -2228,30 +2265,50 @@ ia_css_enable_isys_event_queue(bool enable)
 }
 
 void *
-sh_css_malloc(size_t size)
+sh_css_malloc_ex(size_t size, const char *caller_func, int caller_line)
 {
 	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "sh_css_malloc() enter: size=%d\n",size);
+#if defined(HAS_CPU_MEM_DEBUG)
+	if (size > 0 && my_css.malloc_ex)
+		return my_css.malloc_ex(size, false, caller_func, caller_line);
+#else
+	(void)caller_func;
+	(void)caller_line;
 	if (size > 0 && my_css.malloc)
 		return my_css.malloc(size, false);
+#endif
 	return NULL;
 }
 
 void *
-sh_css_calloc(size_t N, size_t size)
+sh_css_calloc_ex(size_t N, size_t size, const char *caller_func, int caller_line)
 {
 	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE, "sh_css_calloc() enter: N=%d, size=%d\n",N,size);
-	if (size > 0 && my_css.malloc) {
+#if defined(HAS_CPU_MEM_DEBUG)
+	if (size > 0 && my_css.malloc_ex)
+		return my_css.malloc_ex(N*size, true, caller_func, caller_line);
+#else
+	(void)caller_func;
+	(void)caller_line;
+	if (size > 0 && my_css.malloc)
 		return my_css.malloc(N*size, true);
-	}
+#endif
 	return NULL;
 }
 
 void
-sh_css_free(void *ptr)
+sh_css_free_ex(void *ptr, const char *caller_func, int caller_line)
 {
 	IA_CSS_ENTER_PRIVATE("ptr = %p", ptr);
+#if defined(HAS_CPU_MEM_DEBUG)
+	if (ptr && my_css.free_ex)
+		my_css.free_ex(ptr, caller_func, caller_line);
+#else
+	(void)caller_func;
+	(void)caller_line;
 	if (ptr && my_css.free)
 		my_css.free(ptr);
+#endif
 	IA_CSS_LEAVE_PRIVATE("void");
 }
 
@@ -10073,6 +10130,7 @@ ia_css_stream_create(const struct ia_css_stream_config *stream_config,
 			if (err != IA_CSS_SUCCESS)
 				goto ERR;
 		}
+		pipe_info->output_system_in_res_info = curr_pipe->config.output_system_in_res;
 		if (!spcopyonly){
 			err = sh_css_pipe_get_shading_info(curr_pipe,
 					&pipe_info->shading_info, &curr_pipe->config);

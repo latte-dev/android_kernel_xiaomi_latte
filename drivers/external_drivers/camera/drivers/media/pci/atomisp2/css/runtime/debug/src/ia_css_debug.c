@@ -1,17 +1,16 @@
 /*
- * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2010 - 2015, Intel Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- */
+Support for Intel Camera Imaging ISP subsystem.
+Copyright (c) 2010 - 2015, Intel Corporation.
 
+This program is free software; you can redistribute it and/or modify it
+under the terms and conditions of the GNU General Public License,
+version 2, as published by the Free Software Foundation.
+
+This program is distributed in the hope it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+more details.
+*/
 
 #include "debug.h"
 #include "memory_access.h"
@@ -123,6 +122,15 @@ unsigned int ia_css_debug_trace_level = IA_CSS_DEBUG_WARNING;
 #define DPG_END   " ia_css_debug_pipe_graph_dump_end\n"
 
 #define ENABLE_LINE_MAX_LENGTH (25)
+
+#define DBG_EXT_CMD_TRACE_PNTS_DUMP (1 << 8)
+#define DBG_EXT_CMD_PUB_CFG_DUMP (1 << 9)
+#define DBG_EXT_CMD_GAC_REG_DUMP (1 << 10)
+#define DBG_EXT_CMD_GAC_ACB_REG_DUMP (1 << 11)
+#define DBG_EXT_CMD_FIFO_DUMP (1 << 12)
+#define DBG_EXT_CMD_QUEUE_DUMP (1 << 13)
+#define DBG_EXT_CMD_DMA_DUMP (1 << 14)
+#define DBG_EXT_CMD_MASK 0xAB0000CD
 
 /*
  * TODO:SH_CSS_MAX_SP_THREADS is not the max number of sp threads
@@ -3624,7 +3632,67 @@ void ia_css_debug_dump_hang_status(
 	reg = ia_css_device_load_uint32(GP_DEVICE_BASE[0] + MODULE_STREAM_MON_STAT_OFFSET);
 	ia_css_debug_dtrace(0, "=>=>=>=> Module streaming monitor status: 0x%X", reg);
 }
-#endif
+#if !defined(C_RUN)
+void ia_css_debug_ext_command_handler(void)
+{
+	hrt_address ext_cmd_add = TRACE_SP0_ADDR + offsetof(struct trace_header_t, command);
+	uint32_t ext_cmd;
+	unsigned int save_debug_level;
+	struct ia_css_pipe *curr_pipe;
+	static bool cmd_started = false;
+	unsigned int curr_stream_num = 0;
+	unsigned int curr_pipe_num = 0;
+
+	ext_cmd = ia_css_device_load_uint32(ext_cmd_add);
+	ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "ia_css_debug_ext_command_handler()\n");
+	if (((ext_cmd & DBG_EXT_CMD_MASK) != DBG_EXT_CMD_MASK) ||
+		((ext_cmd & ~DBG_EXT_CMD_MASK) == 0) || (cmd_started == true))
+		return;
+	cmd_started = true;
+	save_debug_level = ia_css_debug_trace_level;
+	ia_css_debug_trace_level = IA_CSS_DEBUG_PARAM;
+	ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "Command: 0x%X\n", ext_cmd);
+	if (ext_cmd & DBG_EXT_CMD_TRACE_PNTS_DUMP) {
+		ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "START of Tracer dump\n");
+		ia_css_debug_dump_trace();
+		ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "END of Tracer dump\n");
+	}
+	if (ext_cmd & DBG_EXT_CMD_PUB_CFG_DUMP) {
+		ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "START of public configuration dump\n");
+		while ((curr_pipe = sh_css_get_next_saved_pipe(&curr_stream_num, &curr_pipe_num)) != NULL) {
+			ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM,
+				"Public configuration of PIPE %d\n", curr_pipe_num);
+			ia_css_acc_cluster_public_cfg_dump_from_pipe(curr_pipe);
+		}
+		ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "END of public configuration dump\n");
+	}
+	if (ext_cmd & DBG_EXT_CMD_GAC_ACB_REG_DUMP) {
+		ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "START of dump_gac_acb_state\n");
+		ia_css_debug_dump_gac_state();
+		ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "END of dump_gac_acb_state\n");
+	}
+	if (ext_cmd & DBG_EXT_CMD_FIFO_DUMP) {
+		ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "START of dump_all_fifo_state\n");
+		ia_css_debug_dump_all_fifo_state();
+		ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "END of dump_all_fifo_state\n");
+	}
+	if (ext_cmd & DBG_EXT_CMD_QUEUE_DUMP) {
+		ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "START of bufq_dump_queue_info\n");
+		ia_css_bufq_dump_queue_info();
+		ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "END of bufq_dump_queue_info\n");
+	}
+	if (ext_cmd & DBG_EXT_CMD_DMA_DUMP) {
+		ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "START of dump_dma_state\n");
+		ia_css_debug_dump_dma_state();
+		ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "END of dump_dma_state\n");
+	}
+	ia_css_debug_trace_level = save_debug_level;
+	ia_css_device_store_uint32(ext_cmd_add, 0x0);
+	ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "CMD word is 0\n");
+	cmd_started = false;
+}
+#endif	/* C_RUN */
+#endif	/* IS_ISP_2500_SYSTEM */
 
 #if defined(HRT_SCHED) || defined(SH_CSS_DEBUG_SPMEM_DUMP_SUPPORT)
 #include "spmem_dump.c"

@@ -1,17 +1,16 @@
 /*
- * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2010 - 2015, Intel Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- */
+Support for Intel Camera Imaging ISP subsystem.
+Copyright (c) 2010 - 2015, Intel Corporation.
 
+This program is free software; you can redistribute it and/or modify it
+under the terms and conditions of the GNU General Public License,
+version 2, as published by the Free Software Foundation.
+
+This program is distributed in the hope it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+more details.
+*/
 
 #ifndef __IA_CSS_PIPE_PUBLIC_H
 #define __IA_CSS_PIPE_PUBLIC_H
@@ -181,6 +180,8 @@ struct ia_css_pipe_config {
 
 /** Pipe info, this struct describes properties of a pipe after it's stream has
  * been created.
+ * ~~~** DO NOT ADD NEW FIELD **~~~ This structure will be deprecated.
+ *           - On the Behalf of CSS-API Committee.
  */
 struct ia_css_pipe_info {
 	struct ia_css_frame_info output_info[IA_CSS_PIPE_MAX_OUTPUT_STAGE];
@@ -199,6 +200,9 @@ struct ia_css_pipe_info {
 	     pixels normally used to initialize the ISP filters.
 	     This is why the raw output resolution should normally be set to
 	     the input resolution - 8x8. */
+	struct ia_css_resolution output_system_in_res_info;
+	/**< For IPU3 only. Info about output system in resolution which is considered
+	     as gdc out resolution. */
 	struct ia_css_shading_info shading_info;
 	/**< After an image pipe is created, this field will contain the info
 	     for the shading correction. */
@@ -221,6 +225,7 @@ struct ia_css_pipe_info {
 	{IA_CSS_BINARY_DEFAULT_FRAME_INFO},	/* output_info */ \
 	{IA_CSS_BINARY_DEFAULT_FRAME_INFO},	/* vf_output_info */ \
 	IA_CSS_BINARY_DEFAULT_FRAME_INFO,	/* raw_output_info */ \
+	{ 0, 0},				/* output system in res */ \
 	DEFAULT_SHADING_INFO,			/* shading_info */ \
 	DEFAULT_GRID_INFO,			/* grid_info */ \
 	0					/* num_invalid_frames */ \

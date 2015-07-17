@@ -1,17 +1,16 @@
 /*
- * Support for Intel Camera Imaging ISP subsystem.
- * Copyright (c) 2010 - 2015, Intel Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- */
+Support for Intel Camera Imaging ISP subsystem.
+Copyright (c) 2010 - 2015, Intel Corporation.
 
+This program is free software; you can redistribute it and/or modify it
+under the terms and conditions of the GNU General Public License,
+version 2, as published by the Free Software Foundation.
+
+This program is distributed in the hope it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+more details.
+*/
 
 #ifndef _SH_CSS_INTERNAL_H_
 #define _SH_CSS_INTERNAL_H_
@@ -1050,14 +1049,18 @@ sh_css_params_init(void);
 void
 sh_css_params_uninit(void);
 
-void *
-sh_css_malloc(size_t size);
+#define sh_css_malloc(size) sh_css_malloc_ex(size, __func__, __LINE__)
+#define sh_css_calloc(N, size) sh_css_calloc_ex(N, size, __func__, __LINE__)
+#define sh_css_free(ptr) sh_css_free_ex(ptr, __func__, __LINE__)
 
 void *
-sh_css_calloc(size_t N, size_t size);
+sh_css_malloc_ex(size_t size, const char *caller_func, int caller_line);
+
+void *
+sh_css_calloc_ex(size_t N, size_t size, const char *caller_func, int caller_lin);
 
 void
-sh_css_free(void *ptr);
+sh_css_free_ex(void *ptr, const char *caller_func, int caller_line);
 
 /* For Acceleration API: Flush FW (shared buffer pointer) arguments */
 void
@@ -1163,5 +1166,8 @@ ia_css_get_crop_offsets(
 		struct ia_css_frame_info *in_frame);
 #endif
 #endif /* !defined(__ISP) && !defined(__SP) */
+
+struct ia_css_pipe* sh_css_get_next_saved_pipe(unsigned int *curr_stream_num,
+		unsigned int *curr_pipe_num);
 
 #endif /* _SH_CSS_INTERNAL_H_ */
