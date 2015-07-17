@@ -27,6 +27,7 @@
 
 #include <linux/pid.h>
 #include <linux/shmem_fs.h>
+#include <linux/dma-buf.h>
 #include <drm/drmP.h>
 #include <drm/i915_drm.h>
 #include <linux/async.h>
@@ -528,6 +529,70 @@ static void i915_obj_pidarray_validate(struct drm_gem_object *gem_obj)
 	}
 }
 
+static int i915_obj_find_insert_in_hash(struct drm_i915_gem_object *obj,
+				struct pid_stat_entry *pid_entry,
+				bool *found)
+{
+	struct drm_hash_item *hash_item;
+	int ret;
+
+	ret = drm_ht_find_item(&pid_entry->namelist,
+				(unsigned long)&obj->base, &hash_item);
+	/* Not found, insert in hash */
+	if (ret) {
+		struct name_entry *entry =
+			kzalloc(sizeof(*entry), GFP_NOWAIT);
+		if (entry == NULL) {
+			DRM_ERROR("alloc failed\n");
+			return -ENOMEM;
+		}
+		entry->hash_item.key = (unsigned long)&obj->base;
+		drm_ht_insert_item(&pid_entry->namelist,
+				   &entry->hash_item);
+		list_add_tail(&entry->head, &pid_entry->namefree);
+		*found = false;
+	} else
+		*found = true;
+
+	return 0;
+}
+
+static int i915_obj_shared_count(struct drm_i915_gem_object *obj,
+				struct pid_stat_entry *pid_entry,
+				bool *discard)
+{
+	struct drm_i915_obj_pid_info *pid_info_entry;
+	int ret, obj_shared_count = 0;
+
+	/*
+	 * The object can be shared among different processes by either flink
+	 * or dma-buf mechanism, leading to shared count more than 1. For the
+	 * objects not shared , return the shared count as 1.
+	 * In case of shared dma-buf objects, there's a possibility that these
+	 * may be external to i915. Detect this condition through
+	 * 'import_attach' field.
+	 */
+	if (!obj->base.name && !obj->base.dma_buf)
+		return 1;
+	else if(obj->base.import_attach) {
+			/* not our GEM obj */
+			*discard = true;
+			return 0;
+	}
+
+	ret = i915_obj_find_insert_in_hash(obj, pid_entry, discard);
+	if (ret)
+		return ret;
+
+	list_for_each_entry(pid_info_entry, &obj->pid_info, head)
+		obj_shared_count++;
+
+	if (WARN_ON(obj_shared_count == 0))
+		return -EINVAL;
+
+	return obj_shared_count;
+}
+
 static int
 i915_describe_obj(struct get_obj_stats_buf *obj_stat_buf,
 		struct drm_i915_gem_object *obj)
@@ -538,35 +603,15 @@ i915_describe_obj(struct get_obj_stats_buf *obj_stat_buf,
 	struct drm_i915_error_state_buf *m = obj_stat_buf->m;
 	struct pid_stat_entry *pid_entry = obj_stat_buf->entry;
 	struct per_file_obj_mem_info *stats = &pid_entry->stats;
-	struct drm_hash_item *hash_item;
 	int obj_shared_count = 0;
-	bool duplicate_obj = false;
+	bool discard = false;
 
-	if (obj->base.name) {
-		if (drm_ht_find_item(&pid_entry->namelist,
-				(unsigned long)obj->base.name, &hash_item)) {
-			struct name_entry *entry =
-				kzalloc(sizeof(*entry), GFP_NOWAIT);
-			if (entry == NULL) {
-				DRM_ERROR("alloc failed\n");
-				return -ENOMEM;
-			}
-			entry->hash_item.key = obj->base.name;
-			drm_ht_insert_item(&pid_entry->namelist,
-					   &entry->hash_item);
-			list_add_tail(&entry->head, &pid_entry->namefree);
-			list_for_each_entry(pid_info_entry, &obj->pid_info,
-					head)
-				obj_shared_count++;
 
-			if (WARN_ON(obj_shared_count == 0))
-				return -EINVAL;
-		} else
-			duplicate_obj = true;
-	} else
-		obj_shared_count = 1;
+	obj_shared_count = i915_obj_shared_count(obj, pid_entry, &discard);
+	if (obj_shared_count < 0)
+		return obj_shared_count;
 
-	if (!duplicate_obj && !obj->stolen &&
+	if (!discard && !obj->stolen &&
 			(obj->madv != __I915_MADV_PURGED) &&
 			(i915_obj_get_shmem_pages_alloced(obj) != 0)) {
 		if (obj_shared_count > 1)
@@ -584,7 +629,7 @@ i915_describe_obj(struct get_obj_stats_buf *obj_stat_buf,
 		   get_pin_flag(obj),
 		   get_tiling_flag(obj),
 		   obj->dirty ? "Y" : "N",
-		   obj->base.name ? "Y" : "N",
+		   (obj_shared_count > 1) ? "Y" : "N",
 		   (obj->userptr.mm != 0) ? "Y" : "N",
 		   obj->stolen ? "Y" : "N",
 		   (obj->pin_mappable || obj->fault_mappable) ? "Y" : "N");
@@ -661,9 +706,8 @@ i915_drm_gem_object_per_file_summary(int id, void *ptr, void *data)
 	struct pid_stat_entry *pid_entry = data;
 	struct drm_i915_gem_object *obj = ptr;
 	struct per_file_obj_mem_info *stats = &pid_entry->stats;
-	struct drm_i915_obj_pid_info *pid_info_entry;
-	struct drm_hash_item *hash_item;
 	int obj_shared_count = 0;
+	bool discard = false;
 
 	if (obj->pid_info.next == NULL) {
 		DRM_ERROR(
@@ -680,43 +724,17 @@ i915_drm_gem_object_per_file_summary(int id, void *ptr, void *data)
 
 	stats->num_obj++;
 
-	if (obj->base.name) {
+	obj_shared_count = i915_obj_shared_count(obj, pid_entry, &discard);
+	if (obj_shared_count < 0)
+		return obj_shared_count;
 
-		if (drm_ht_find_item(&pid_entry->namelist,
-				(unsigned long)obj->base.name, &hash_item)) {
-			struct name_entry *entry =
-				kzalloc(sizeof(*entry), GFP_NOWAIT);
-			if (entry == NULL) {
-				DRM_ERROR("alloc failed\n");
-				return -ENOMEM;
-			}
-			entry->hash_item.key = obj->base.name;
-			drm_ht_insert_item(&pid_entry->namelist,
-					&entry->hash_item);
-			list_add_tail(&entry->head, &pid_entry->namefree);
+	if (discard)
+		return 0;
 
-			list_for_each_entry(pid_info_entry, &obj->pid_info,
-					head)
-				obj_shared_count++;
-			if (WARN_ON(obj_shared_count == 0))
-				return -EINVAL;
-		} else {
-			DRM_DEBUG("Duplicate obj with name %d for process %s\n",
-				obj->base.name, stats->process_name);
-			return 0;
-		}
-
-		DRM_DEBUG("Obj: %p, shared count =%d\n",
-			&obj->base, obj_shared_count);
-
-		if (obj_shared_count > 1)
-			stats->num_obj_shared++;
-		else
-			stats->num_obj_private++;
-	} else {
-		obj_shared_count = 1;
+	if (obj_shared_count > 1)
+		stats->num_obj_shared++;
+	else
 		stats->num_obj_private++;
-	}
 
 	if (i915_gem_obj_bound_any(obj)) {
 		stats->num_obj_gtt_bound++;
