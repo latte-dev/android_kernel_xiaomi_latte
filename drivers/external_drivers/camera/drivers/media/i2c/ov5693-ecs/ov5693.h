@@ -550,7 +550,7 @@ static struct ov5693_reg const ov5693_654x496[] = {
 
 /*
  * 1296x976 30fps 17ms VBlanking 2lane 10Bit (Scaling)
-*DS from 2624x1492
+*DS from 2592x1952
 */
 static struct ov5693_reg const ov5693_1296x976[] = {
 	{OV5693_8BIT, 0x3501, 0x7b},
@@ -578,7 +578,10 @@ static struct ov5693_reg const ov5693_1296x976[] = {
 	{OV5693_8BIT, 0x380e, 0x07},
 	{OV5693_8BIT, 0x380f, 0xc0},
 
-	{OV5693_8BIT, 0x3813, 0xE8},
+	{OV5693_8BIT, 0x3810, 0x00},
+	{OV5693_8BIT, 0x3811, 0x10},
+	{OV5693_8BIT, 0x3812, 0x00},
+	{OV5693_8BIT, 0x3813, 0x02},
 
 	{OV5693_8BIT, 0x3814, 0x11},	/*X subsample control*/
 	{OV5693_8BIT, 0x3815, 0x11},	/*Y subsample control*/
