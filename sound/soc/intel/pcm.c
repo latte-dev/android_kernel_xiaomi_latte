@@ -31,6 +31,7 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
+#include <linux/firmware.h>
 #include <sound/intel_sst_ioctl.h>
 #include <asm/platform_sst_audio.h>
 #include <asm/platform_cht_audio.h>
@@ -47,6 +48,8 @@ extern struct snd_effect_ops effects_ops;
 
 /* module parameters */
 static int dpcm_enable = 1;
+static int dfw_request;
+static int defer_probe = 1; /* defer probe is enabled */
 
 /* dpcm_enable should be =0 for mofd_v0 and =1 for mofd_v1 */
 module_param(dpcm_enable, int, 0644);
@@ -1044,21 +1047,32 @@ static const struct snd_soc_component_driver pcm_component = {
 	.name           = "pcm",
 };
 
+void dfw_fw_load_cb(const struct firmware *fw, void *context)
+{
+	if (fw == NULL) {
+		pr_err("request dfw fw failed\n");
+		return;
+	}
+
+	defer_probe = 0;
+}
 static int sst_platform_probe(struct platform_device *pdev)
 {
 	struct sst_data *sst;
 	int ret;
 	struct sst_platform_data *pdata = pdev->dev.platform_data;
-	struct file *file;
 
 	pr_debug("sst_platform_probe called\n");
+	if (pdata->dfw_enable) {
+		if (!dfw_request) {
+			request_firmware_nowait(THIS_MODULE, 1, "dfw_sst.bin",
+				&pdev->dev, GFP_KERNEL, NULL, dfw_fw_load_cb);
+			dfw_request = 1;
+		}
 
-	if(pdata->dfw_enable) {
-		file = filp_open("/etc/firmware/dfw_sst.bin", O_RDONLY, 0);
-
-		if (IS_ERR(file)) {
-			pr_info("sst_platform_probe is deferred\n");
-			return -EPROBE_DEFER;
+		if (defer_probe) {
+			pr_info("sst_platform_probe deferred\n");
+			return  -EPROBE_DEFER;
 		}
 	}
 
