@@ -2941,7 +2941,7 @@ i915_gem_find_active_request(struct intel_engine_cs *ring)
 	return NULL;
 }
 
-static void i915_gem_reset_ring_status(struct drm_i915_private *dev_priv,
+void i915_gem_reset_ring_status(struct drm_i915_private *dev_priv,
 				       struct intel_engine_cs *ring)
 {
 	struct drm_i915_gem_request *request;
@@ -2959,6 +2959,21 @@ static void i915_gem_reset_ring_status(struct drm_i915_private *dev_priv,
 
 	list_for_each_entry_continue(request, &ring->request_list, list)
 		i915_set_reset_status(dev_priv, request->ctx, false);
+
+	/*
+	 * If there is a gpu scheduler enabled, check each context to
+	 * see if it has any requests for this ring wating in the
+	 * scheduler
+	 */
+	if (i915_scheduler_is_enabled(dev_priv->dev)) {
+		struct intel_context *ctx;
+		uint32_t count;
+		list_for_each_entry(ctx, &dev_priv->context_list, link) {
+			count = i915_scheduler_count_queued_by_context
+							(dev_priv->dev, ctx, ring);
+			ctx->hang_stats.batch_pending += count;
+		}
+	}
 }
 
 static void i915_gem_reset_ring_cleanup(struct drm_i915_private *dev_priv,
@@ -3039,8 +3054,6 @@ void i915_gem_reset(struct drm_device *dev)
 	struct intel_engine_cs *ring;
 	int i;
 
-	i915_scheduler_kill_all(dev);
-
 	/*
 	 * Before we free the objects from the requests, we need to inspect
 	 * them for finding the guilty party. As the requests only borrow
@@ -3048,6 +3061,8 @@ void i915_gem_reset(struct drm_device *dev)
 	 */
 	for_each_ring(ring, dev_priv, i)
 		i915_gem_reset_ring_status(dev_priv, ring);
+
+	i915_scheduler_kill_all(dev);
 
 	for_each_ring(ring, dev_priv, i)
 		i915_gem_reset_ring_cleanup(dev_priv, ring);

@@ -905,12 +905,10 @@ int i915_handle_hung_ring(struct drm_device *dev, uint32_t ringid)
 	uint32_t completed_seqno;
 	struct drm_crtc *crtc;
 	struct intel_crtc *intel_crtc;
-	struct drm_i915_gem_request *request;
 	struct intel_unpin_work *unpin_work;
 	struct intel_context *current_context = NULL;
 	uint32_t hw_context_id1 = ~0u;
 	uint32_t hw_context_id2 = ~0u;
-	int guilty = 1;
 
 	acthd = intel_ring_get_active_head(ring);
 	completed_seqno = ring->get_seqno(ring, false);
@@ -944,14 +942,59 @@ int i915_handle_hung_ring(struct drm_device *dev, uint32_t ringid)
 	/* Take wake lock to prevent power saving mode */
 	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
-	/* Search the request list to see which batch buffer caused
-	* the hang. Only checks requests that haven't yet completed.*/
-	list_for_each_entry(request, &ring->request_list, list) {
-		if (request && (request->seqno > completed_seqno)) {
-			i915_set_reset_status(dev_priv, request->ctx, guilty);
-			guilty = 0;
-		}
-	}
+
+	/*
+	 * The driver keeps some counters for each context, called batch_active
+	 * and batch_pending. These are used to track how many batch buffers
+	 * have been impacted by a reset. There does not seem to be a precise
+	 * requirement for what these mean, so for the moment they are:
+	 *
+	 * batch_active for a context is incremented if it owns
+	 * the batch buffer that is active on the hung ring.
+	 *
+	 * batch_pending for a context is incremented for each batch
+	 * that it owns that is not marked complete when its ring is
+	 * reset.
+	 *
+	 * If a context has batch_active > 0 then it has submitted work that
+	 * has hung one of the engines - bad boy! If also batch_pending > 0
+	 * then it has other work submitted behind the hanging batch. When
+	 * TDR is enabled the ring reset does not cause these batch buffers
+	 * to be discarded and they may well execute fine after the hang is
+	 * cleared, but they should probably be considered suspect. If TDR is
+	 * not enabled (or in the case of certain signals or if a ring hangs
+	 * to frequently) then the hang will cause a full GPU reset, meaning
+	 * all rings will be reset and ALL pending batch buffers discarded and
+	 * added to the batch_pending count for their respective contexts.
+	 *
+	 * If a context has batch_active=0 but batch_pending>0 then it had
+	 * batch buffers for a ring that was reset and the batch buffers were
+	 * not marked complete (the batch buffer could have been active at
+	 * time of reset, but was not active on the hung ring). When TDR is
+	 * enabled these pending batches are just those, for this context,
+	 * that are queued up behind the hanging batch. When a full GPU
+	 * reset occurs (no TDR or a signal or hanging too frequently) then
+	 * these pending batches are from all rings and may have been active
+	 * at the time of the reset, but not on the hung ring.
+	 *
+	 * Roughly:
+	 *   batch_active > 0 means your context has hung an engine.
+	 *   batch_pending> 0 means your context has affected batches.
+	 *
+	 * NOTE: in the case of multiple hangs/resets by TDR then multiple
+	 * counting of batches can happen. So you can really only use the
+	 * fact that these counts are zero or non-zero.
+	 *
+	 * Also note that these counts do not get cleared, they just keep
+	 * accumulating. If you keep the context and continue using it you
+	 * need to be aware of this.
+	*/
+	/*
+	 *  Search the request lists and update context reset stats.
+	 *  i915_gem.c has a fn to do this.
+	*/
+	i915_gem_reset_ring_status(dev_priv, ring);
+
 
 	if (i915.enable_execlists) {
 		enum context_submission_status status =

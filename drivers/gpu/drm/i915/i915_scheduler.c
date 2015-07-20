@@ -1032,6 +1032,30 @@ int i915_scheduler_query_stats(struct intel_engine_cs *ring,
 	return 0;
 }
 
+uint32_t i915_scheduler_count_queued_by_context(struct drm_device *dev,
+						struct intel_context *target,
+						struct intel_engine_cs *ring) {
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct i915_scheduler *scheduler = dev_priv->scheduler;
+	struct i915_scheduler_queue_entry *node;
+	unsigned long flags;
+	uint32_t count = 0;
+
+	spin_lock_irqsave(&scheduler->lock, flags);
+	list_for_each_entry(node, &scheduler->node_queue[ring->id], link) {
+		if (!I915_SQS_IS_QUEUED(node))
+			continue;
+
+		if (node->params.ctx != target)
+			continue;
+
+		count++;
+	}
+
+	spin_unlock_irqrestore(&scheduler->lock, flags);
+	return count;
+}
+
 int i915_scheduler_flush_request(struct drm_i915_gem_request *req,
 				 bool is_locked)
 {
