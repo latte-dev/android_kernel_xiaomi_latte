@@ -1603,6 +1603,21 @@ static int sst_tone_generator_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+#define GAIN_MUTE	0xFC40
+#define GAIN_UNMUTE	0x0000
+static void sst_fill_probe_gain(struct sst_cmd_probe *cmd, int mode)
+{
+	if (mode == SST_PROBE_INJECTOR) {
+		cmd->gain[0] = GAIN_MUTE;
+		cmd->gain[1] = GAIN_UNMUTE;
+		cmd->gain[2] = GAIN_MUTE;
+	} else {
+		cmd->gain[0] = GAIN_UNMUTE;
+		cmd->gain[1] = GAIN_MUTE;
+		cmd->gain[2] = GAIN_UNMUTE;
+	}
+}
+
 static int sst_send_probe_cmd(struct sst_data *sst, u16 probe_pipe_id,
 			      int mode, int switch_state,
 			      const struct sst_probe_config *probe_cfg)
@@ -1630,6 +1645,9 @@ static int sst_send_probe_cmd(struct sst_data *sst, u16 probe_pipe_id,
 	cmd.cfg.rate = probe_cfg->cfg.rate;
 	cmd.cfg.format = probe_cfg->cfg.format;
 	cmd.sm_buf_id = 1;
+
+	if (switch_state == SST_SWITCH_ON)
+		sst_fill_probe_gain(&cmd, mode);
 
 	return sst_fill_and_send_cmd(sst, SST_IPC_IA_CMD, SST_FLAG_BLOCKED,
 				     probe_cfg->task_id, 0, &cmd,
