@@ -848,6 +848,18 @@ config INTEL_GPIO_HSIC
 	  PHYs. And HSIC PHY disconnect and remote wakeup are supported by two
 	  gpios.
 
+config INTEL_GPIO_SSIC
+	tristate "Intel SSIC GPIO support"
+	default y
+	depends on ACPI && USB && GPIOLIB
+	---help---
+	  On some Intel USB controllers, some USB ports are connected to SSIC
+	  PHYs. This config flag enables the sideband wakeup functionality for
+	  the Intel SSIC modem. In other words, the modem can be woken up by
+	  toggling a specific GPIO pin (in this case HSIC_AUX1).
+
+	  Set to default Y, as the functionality is crucial for the modem.
+
 config INTEL_PSTORE_PRAM
 	tristate "Intel pstore RAM backend driver (PRAM BIOS feature)"
 	depends on ACPI
