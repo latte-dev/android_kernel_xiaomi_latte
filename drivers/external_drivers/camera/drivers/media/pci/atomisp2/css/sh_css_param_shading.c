@@ -354,8 +354,10 @@ ia_css_shading_table_alloc(
 		    sh_css_malloc(width * height * sizeof(*me->data[0]));
 		if (me->data[i] == NULL) {
 			unsigned int j;
-			for (j = 0; j < i; j++)
+			for (j = 0; j < i; j++) {
 				sh_css_free(me->data[j]);
+				me->data[j] = NULL;
+			}
 			sh_css_free(me);
 			return NULL;
 		}
@@ -379,8 +381,10 @@ ia_css_shading_table_free(struct ia_css_shading_table *table)
 	IA_CSS_ENTER("");
 
 	for (i = 0; i < IA_CSS_SC_NUM_COLORS; i++) {
-		if (table->data[i])
+		if (table->data[i]) {
 			sh_css_free(table->data[i]);
+			table->data[i] = NULL;
+		}
 	}
 	sh_css_free(table);
 

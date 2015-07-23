@@ -305,8 +305,6 @@ calculate_mipi_buff_size(
 	enum ia_css_err err = IA_CSS_SUCCESS;
 
 	/**
-	 * zhengjie.lu@intel.com
-	 *
 	 * NOTE
 	 * - In the struct "ia_css_stream_config", there
 	 *   are two members: "input_config" and "isys_config".
@@ -322,8 +320,6 @@ calculate_mipi_buff_size(
 	/** end of NOTE */
 
 	/**
-	 * zhengjie.lu@intel.com
-	 *
 	 * NOTE
 	 * - The following code is derived from the
 	 *   existing code "ia_css_mipi_frame_calculate_size()".

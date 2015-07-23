@@ -49,12 +49,13 @@ struct ia_css_cpu_mem_env {
 	void (*flush)(struct ia_css_acc_fw *fw);
 	/**< Flush function to flush the cache for given accelerator. */
 
+	#if !defined(__SVOS__)
 	/* a set of matching functions with additional debug params */
 	void * (*alloc_ex)(size_t bytes, bool zero_mem, const char *caller_func, int caller_line);
 	/**< same as alloc above, only with additional debug parameters */
 	void (*free_ex)(void *ptr, const char *caller_func, int caller_line);
 	/**< same as free above, only with additional debug parameters */
-
+	#endif
 };
 
 /** Environment with function pointers for allocation of memory for the CSS.

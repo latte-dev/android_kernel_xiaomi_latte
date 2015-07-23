@@ -36,6 +36,7 @@ void ia_css_host_data_free(struct ia_css_host_data *me)
 {
 	if (me) {
 		sh_css_free(me->address);
+		me->address = NULL;
 		sh_css_free(me);
 	}
 }

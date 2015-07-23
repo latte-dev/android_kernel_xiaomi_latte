@@ -1953,10 +1953,14 @@ void ia_css_morph_table_free(
 
 
 	for (i = 0; i < IA_CSS_MORPH_TABLE_NUM_PLANES; i++) {
-		if (me->coordinates_x[i])
+		if (me->coordinates_x[i]) {
 			sh_css_free(me->coordinates_x[i]);
-		if (me->coordinates_y[i])
+			me->coordinates_x[i] = NULL;
+		}
+		if (me->coordinates_y[i]) {
 			sh_css_free(me->coordinates_y[i]);
+			me->coordinates_y[i] = NULL;
+		}
 	}
 
 	sh_css_free(me);
@@ -2252,8 +2256,11 @@ void
 ia_css_isp_3a_statistics_map_free(struct ia_css_isp_3a_statistics_map *me)
 {
 	if (me) {
-		if (me->data_allocated)
+		if (me->data_allocated) {
 			sh_css_free(me->data_ptr);
+			me->data_ptr = NULL;
+			me->data_allocated = false;
+		}
 		sh_css_free(me);
 	}
 }
@@ -3059,6 +3066,7 @@ ia_css_dvs_statistics_free_isp(enum dvs_statistics_type type,
 		if (DVS_STATISTICS == type || DVS2_STATISTICS == type) {
 			mmgr_free(me->p_dvs_statistics_isp->hor_proj);
 			mmgr_free(me->p_dvs_statistics_isp->ver_proj);
+			memset(me->p_dvs_statistics_isp, 0, sizeof(struct ia_css_isp_dvs_statistics));
 			sh_css_free(me->p_dvs_statistics_isp);
 		}
 	}
@@ -3799,8 +3807,10 @@ ia_css_stream_isp_parameters_uninit(struct ia_css_stream *stream)
 		free_map(&per_frame_params->ddr_ptrs);
 
 #if !defined(IS_ISP_2500_SYSTEM)
-	if (params->fpn_config.data)
+	if (params->fpn_config.data) {
 		sh_css_free(params->fpn_config.data);
+		params->fpn_config.data = NULL;
+	}
 #endif
 
 #if defined(IS_ISP_2500_SYSTEM)
@@ -3822,7 +3832,8 @@ ia_css_stream_isp_parameters_uninit(struct ia_css_stream *stream)
 	sh_css_free(params);
 	if (per_frame_params)
 		sh_css_free(per_frame_params);
-
+	stream->isp_params_configs = NULL;
+	stream->per_frame_isp_params_configs = NULL;
 	IA_CSS_LEAVE_PRIVATE("void");
 }
 
@@ -5269,6 +5280,7 @@ ia_css_3a_statistics_free(struct ia_css_3a_statistics *me)
 	if (me) {
 		sh_css_free(me->rgby_data);
 		sh_css_free(me->data);
+		memset(me, 0, sizeof(struct ia_css_3a_statistics));
 		sh_css_free(me);
 	}
 }
@@ -5308,6 +5320,7 @@ ia_css_dvs_statistics_free(struct ia_css_dvs_statistics *me)
 	if (me) {
 		sh_css_free(me->hor_proj);
 		sh_css_free(me->ver_proj);
+		memset(me, 0, sizeof(struct ia_css_dvs_statistics));
 		sh_css_free(me);
 	}
 }
@@ -5349,6 +5362,7 @@ ia_css_dvs_coefficients_free(struct ia_css_dvs_coefficients *me)
 	if (me) {
 		sh_css_free(me->hor_coefs);
 		sh_css_free(me->ver_coefs);
+		memset(me, 0, sizeof(struct ia_css_dvs_coefficients));
 		sh_css_free(me);
 	}
 }
@@ -5425,6 +5439,7 @@ ia_css_dvs2_statistics_free(struct ia_css_dvs2_statistics *me)
 		sh_css_free(me->ver_prod.odd_imag);
 		sh_css_free(me->ver_prod.even_real);
 		sh_css_free(me->ver_prod.even_imag);
+		memset(me, 0, sizeof(struct ia_css_dvs2_statistics));
 		sh_css_free(me);
 	}
 }
@@ -5501,6 +5516,7 @@ ia_css_dvs2_coefficients_free(struct ia_css_dvs2_coefficients *me)
 		sh_css_free(me->ver_coefs.odd_imag);
 		sh_css_free(me->ver_coefs.even_real);
 		sh_css_free(me->ver_coefs.even_imag);
+		memset(me, 0, sizeof(struct ia_css_dvs2_coefficients));
 		sh_css_free(me);
 	}
 }
@@ -5563,6 +5579,7 @@ ia_css_dvs2_6axis_config_free(struct ia_css_dvs_6axis_config *dvs_6axis_config)
 		sh_css_free(dvs_6axis_config->ycoords_y);
 		sh_css_free(dvs_6axis_config->xcoords_uv);
 		sh_css_free(dvs_6axis_config->ycoords_uv);
+		memset(dvs_6axis_config, 0, sizeof(struct ia_css_dvs_6axis_config));
 		sh_css_free(dvs_6axis_config);
 	}
 }

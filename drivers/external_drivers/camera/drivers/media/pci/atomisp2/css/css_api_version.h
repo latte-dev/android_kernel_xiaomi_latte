@@ -34,7 +34,7 @@ The version string has four dot-separated numbers, read left to right:
 
 */
 
-#define CSS_API_VERSION_STRING	"2.1.20.6"
+#define CSS_API_VERSION_STRING	"2.1.20.7"
 
 /*
 Change log
@@ -427,6 +427,10 @@ v2.1.20.6 (2 changes parallel), Frame format override
 
 v2.1.20.6 (2 changes parallel), Output_system_in_res Information
 - Output_system_in_res_info field added to pipe_info struct 
+
+v2.1.20.7, Temprarily disable memory debug features for SVOS.
+- Temporary commented out the additions to allow SKC testing till root cause found
+- Changed files ia_css_env.h and sh_css.c.
 
 */
 
