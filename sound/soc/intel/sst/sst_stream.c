@@ -809,8 +809,8 @@ int sst_format_vtsv_message(struct intel_sst_drv *ctx,
 }
 
 /* Total 384 KB is allocated for vtsv net/grammar file */
-#define VTSV_NET_MAX_SIZE 0x58000	/* max net file size: 352 KB */
-#define VTSV_GRAMMAR_MAX_SIZE 0x8000 /* max grammar file size: 32 KB */
+#define VTSV_NET_MAX_SIZE 0x5C000	/* max net file size: 368 KB */
+#define VTSV_GRAMMAR_MAX_SIZE 0x4000 /* max grammar file size: 16 KB */
 
 int sst_cache_vtsv_libs(struct intel_sst_drv *ctx)
 {
