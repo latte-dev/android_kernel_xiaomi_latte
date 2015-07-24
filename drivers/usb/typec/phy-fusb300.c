@@ -375,6 +375,12 @@ static int fusb300_en_pu(struct fusb300_chip *chip, bool en_pu, int cur)
 	unsigned int val = 0;
 	int ret;
 
+	ret = fusb300_set_host_current(&chip->phy, cur);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"error setting host cur%d", ret);
+		return ret;
+	}
 	mutex_lock(&chip->lock);
 	ret = regmap_read(chip->map, FUSB300_SWITCH0_REG, &val);
 	if (ret < 0) {
@@ -392,19 +398,11 @@ static int fusb300_en_pu(struct fusb300_chip *chip, bool en_pu, int cur)
 	}
 	dev_dbg(chip->dev, "%s: switch0 %x = %x", __func__,
 				FUSB300_SWITCH0_REG, val);
-	mutex_unlock(&chip->lock);
-	ret = fusb300_set_host_current(&chip->phy, cur);
-	if (ret < 0) {
-		dev_err(&chip->client->dev,
-			"error setting host cur%d", ret);
-		return ret;
-	}
-	mutex_lock(&chip->lock);
 	ret = regmap_write(chip->map, FUSB300_SWITCH0_REG, val);
-	mutex_unlock(&chip->lock);
 	if (ret < 0)
 		dev_err(&chip->client->dev, "error(%d) writing %x\n",
 				ret, FUSB300_SWITCH0_REG);
+	mutex_unlock(&chip->lock);
 
 	return ret;
 }
@@ -454,7 +452,6 @@ static int fusb300_switch_mode(struct typec_phy *phy, enum typec_mode mode)
 		if (chip->is_fusb300)
 			fusb300_set_host_current(phy, 0);
 		mutex_lock(&chip->lock);
-		fusb300_en_pd(chip, true);
 		phy->state = TYPEC_STATE_UNATTACHED_UFP;
 		regmap_write(chip->map, FUSB300_MEAS_REG, 0x31);
 		/* for FPGA write different values
@@ -658,12 +655,7 @@ static int fusb300_init_chip(struct fusb300_chip *chip)
 				FUSB300_SWITCH0_PD_CC1_EN |
 				FUSB300_SWITCH0_PD_CC2_EN);
 		regmap_write(regmap, FUSB300_MEAS_REG, 0x31);
-		/* for FPGA write different values
-		regmap_write(regmap, FUSB300_MEAS_REG, 0x28);*/
 	}
-	/* for FPGA
-	regmap_write(regmap, FUSB300_SWITCH0_REG, 0xa);
-	regmap_write(regmap, FUSB300_MEAS_REG, 0x31);*/
 
 	/* enable fast i2c */
 	if (!chip->is_fusb300) {
@@ -846,7 +838,9 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 
 	if ((int_stat.int_reg & FUSB300_INT_COMP) &&
 			(int_stat.stat_reg & FUSB300_STAT0_COMP)) {
-		atomic_notifier_call_chain(&phy->notifier,
+		if ((phy_state == TYPEC_STATE_ATTACHED_UFP) ||
+			(phy_state == TYPEC_STATE_ATTACHED_DFP))
+			atomic_notifier_call_chain(&phy->notifier,
 				 TYPEC_EVENT_NONE, phy);
 			/*fusb300_wake_on_cc_change(chip);*/
 		fusb300_flush_fifo(phy, FIFO_TYPE_TX | FIFO_TYPE_RX);
@@ -1161,7 +1155,7 @@ static int fusb300_measure_cc(struct typec_phy *phy, enum typec_cc_pin pin,
 	}
 
 	chip = dev_get_drvdata(phy->dev);
-	timeout = msecs_to_jiffies(250);
+	timeout = msecs_to_jiffies(20);
 
 	pm_runtime_get_sync(chip->dev);
 
@@ -1195,6 +1189,10 @@ static int fusb300_measure_cc(struct typec_phy *phy, enum typec_cc_pin pin,
 		usleep_range(1000, 1200);
 		regmap_read(chip->map, FUSB300_STAT0_REG, &stat_reg);
 		goto do_bclvl;
+	} else {
+		usleep_range(10000, 15000);
+		regmap_read(chip->map, FUSB300_STAT0_REG, &stat_reg);
+		goto do_bclvl;
 	}
 
 	mutex_unlock(&chip->lock);
@@ -1209,8 +1207,7 @@ static int fusb300_measure_cc(struct typec_phy *phy, enum typec_cc_pin pin,
 	regmap_read(chip->map, FUSB300_STAT0_REG, &stat_reg);
 
 do_bclvl:
-	dev_dbg(chip->dev, "STAT0_REG = %x\n",
-				stat_reg);
+	dev_dbg(chip->dev, "STAT0_REG = %x\n", stat_reg);
 	if ((stat_reg & FUSB300_STAT0_VBUS_OK) &&
 		phy->state == TYPEC_STATE_UNATTACHED_DFP) {
 		ret = -EPROTO;
@@ -1524,7 +1521,7 @@ static int fusb300_probe(struct i2c_client *client,
 		fusb300_wake_on_cc_change(chip);
 		regmap_read(chip->map, FUSB300_STAT0_REG, &stat);
 
-		if (stat &  FUSB300_STAT0_WAKE) {
+		if (stat & FUSB300_STAT0_WAKE) {
 			if (chip->is_fusb300)
 				atomic_notifier_call_chain(&chip->phy.notifier,
 					TYPEC_EVENT_DRP, &chip->phy);
@@ -1533,9 +1530,12 @@ static int fusb300_probe(struct i2c_client *client,
 					TYPEC_EVENT_DFP, &chip->phy);
 		}
 
-	} else
+	} else {
+		atomic_notifier_call_chain(&chip->phy.notifier,
+				TYPEC_EVENT_DRP, &chip->phy);
 		atomic_notifier_call_chain(&chip->phy.notifier,
 				TYPEC_EVENT_VBUS, &chip->phy);
+	}
 
 	return 0;
 }

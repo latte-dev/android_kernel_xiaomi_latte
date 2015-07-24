@@ -51,6 +51,7 @@ struct typec_detect {
 	enum typec_detect_state old_state;
 	enum typec_event event;
 	struct notifier_block nb;
+	struct work_struct drp_work;
 	struct work_struct phy_ntf_work;
 	struct work_struct dfp_work;
 	struct timer_list drp_timer;
