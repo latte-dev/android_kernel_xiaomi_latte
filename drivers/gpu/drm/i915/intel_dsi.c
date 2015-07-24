@@ -1127,6 +1127,9 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 					IP_TG_CONFIG |
 					RANDOM_DPI_DISPLAY_RESOLUTION);
 
+		if (is_cmd_mode(intel_dsi))
+			I915_WRITE(MIPI_TEARING_CTRL(pipe),
+						CHV_CMD_MODE_TEARING_DELAY);
 
 		/* For Port C for dual link */
 		if (intel_dsi->dual_link)

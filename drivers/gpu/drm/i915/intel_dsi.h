@@ -402,6 +402,8 @@
 #define FLIS_DSI_TXCNTRL		0x15
 #define BIT_FILS_DSI_TXCNTRL_HS_IO_SEL	(1 << 0)
 
+#define CHV_CMD_MODE_TEARING_DELAY	0x20
+
 struct intel_dsi_device {
 	unsigned int panel_id;
 	const char *name;

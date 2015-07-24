@@ -10984,7 +10984,6 @@ static void i915_commit(struct drm_i915_private *dev_priv,
 		POSTING_READ(DSPCNTR(pipe));
 	}
 
-	intel_dsi_send_fb_on_crtc(&intel_crtc->base);
 	reg->surf = 0;
 }
 
@@ -11433,6 +11432,8 @@ static int intel_crtc_set_display(struct drm_crtc *crtc,
 	dev_priv->prev_pipe_plane_stat = dev_priv->pipe_plane_stat;
 
 	intel_crtc->atomic_update = false;
+
+	intel_dsi_send_fb_on_crtc(&intel_crtc->base);
 
 	intel_runtime_pm_put(dev_priv);
 	return ret;
