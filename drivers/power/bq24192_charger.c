@@ -2557,7 +2557,7 @@ struct bq24192_platform_data tbg24296_drvdata = {
 	.supported_cables = (POWER_SUPPLY_CHARGER_TYPE_USB |
 			POWER_SUPPLY_CHARGER_TYPE_WIRELESS),
 	.sfi_tabl_present = true,
-	.max_cc = 1800,	/* 1800 mA */
+	.max_cc = 3000,	/* 3000 mA */
 	.max_cv = 4350,	/* 4350 mV */
 	.max_temp = 45,	/* 45 DegC */
 	.min_temp = 0,	/* 0 DegC */
