@@ -77,6 +77,7 @@ enum typec_event {
 	TYPEC_EVENT_UNKNOWN,
 	TYPEC_EVENT_VBUS,
 	TYPEC_EVENT_DRP,
+	TYPEC_EVENT_UFP,
 	TYPEC_EVENT_DFP,
 	TYPEC_EVENT_TIMER,
 	TYPEC_EVENT_NONE,
@@ -145,6 +146,13 @@ struct typec_cc_psy {
 	enum typec_current cur;
 };
 
+struct cc_pin {
+	enum typec_cc_pin id;
+	int valid;
+	int rd;
+	int cur;
+};
+
 #define MAX_LABEL_SIZE		16
 
 struct typec_phy;
@@ -155,14 +163,15 @@ struct typec_ops {
 	/* Callback for getting host-current */
 	enum typec_current (*get_host_current)(struct typec_phy *phy);
 	/* Callback for measuring cc */
-	int (*measure_cc)(struct typec_phy *phy, enum typec_cc_pin pin,
-			struct typec_cc_psy *cc_psy, unsigned long timeout);
+	int (*measure_cc)(struct typec_phy *phy, struct cc_pin *pin);
 	/* Callback for switching between pull-up & pull-down */
 	int (*switch_mode)(struct typec_phy *phy, enum typec_mode mode);
 	/* Callback for setting-up cc */
 	int (*setup_cc)(struct typec_phy *phy, enum typec_cc_pin cc,
 					enum typec_state state);
+	int (*enable_valid_pu)(struct typec_phy *phy);
 };
+
 
 struct typec_phy {
 	const char *label;
@@ -172,16 +181,18 @@ struct typec_phy {
 	enum typec_state state;
 	enum typec_cc_pin valid_cc;
 	enum typec_dp_cable_type dp_type;
-	bool valid_ra;
-	bool support_drp_toggle;
-	bool support_auto_goodcrc;
-	bool support_retry;
+	int valid_rd;
 	struct pd_prot *proto;
-
 	struct list_head list;
 	spinlock_t irq_lock;
 	struct atomic_notifier_head notifier;
 	struct atomic_notifier_head prot_notifier;
+	struct cc_pin cc1;
+	struct cc_pin cc2;
+
+	bool support_drp_toggle;
+	bool support_auto_goodcrc;
+	bool support_retry;
 
 	int (*notify_connect)(struct typec_phy *phy, enum typec_cc_level lvl);
 	int (*notify_disconnect)(struct typec_phy *phy);
@@ -230,6 +241,13 @@ static inline int typec_set_host_current(struct typec_phy *phy,
 	return -ENOTSUPP;
 }
 
+static inline int typec_enable_valid_pu(struct typec_phy *phy)
+{
+	if (phy && phy->ops.enable_valid_pu)
+		return phy->ops.enable_valid_pu(phy);
+	return -ENOTSUPP;
+}
+
 static inline enum typec_current typec_get_host_current(struct typec_phy *phy)
 {
 	if (phy && phy->ops.get_host_current)
@@ -253,11 +271,10 @@ static inline int typec_notify_disconnect(struct typec_phy *phy)
 }
 
 static inline int
-typec_measure_cc(struct typec_phy *phy, int pin,
-		struct typec_cc_psy *cc_psy, unsigned long timeout)
+typec_measure_cc(struct typec_phy *phy, struct cc_pin *pin)
 {
 	if (phy && phy->ops.measure_cc)
-		return phy->ops.measure_cc(phy, pin, cc_psy, timeout);
+		return phy->ops.measure_cc(phy, pin);
 	return -ENOTSUPP;
 }
 

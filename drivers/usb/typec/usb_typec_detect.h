@@ -53,7 +53,9 @@ struct typec_detect {
 	struct notifier_block nb;
 	struct work_struct drp_work;
 	struct work_struct phy_ntf_work;
+	struct work_struct valid_dfp_attach_work;
 	struct work_struct dfp_work;
+	struct work_struct ufp_work;
 	struct timer_list drp_timer;
 	struct list_head list;
 	struct usb_phy *otg;
@@ -63,7 +65,6 @@ struct typec_detect {
 	struct work_struct lock_ufp_work;
 	struct completion lock_ufp_complete;
 	int timer_evt;
-	int valid_cc;
 	int drp_counter;
 	wait_queue_head_t wq;
 	struct mutex lock;

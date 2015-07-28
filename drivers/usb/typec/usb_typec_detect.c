@@ -53,6 +53,11 @@
 #define TYPEC_CABLE_USB_SRC	"USB_TYPEC_SRC"
 #define TYPEC_CABLE_USB_DP_SRC	"USB_TYPEC_DP_SOURCE"
 
+#define CC_DEBOUNCE_MIN 100000
+#define CC_DEBOUNCE_MAX 200000
+#define CC_TOGGLE 3
+#define PD_DEBOUNCE 10
+
 enum typec_cable_type {
 	E_TYPEC_CABLE_UNKNOWN,
 	E_TYPEC_CABLE_USB,
@@ -62,12 +67,10 @@ enum typec_cable_type {
 	E_TYPEC_CABLE_DP_SRC,
 };
 
-static int detect_check_valid_ufp(struct typec_detect *detect,
-		struct typec_cc_psy *cc1_psy,
-		struct typec_cc_psy *cc2_psy);
-static void detect_update_ufp_state(struct typec_detect *detect,
-		struct typec_cc_psy *cc1_psy,
-		struct typec_cc_psy *cc2_psy);
+static int detect_check_valid_ufp(struct typec_detect *detect);
+static void detect_update_ufp_state(struct typec_detect *detect);
+static int detect_measure_cc(struct typec_detect *detect,
+				enum typec_cc_pin pin_id);
 
 
 static const char *pd_extcon_cable[] = {
@@ -149,24 +152,29 @@ static enum typec_cable_type typec_detect_cable_name_to_type(char *name)
 static int typec_detect_send_psy_notification(struct typec_detect *detect,
 					bool chrg_status)
 {
-	struct typec_cc_psy cc_psy;
-	int ret;
+	struct typec_phy *phy = detect->phy;
 	struct power_supply_cable_props cable_props = {0};
+	int rd, ret;
 
 	if (chrg_status) {
 
-		ret = typec_measure_cc(detect->phy,
-					detect->valid_cc, &cc_psy, 0);
+		ret = detect_measure_cc(detect, phy->valid_cc);
 		if (ret < 0) {
 			dev_warn(detect->phy->dev,
-					"%s: Error(%d) measuring cc2\n",
-					__func__, ret);
+					"%s: Error(%d) measuring valid_cc=%d\n",
+					__func__, ret, phy->valid_cc);
 			return ret;
 		}
-		dev_dbg(detect->phy->dev, "%s: Measured v_rd=%d\n",
-				__func__, cc_psy.v_rd);
 
-		cable_props.ma = get_chrgcur_from_rd(detect, cc_psy.v_rd);
+		if (phy->valid_cc == TYPEC_PIN_CC1)
+			rd = phy->cc1.rd;
+		else
+			rd = phy->cc2.rd;
+
+		dev_dbg(detect->phy->dev, "%s: Measured v_rd=%d\n",
+				__func__, rd);
+
+		cable_props.ma = get_chrgcur_from_rd(detect, rd);
 		cable_props.chrg_evt =
 				POWER_SUPPLY_CHARGER_EVENT_CONNECT;
 		cable_props.chrg_type =
@@ -266,17 +274,6 @@ static void typec_detect_notify_extcon(struct typec_detect *detect,
 	if (notify_otg)
 		atomic_notifier_call_chain(&detect->otg->notifier,
 						otg_evt, NULL);
-	if (!detect->snk_state && !detect->src_state
-		&& !detect->usb_state && !detect->usb_host_state) {
-		/* If phy supports drp toggle then enble toggle
-		 * as cable disconnected.
-		 */
-		detect->state = DETECT_STATE_UNATTACHED_DRP;
-		if (detect->phy->support_drp_toggle
-			&& detect->phy->enable_detection)
-			detect->phy->enable_detection(detect->phy, true);
-	}
-
 notify_ext_err:
 	mutex_unlock(&detect->lock);
 }
@@ -295,10 +292,6 @@ static int detect_kthread(void *data)
 {
 	struct typec_detect *detect = (struct typec_detect *)data;
 	struct typec_phy *phy;
-	struct typec_cc_psy cc1_psy = {USB_TYPEC_CC_VRD_UNKNOWN,
-					TYPEC_CURRENT_UNKNOWN};
-	struct typec_cc_psy cc2_psy = {USB_TYPEC_CC_VRD_UNKNOWN,
-					TYPEC_CURRENT_UNKNOWN};
 
 	if (!detect) {
 		pr_err("%s: no detect found", __func__);
@@ -310,6 +303,7 @@ static int detect_kthread(void *data)
 	do {
 		detect->timer_evt = TIMER_EVENT_NONE;
 		wait_event(detect->wq, detect->timer_evt);
+		cancel_work_sync(&detect->valid_dfp_attach_work);
 		cancel_work_sync(&detect->dfp_work);
 
 		if (detect->timer_evt == TIMER_EVENT_QUIT)
@@ -333,12 +327,9 @@ static int detect_kthread(void *data)
 
 
 		if (detect->state == DETECT_STATE_UNATTACHED_UFP) {
-			if (detect_check_valid_ufp(detect,
-				&cc1_psy, &cc2_psy) && detect->got_vbus) {
-				detect_update_ufp_state(detect, &cc1_psy,
-								&cc2_psy);
+			if (detect->got_vbus && detect_check_valid_ufp(detect))
 				continue;
-			} else
+			else
 				mod_timer(&detect->drp_timer,
 					jiffies + msecs_to_jiffies(50));
 		}
@@ -356,21 +347,20 @@ static int detect_kthread(void *data)
 			typec_set_host_current(phy, TYPEC_CURRENT_USB);
 			typec_switch_mode(phy, TYPEC_MODE_DFP);
 			mutex_unlock(&detect->lock);
-			schedule_work(&detect->dfp_work);
+			schedule_work(&detect->valid_dfp_attach_work);
 		}
 	} while (true);
 
 	return 0;
 }
 
-static enum typec_cc_pin get_active_cc(struct typec_cc_psy *cc1,
-		struct typec_cc_psy *cc2)
+static enum typec_cc_pin get_active_cc(int cc1_rd, int cc2_rd)
 {
 	int ret = 0;
 
-	if (CC_RD(cc1->v_rd) && (CC_OPEN(cc2->v_rd) || CC_RA(cc2->v_rd)))
+	if (CC_RD(cc1_rd) && (CC_OPEN(cc2_rd) || CC_RA(cc2_rd)))
 		ret = TYPEC_PIN_CC1;
-	else if (CC_RD(cc2->v_rd) && (CC_OPEN(cc1->v_rd) || CC_RA(cc1->v_rd)))
+	else if (CC_RD(cc2_rd) && (CC_OPEN(cc1_rd) || CC_RA(cc1_rd)))
 		ret = TYPEC_PIN_CC2;
 
 	return ret;
@@ -381,132 +371,181 @@ static enum typec_cc_pin get_active_cc(struct typec_cc_psy *cc1,
  * 0 on measurement sucess,
  * -ERR on measuremet failure
  */
-static int detect_measure_cc(struct typec_detect *detect, enum typec_cc_pin pin,
-		struct typec_cc_psy *cc_psy, bool *found)
+static int detect_measure_cc(struct typec_detect *detect,
+				enum typec_cc_pin pin_id)
 {
 	int ret;
+	struct typec_phy *phy = detect->phy;
+	struct cc_pin *pin;
 
-	ret = typec_measure_cc(detect->phy, pin, cc_psy, msecs_to_jiffies(3));
-	if (ret >= 0) {
-		*found = true;
-		ret = 0;
-	}
-	mutex_lock(&detect->lock);
-	if (detect->got_vbus) {
-		ret = detect->got_vbus;
-		mutex_unlock(&detect->lock);
-		dev_err(detect->phy->dev, "%s:exiting got vbus cc%d\n",
-				__func__, pin);
-		return ret;
-	}
-	mutex_unlock(&detect->lock);
+	if (pin_id == TYPEC_PIN_CC1)
+		pin = &phy->cc1;
+	else
+		pin = &phy->cc2;
+
+	pin->id = pin_id;
+
+	ret = typec_measure_cc(detect->phy, pin);
+
 	return ret;
+}
+
+static int detect_src_attached(struct cc_pin *cc1, struct cc_pin *cc2)
+{
+	int ret = false;
+
+	if ((CC_RA(cc1->rd) || (CC_OPEN(cc1->rd))) && CC_RD(cc2->rd))
+		ret = true;
+	else if	(CC_RD(cc1->rd) && (CC_RA(cc2->rd) || CC_OPEN(cc2->rd)))
+		ret = true;
+	return ret;
+}
+
+static int detect_debug_attached(struct cc_pin *cc1, struct cc_pin *cc2)
+{
+	return CC_RD(cc1->rd) && CC_RD(cc2->rd);
+}
+
+static int detect_audio_attached(struct cc_pin *cc1, struct cc_pin *cc2)
+{
+	return CC_RA(cc1->rd) && CC_RA(cc2->rd);
+}
+
+static int detect_src_unattached(struct cc_pin *cc1, struct cc_pin *cc2)
+{
+	return (CC_OPEN(cc1->rd) && CC_OPEN(cc2->rd)) ||
+		(CC_OPEN(cc1->rd) && CC_RA(cc2->rd)) ||
+		(CC_RA(cc1->rd) && CC_OPEN(cc2->rd));
+}
+
+static void detect_valid_dfp_attach_work(struct work_struct *work)
+{
+	struct typec_detect *detect =
+		container_of(work, struct typec_detect, valid_dfp_attach_work);
+	struct typec_phy *phy = detect->phy;
+
+	if (detect->state != DETECT_STATE_UNATTACHED_DFP || detect->got_vbus) {
+		if (!phy->support_drp_toggle)
+			del_timer_sync(&detect->drp_timer);
+		return;
+	}
+
+	detect_measure_cc(detect, TYPEC_PIN_CC1);
+	detect_measure_cc(detect, TYPEC_PIN_CC2);
+
+	dev_dbg(detect->phy->dev, "%s:cc1_rd = %d cc2_rd = %d",
+				__func__, phy->cc1.rd, phy->cc2.rd);
+
+	if (detect_src_attached(&phy->cc1, &phy->cc2) ||
+		detect_audio_attached(&phy->cc1, &phy->cc2) ||
+		detect_debug_attached(&phy->cc1, &phy->cc2)) {
+		typec_enable_valid_pu(phy);
+		schedule_work(&detect->dfp_work);
+
+	} else if (detect_src_unattached(&phy->cc1, &phy->cc2)) {
+
+		msleep(PD_DEBOUNCE);
+
+		if (detect->state != DETECT_STATE_UNATTACHED_DFP) {
+			if (!phy->support_drp_toggle)
+				del_timer_sync(&detect->drp_timer);
+			return;
+		}
+
+		detect_measure_cc(detect, TYPEC_PIN_CC1);
+		detect_measure_cc(detect, TYPEC_PIN_CC2);
+		dev_dbg(detect->phy->dev, "debounce:cc1_rd = %d cc2_rd = %d",
+				phy->cc1.rd, phy->cc2.rd);
+
+		if (detect_src_unattached(&phy->cc1, &phy->cc2))
+			goto end;
+		else
+			schedule_work(&detect->dfp_work);
+	}
+	return;
+end:
+	schedule_work(&detect->valid_dfp_attach_work);
 }
 
 static void detect_dfp_work(struct work_struct *work)
 {
 	struct typec_detect *detect =
 		container_of(work, struct typec_detect, dfp_work);
-	bool cc1_found = false;
-	bool cc2_found = false;
 	int ret;
 	enum typec_cc_pin use_cc = 0;
 	struct typec_phy *phy = detect->phy;
-	struct typec_cc_psy cc1 = {0, 0};
-	struct typec_cc_psy cc2 = {0, 0};
+
+	dev_dbg(detect->phy->dev, "%s: %d vbus = %d", __func__,
+				detect->state, detect->got_vbus);
 
 	mutex_lock(&detect->lock);
 	if (detect->state != DETECT_STATE_UNATTACHED_DFP || detect->got_vbus) {
+		mutex_unlock(&detect->lock);
+		goto end;
+	}
+	mutex_unlock(&detect->lock);
+
+	if (!phy->support_drp_toggle) /* disable timer */
+		del_timer_sync(&detect->drp_timer);
+
+	mutex_lock(&detect->lock);
+	detect->state = DETECT_STATE_ATTACH_DFP_DRP_WAIT;
+	mutex_unlock(&detect->lock);
+
+	usleep_range(CC_DEBOUNCE_MIN, CC_DEBOUNCE_MAX);
+
+	mutex_lock(&detect->lock);
+	/* cable detach could have happened during this time */
+	if (detect->state != DETECT_STATE_ATTACH_DFP_DRP_WAIT) {
+		dev_dbg(detect->phy->dev, "detect state %d", detect->state);
 		mutex_unlock(&detect->lock);
 		return;
 	}
 	mutex_unlock(&detect->lock);
 
-	/* If phy supports drp toggle then disable toggle
-	 * as the detection completed.
-	 */
-	if (phy->support_drp_toggle
-		&& phy->enable_detection)
-		phy->enable_detection(phy, false);
+	ret = detect_measure_cc(detect, TYPEC_PIN_CC1);
 
-	ret = detect_measure_cc(detect, TYPEC_PIN_CC1, &cc1, &cc1_found);
-	/* if vbus is received due to the UFP attachment, then break worker */
-	if (ret > 0)
-		return;
+	ret = detect_measure_cc(detect, TYPEC_PIN_CC2);
 
-	ret = detect_measure_cc(detect, TYPEC_PIN_CC2, &cc2, &cc2_found);
-	/* if vbus is received due to the UFP attachment, then break worker */
-	if (ret > 0)
-		return;
+	dev_dbg(detect->phy->dev, "%s:cc1_rd = %d cc2_rd = %d",
+				__func__, phy->cc1.rd, phy->cc2.rd);
 
-	dev_dbg(detect->phy->dev,
-		"cc1_found = %d cc2_found = %d unattach dfp cc1 = %d, cc2 = %d",
-		cc1_found, cc2_found, cc1.v_rd, cc2.v_rd);
+	if (detect_src_attached(&phy->cc1, &phy->cc2)) {
+		use_cc = get_active_cc(phy->cc1.rd, phy->cc2.rd);
+		typec_setup_cc(phy, use_cc, TYPEC_STATE_ATTACHED_DFP);
+		typec_enable_autocrc(detect->phy, true);
+		/* enable VBUS */
+	} else if (detect_audio_attached(&phy->cc1, &phy->cc2)) {
+		dev_info(detect->phy->dev, "Audio Accessory Detected");
+	} else if (detect_debug_attached(&phy->cc1, &phy->cc2)) {
+		dev_info(detect->phy->dev, "Debug Accessory Detected");
+	} else
+		goto end;
 
-	if (cc1_found && cc2_found) {
-		if (((CC_RA(cc1.v_rd) || (CC_OPEN(cc1.v_rd)))
-				&& CC_RD(cc2.v_rd)) ||
-			(CC_RD(cc1.v_rd) && (CC_RA(cc2.v_rd) ||
-					CC_OPEN(cc2.v_rd)))) {
-			if (!phy->support_drp_toggle) /* disable timer */
-				del_timer_sync(&detect->drp_timer);
-			mutex_lock(&detect->lock);
-			detect->state = DETECT_STATE_ATTACH_DFP_DRP_WAIT;
-			mutex_unlock(&detect->lock);
+	mutex_lock(&detect->lock);
+	detect->drp_counter = 0;
+	detect->state = DETECT_STATE_ATTACHED_DFP;
+	mutex_unlock(&detect->lock);
 
-			usleep_range(100000, 150000);
-			mutex_lock(&detect->lock);
-			/* cable detach could have happened during this time */
-			if (detect->state != DETECT_STATE_ATTACH_DFP_DRP_WAIT) {
-				mutex_unlock(&detect->lock);
-				return;
-			}
-			detect->state = DETECT_STATE_ATTACHED_DFP;
-			detect->drp_counter = 0;
-			use_cc = get_active_cc(&cc1, &cc2);
-			detect->valid_cc = use_cc;
-			mutex_unlock(&detect->lock);
-			typec_setup_cc(phy, use_cc, TYPEC_STATE_ATTACHED_DFP);
+	typec_detect_notify_extcon(detect,
+				TYPEC_CABLE_USB_SRC, true);
+	typec_detect_notify_extcon(detect,
+				TYPEC_CABLE_USB_HOST, true);
 
-			/* enable VBUS */
-			typec_detect_notify_extcon(detect,
-						TYPEC_CABLE_USB_SRC, true);
-			if (!detect->is_pd_capable)
-				typec_detect_notify_extcon(detect,
-						TYPEC_CABLE_USB_HOST, true);
+	return;
 
-			typec_enable_autocrc(detect->phy, true);
-			return;
-
-		} else if (CC_RA(cc1.v_rd) && CC_RA(cc2.v_rd)) {
-			mutex_lock(&detect->lock);
-			detect->state = DETECT_STATE_ATTACHED_DFP;
-			detect->drp_counter = 0;
-			mutex_unlock(&detect->lock);
-			/* TODO: Need to set the phy state */
-			if (!phy->support_drp_toggle) /* disable timer */
-				del_timer_sync(&detect->drp_timer);
-			/* Audio Accessory. */
-			/* next state Attached UFP based on VBUS */
-			dev_info(detect->phy->dev, "Audio Accessory Detected");
-			return;
-		} else if (CC_RD(cc1.v_rd) && CC_RD(cc2.v_rd)) {
-			mutex_lock(&detect->lock);
-			detect->state = DETECT_STATE_ATTACHED_DFP;
-			detect->drp_counter = 0;
-			mutex_unlock(&detect->lock);
-			if (!phy->support_drp_toggle) /* disable timer */
-				del_timer_sync(&detect->drp_timer);
-			/* Debug Accessory */
-			/* next state Attached UFP based on VBUS */
-			dev_info(detect->phy->dev, "Debug Accessory Detected");
-			return;
-		}
-	}
-	if (!phy->support_drp_toggle)
-		schedule_work(&detect->dfp_work);
-	else
+end:
+	if (!phy->support_drp_toggle) {
+		mutex_lock(&detect->lock);
+		detect->drp_counter = 0;
+		mutex_unlock(&detect->lock);
+		mod_timer(&detect->drp_timer, msecs_to_jiffies(1));
+	} else {
+		mutex_lock(&detect->lock);
+		detect->state = DETECT_STATE_UNATTACHED_DRP;
+		mutex_unlock(&detect->lock);
 		typec_switch_mode(phy, TYPEC_MODE_DRP);
+	}
 }
 
 static void detect_drp_timer(unsigned long data)
@@ -548,45 +587,42 @@ static void detect_lock_ufp_work(struct work_struct *work)
 			typec_switch_mode(detect->phy, TYPEC_MODE_DRP);
 		}
 		mutex_unlock(&detect->lock);
+	} else {
+		if (!detect_check_valid_ufp(detect)) {
+			mutex_lock(&detect->lock);
+			detect->state = DETECT_STATE_UNATTACHED_DRP;
+			typec_switch_mode(detect->phy, TYPEC_MODE_DRP);
+			mutex_unlock(&detect->lock);
+		}
 	}
-	/* got vbus, goto attached ufp */
 
 	return;
 }
 
-static void detect_update_ufp_state(struct typec_detect *detect,
-		struct typec_cc_psy *cc1_psy,
-		struct typec_cc_psy *cc2_psy)
+static void detect_update_ufp_state(struct typec_detect *detect)
 {
-	struct typec_phy *phy = detect->phy;
 
 	mutex_lock(&detect->lock);
 	detect->state = DETECT_STATE_ATTACHED_UFP;
 	mutex_unlock(&detect->lock);
-	/* If phy supports drp toggle then disable toggle
-	 * as the detection completed.
-	 */
-	if (phy->support_drp_toggle
-		&& phy->enable_detection)
-		phy->enable_detection(phy, false);
 
+	typec_enable_autocrc(detect->phy, true);
 
 	typec_detect_notify_extcon(detect,
 				TYPEC_CABLE_USB_SNK, true);
-	if (!detect->is_pd_capable)
-		typec_detect_notify_extcon(detect,
+	typec_detect_notify_extcon(detect,
 				TYPEC_CABLE_USB, true);
-	typec_enable_autocrc(detect->phy, true);
 
 }
 
-static int detect_check_valid_ufp(struct typec_detect *detect,
-		struct typec_cc_psy *cc1_psy,
-		struct typec_cc_psy *cc2_psy)
+static int detect_valid_snk_attach(int cc1_rp, int cc2_rp)
+{
+	return (CC_RD(cc1_rp)) || CC_RD(cc2_rp);
+}
+
+static int detect_check_valid_ufp(struct typec_detect *detect)
 {
 	struct typec_phy *phy;
-	enum typec_cc_pin use_cc = 0;
-	int ret;
 
 	phy = detect->phy;
 
@@ -605,67 +641,17 @@ static int detect_check_valid_ufp(struct typec_detect *detect,
 		mutex_unlock(&detect->lock);
 	}
 
-	ret = typec_measure_cc(phy, TYPEC_PIN_CC1, cc1_psy, 0);
-	if (ret < 0) {
-		dev_warn(detect->phy->dev,
-				"%s: Error(%d) measuring cc1\n",
-				__func__, ret);
-		cc1_psy->v_rd = USB_TYPEC_CC_VRD_UNKNOWN;
-		cc1_psy->cur = TYPEC_CURRENT_UNKNOWN;
-	}
+	detect_measure_cc(detect, TYPEC_PIN_CC1);
+	detect_measure_cc(detect, TYPEC_PIN_CC2);
 
-	ret = typec_measure_cc(phy, TYPEC_PIN_CC2, cc2_psy, 0);
-	if (ret < 0) {
-		dev_warn(detect->phy->dev,
-				"%s: Error(%d) measuring cc2\n",
-				__func__, ret);
-		cc2_psy->v_rd = USB_TYPEC_CC_VRD_UNKNOWN;
-		cc2_psy->cur = TYPEC_CURRENT_UNKNOWN;
-	}
+	dev_dbg(phy->dev, "%s: cc1.rd = %d, cc2.rd = %d", __func__,
+				phy->cc1.rd, phy->cc2.rd);
 
-	dev_info(detect->phy->dev, "evt_vbus cc1 = %d, cc2 = %d",
-					cc1_psy->v_rd, cc2_psy->v_rd);
-
-	if (!phy->support_drp_toggle) {
-		/* try another time? */
-		if (CC_OPEN(cc1_psy->v_rd) || CC_RA(cc1_psy->v_rd)) {
-			ret = typec_measure_cc(phy, TYPEC_PIN_CC1,
-					cc1_psy, 0);
-			if (ret < 0) {
-				dev_warn(detect->phy->dev,
-					"%s: Error(%d) measuring cc1\n",
-					__func__, ret);
-				cc1_psy->v_rd = USB_TYPEC_CC_VRD_UNKNOWN;
-				cc1_psy->cur = TYPEC_CURRENT_UNKNOWN;
-			}
-		}
-
-		if (CC_OPEN(cc2_psy->v_rd) || CC_RA(cc2_psy->v_rd)) {
-			ret = typec_measure_cc(phy, TYPEC_PIN_CC2,
-					cc2_psy, 0);
-			if (ret < 0) {
-				dev_warn(detect->phy->dev,
-					"%s: Error(%d) measuring cc2\n",
-						__func__, ret);
-				cc2_psy->v_rd = USB_TYPEC_CC_VRD_UNKNOWN;
-				cc2_psy->cur = TYPEC_CURRENT_UNKNOWN;
-			}
-		}
-		dev_info(detect->phy->dev, "evt_vbus cc1 = %d cc2 = %d",
-					cc1_psy->v_rd, cc2_psy->v_rd);
-	}
-
-	use_cc = get_active_cc(cc1_psy, cc2_psy);
-
-	if (use_cc) {
-		/* valid cc found; UFP_ATTACHED */
-
-		mutex_lock(&detect->lock);
-		detect->valid_cc = use_cc;
-		mutex_unlock(&detect->lock);
-		typec_setup_cc(phy, use_cc, TYPEC_STATE_ATTACHED_UFP);
+	if (detect_valid_snk_attach(phy->cc1.rd, phy->cc2.rd)) {
+		schedule_work(&detect->ufp_work);
 		return true;
 	}
+
 end:
 	return false;
 }
@@ -681,37 +667,70 @@ static void detect_drp_work(struct work_struct *work)
 		return;
 
 	dev_info(detect->phy->dev, "EVNT DRP");
+	/* handle DRP event only when in unattached state */
 	mutex_lock(&detect->lock);
+	if ((detect->state == DETECT_STATE_ATTACHED_UFP) ||
+		(detect->state == DETECT_STATE_ATTACHED_DFP) ||
+		(detect->state == DETECT_STATE_LOCK_UFP))
+		goto end;
 	detect->state = DETECT_STATE_UNATTACHED_DRP;
 	mutex_unlock(&detect->lock);
 	/* start the timer now */
 	if (!timer_pending(&detect->drp_timer))
 		mod_timer(&detect->drp_timer, jiffies + msecs_to_jiffies(1));
+
+	return;
+end:
+	mutex_unlock(&detect->lock);
 }
 
-static inline void detect_check_ufp(struct typec_detect *detect)
+static void detect_ufp_work(struct work_struct *work)
 {
+	struct typec_detect *detect = container_of(work, struct typec_detect,
+					ufp_work);
 	struct typec_phy *phy;
-	struct typec_cc_psy cc1_psy = {USB_TYPEC_CC_VRD_UNKNOWN,
-					TYPEC_CURRENT_UNKNOWN};
-	struct typec_cc_psy cc2_psy = {USB_TYPEC_CC_VRD_UNKNOWN,
-					TYPEC_CURRENT_UNKNOWN};
+	int use_cc = 0;
 
 	phy = detect->phy;
+	/*
+	 * check valid Rp + vbus presence
+	 * emit notifications
+	 */
 
-	if (phy->support_drp_toggle) {
-		if (detect_check_valid_ufp(detect, &cc1_psy, &cc2_psy))
-			detect_update_ufp_state(detect, &cc1_psy, &cc2_psy);
+	if (phy->cc1.valid && CC_RD(phy->cc1.rd)) {
+		detect_measure_cc(detect, TYPEC_PIN_CC1);
+		if (CC_RD(phy->cc1.rd))
+			use_cc = TYPEC_PIN_CC1;
 		else
-			typec_switch_mode(phy, TYPEC_MODE_DRP);
+			goto end;
+	} else if (phy->cc2.valid && CC_RD(phy->cc2.rd)) {
+		detect_measure_cc(detect, TYPEC_PIN_CC2);
+		if (CC_RD(phy->cc2.rd))
+			use_cc = TYPEC_PIN_CC2;
+		else
+			goto end;
+		use_cc = TYPEC_PIN_CC2;
+	} else {
+		detect_measure_cc(detect, TYPEC_PIN_CC1);
+		detect_measure_cc(detect, TYPEC_PIN_CC2);
+		if (CC_RD(phy->cc1.rd))
+			use_cc = TYPEC_PIN_CC1;
+		else if (CC_RD(phy->cc2.rd))
+			use_cc = TYPEC_PIN_CC2;
+		else
+			goto end;
 	}
+	typec_setup_cc(phy, use_cc, TYPEC_STATE_ATTACHED_UFP);
+	detect_update_ufp_state(detect);
+	return;
+end:
+	typec_switch_mode(phy, TYPEC_MODE_DRP);
 }
 
 static void update_phy_state(struct work_struct *work)
 {
 	struct typec_phy *phy;
 	struct typec_detect *detect;
-	struct power_supply_cable_props cable_props = {0};
 	int state;
 
 	detect = container_of(work, struct typec_detect, phy_ntf_work);
@@ -726,7 +745,6 @@ static void update_phy_state(struct work_struct *work)
 		if (state == DETECT_STATE_LOCK_UFP)
 			complete(&detect->lock_ufp_complete);
 		mutex_unlock(&detect->lock);
-		detect_check_ufp(detect);
 		break;
 	case TYPEC_EVENT_NONE:
 		dev_dbg(phy->dev, "EVENT NONE: state = %d", detect->state);
@@ -734,7 +752,6 @@ static void update_phy_state(struct work_struct *work)
 		detect->got_vbus = false;
 		/* setup Switches0 Setting */
 		detect->drp_counter = 0;
-		detect->valid_cc = 0;
 		if (!phy->support_drp_toggle)
 			typec_setup_cc(phy, 0, TYPEC_STATE_UNATTACHED_UFP);
 		mutex_unlock(&detect->lock);
@@ -744,41 +761,36 @@ static void update_phy_state(struct work_struct *work)
 				__func__, detect->state);
 			typec_detect_notify_extcon(detect,
 						TYPEC_CABLE_USB_SNK, false);
-			if (!detect->is_pd_capable)
-				typec_detect_notify_extcon(detect,
+			typec_detect_notify_extcon(detect,
 						TYPEC_CABLE_USB, false);
-			/* notify power supply */
-			cable_props.chrg_evt =
-				POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
-			cable_props.chrg_type =
-				POWER_SUPPLY_CHARGER_TYPE_USB_TYPEC;
-			cable_props.ma = 0;
-			atomic_notifier_call_chain(&power_supply_notifier,
-							PSY_CABLE_EVENT,
-							&cable_props);
+
 			typec_enable_autocrc(detect->phy, false);
+
 			mutex_lock(&detect->lock);
 			detect->state = DETECT_STATE_UNATTACHED_DRP;
 			mutex_unlock(&detect->lock);
+			typec_switch_mode(phy, TYPEC_MODE_DRP);
+
 		} else if (detect->state == DETECT_STATE_ATTACHED_DFP) {
 			/* state = DFP; disable VBUS */
 			typec_detect_notify_extcon(detect,
 						TYPEC_CABLE_USB_SRC, false);
-			if (!detect->is_pd_capable)
-				typec_detect_notify_extcon(detect,
+			typec_detect_notify_extcon(detect,
 						TYPEC_CABLE_USB_HOST, false);
 
 			typec_enable_autocrc(detect->phy, false);
 
 			reinit_completion(&detect->lock_ufp_complete);
+
 			mutex_lock(&detect->lock);
 			detect->state = DETECT_STATE_LOCK_UFP;
 			mutex_unlock(&detect->lock);
 			queue_work(detect->wq_lock_ufp,
 					&detect->lock_ufp_work);
-			break;
 		}
+
 		break;
+
 	default:
 		dev_err(detect->phy->dev, "unknown event %d", detect->event);
 	}
@@ -797,6 +809,9 @@ static int typec_handle_phy_ntf(struct notifier_block *nb,
 		return NOTIFY_BAD;
 
 	switch (event) {
+	case TYPEC_EVENT_UFP:
+		schedule_work(&detect->ufp_work);
+		break;
 	case TYPEC_EVENT_VBUS:
 	case TYPEC_EVENT_NONE:
 		detect->event = event;
@@ -878,8 +893,10 @@ int typec_bind_detect(struct typec_phy *phy)
 	init_waitqueue_head(&detect->wq);
 
 	INIT_WORK(&detect->phy_ntf_work, update_phy_state);
+	INIT_WORK(&detect->valid_dfp_attach_work, detect_valid_dfp_attach_work);
 	INIT_WORK(&detect->dfp_work, detect_dfp_work);
 	INIT_WORK(&detect->drp_work, detect_drp_work);
+	INIT_WORK(&detect->ufp_work, detect_ufp_work);
 
 	if (!phy->support_drp_toggle)
 		setup_timer(&detect->drp_timer, detect_drp_timer,

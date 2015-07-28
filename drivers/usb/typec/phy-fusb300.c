@@ -118,6 +118,8 @@
 #define FUSB302_CONTROL2_REG		0x8
 #define FUSB302_CONTROL2_TOGGLE_EN	BIT(0)
 
+#define FUSB302_CONTROL2_TOG_40MS	BIT(6)
+
 #define FUSB302_CONTROL2_TOG_MODE_SHIFT	1
 #define FUSB302_CONTROL2_TOG_MODE_MASK	3
 
@@ -271,6 +273,8 @@
 #define FUSB300_MAX_INT_STAT		3
 #define FUSB302_MAX_INT_STAT		7
 #define MAX_FIFO_SIZE	64
+#define PD_DEBOUNCE_MIN	10000	/* 10ms */
+#define PD_DEBOUNCE_MAX	15000	/* 15ms */
 
 static int host_cur[4] = {
 	TYPEC_CURRENT_UNKNOWN,
@@ -295,8 +299,10 @@ struct fusb300_chip {
 	struct regmap *map;
 	struct mutex lock;
 	struct typec_phy phy;
-	struct completion int_complete;
+	struct completion vbus_complete;
 	struct work_struct tog_work;
+	struct work_struct dfp_disconn_work;
+	struct fusb300_int_stat int_stat;
 	spinlock_t irqlock;
 	int activity_count;
 	int is_fusb300;
@@ -452,6 +458,7 @@ static int fusb300_switch_mode(struct typec_phy *phy, enum typec_mode mode)
 		if (chip->is_fusb300)
 			fusb300_set_host_current(phy, 0);
 		mutex_lock(&chip->lock);
+		fusb300_en_pd(chip, true);
 		phy->state = TYPEC_STATE_UNATTACHED_UFP;
 		regmap_write(chip->map, FUSB300_MEAS_REG, 0x31);
 		/* for FPGA write different values
@@ -655,6 +662,16 @@ static inline int fusb302_configure_pd(struct fusb300_chip *chip)
 	return 0;
 }
 
+static void fusb300_reset_valid_cc(struct typec_phy *phy)
+{
+	phy->cc1.valid = 0;
+	phy->cc2.valid = 0;
+	phy->cc1.rd = 0;
+	phy->cc2.rd = 0;
+	phy->valid_rd = 0;
+	phy->valid_cc = 0;
+}
+
 static int fusb300_init_chip(struct fusb300_chip *chip)
 {
 	struct regmap *regmap = chip->map;
@@ -718,29 +735,90 @@ static int fusb300_init_chip(struct fusb300_chip *chip)
 	return 0;
 }
 
-static bool
-fusb300_check_vbus_state(struct fusb300_chip *chip, int vbus_stat_reg)
+static void fusb300_update_valid_cc_rd(struct fusb300_chip *chip,
+			int tog_stat, int vbus_stat)
 {
 	struct typec_phy *phy = &chip->phy;
-	if (!(vbus_stat_reg & FUSB300_STAT0_VBUS_OK)) {
-		/* delay for vbus presence */
-		/* sometimes VBUS is triggred after TOG_DONE */
-		usleep_range(VBUS_PRESENCE_TIME_MIN, VBUS_PRESENCE_TIME_MAX);
-		regmap_read(chip->map, FUSB300_STAT0_REG, &vbus_stat_reg);
-		if (!(vbus_stat_reg & FUSB300_STAT0_VBUS_OK)) {
-			dev_info(chip->dev,
-				"VBUS not present in UFP, why TOG_INTR?");
-			mutex_lock(&chip->lock);
-			fusb302_enable_toggle(chip, true, FUSB302_TOG_MODE_DRP);
-			mutex_unlock(&chip->lock);
-			return false;
-		} else
-			atomic_notifier_call_chain(&phy->notifier,
-							TYPEC_EVENT_VBUS, phy);
-	} else
-		atomic_notifier_call_chain(&phy->notifier,
-							TYPEC_EVENT_VBUS, phy);
-	return true;
+	int rd = vbus_stat & FUSB300_STAT0_BC_LVL;
+
+	if ((tog_stat == FUSB302_TOG_STAT_DFP_CC1) ||
+		(tog_stat == FUSB302_TOG_STAT_UFP_CC1)) {
+		phy->valid_cc = TYPEC_PIN_CC1;
+		phy->cc1.valid = true;
+		phy->cc1.rd = rd;
+		phy->cc2.valid = false;
+	} else if ((tog_stat == FUSB302_TOG_STAT_DFP_CC2) ||
+		(tog_stat == FUSB302_TOG_STAT_UFP_CC2)) {
+		phy->valid_cc = TYPEC_PIN_CC2;
+		phy->cc2.valid = true;
+		phy->cc2.rd = rd;
+		phy->cc1.valid = false;
+	} else {
+		phy->valid_cc = 0;
+		phy->cc2.valid = false;
+		phy->cc2.valid = false;
+	}
+
+}
+
+static void fusb300_enable_valid_pu_pd(struct fusb300_chip *chip, int tog_stat)
+{
+	unsigned int val;
+
+	if (tog_stat == FUSB302_TOG_STAT_DFP_CC1)
+		val = FUSB300_SWITCH0_PU_CC1_EN;
+	else if (tog_stat == FUSB302_TOG_STAT_DFP_CC1)
+		val = FUSB300_SWITCH0_PU_CC2_EN;
+
+	if ((tog_stat == FUSB302_TOG_STAT_UFP_CC1) ||
+		(tog_stat == FUSB302_TOG_STAT_UFP_CC2))
+		val = FUSB300_SWITCH0_PD_CC1_EN | FUSB300_SWITCH0_PD_CC2_EN;
+
+	regmap_write(chip->map, FUSB300_SWITCH0_REG, val);
+}
+
+/* send ufp notification based on valid vbus */
+static void
+fusb300_send_ufp_notification(struct fusb300_chip *chip, int vbus_stat_reg)
+{
+	struct typec_phy *phy = &chip->phy;
+	int ret;
+
+	/*
+	 * for legacy chargers, VBUS will be present early,
+	 * send UFP notification
+	 */
+	if (vbus_stat_reg & FUSB300_STAT0_VBUS_OK)
+		goto send_ntf;
+
+	/*
+	 * for a typec charger, VBUS will be enabled by DFP
+	 * device upon sensing CC pulldown on UFP device.
+	 * Hence VBUS wont be enabled immediately, wait till
+	 * VBUS timeout for DFP to enable VBUS, if not restart
+	 * DRP toggling.
+	 *
+	 * This case also occurs with the legacy charger,
+	 * removing cable from the host port due to VBUS capacitance,
+	 * the CC could be pullup on the cable. The device
+	 * could settle for UFP.
+	 */
+	ret = wait_for_completion_timeout(&chip->vbus_complete,
+						VBUS_PRESENCE_TIME_MAX);
+
+	if (ret == 0) {
+		dev_info(chip->dev,
+			"VBUS not present in UFP, why TOG_INTR?");
+		mutex_lock(&chip->lock);
+		fusb300_reset_valid_cc(phy);
+		fusb302_enable_toggle(chip, true, FUSB302_TOG_MODE_DRP);
+		mutex_unlock(&chip->lock);
+		return;
+	}
+
+send_ntf:
+	atomic_notifier_call_chain(&phy->notifier,
+						TYPEC_EVENT_UFP, phy);
 }
 
 static void fusb300_tog_stat_work(struct work_struct *work)
@@ -752,8 +830,10 @@ static void fusb300_tog_stat_work(struct work_struct *work)
 	unsigned int tog_stat_reg, vbus_stat_reg;
 	u8 tog_stat;
 
-	regmap_read(chip->map, FUSB302_STAT1A_REG, &tog_stat_reg);
-	regmap_read(chip->map, FUSB300_STAT0_REG, &vbus_stat_reg);
+	reinit_completion(&chip->vbus_complete);
+
+	tog_stat_reg = chip->int_stat.stat1a_reg;
+	vbus_stat_reg = chip->int_stat.stat_reg;
 
 	mutex_lock(&chip->lock);
 	fusb302_enable_toggle(chip, false, FUSB302_TOG_MODE_DRP);
@@ -764,6 +844,10 @@ static void fusb300_tog_stat_work(struct work_struct *work)
 	if ((tog_stat == FUSB302_TOG_STAT_DFP_CC1) ||
 		(tog_stat == FUSB302_TOG_STAT_DFP_CC2))  {
 		mutex_lock(&chip->lock);
+		/* setup the DAC voltage to 1.96V */
+		regmap_write(chip->map, FUSB300_MEAS_REG, 0x26);
+		fusb300_update_valid_cc_rd(chip, tog_stat, vbus_stat_reg);
+		fusb300_enable_valid_pu_pd(chip, tog_stat);
 		phy->state = TYPEC_STATE_UNATTACHED_DFP;
 		mutex_unlock(&chip->lock);
 		atomic_notifier_call_chain(&phy->notifier,
@@ -774,13 +858,17 @@ static void fusb300_tog_stat_work(struct work_struct *work)
 		 * after VBUS and Rp terminations are seen
 		 */
 		mutex_lock(&chip->lock);
+		/* setup the DAC voltage to 2.05V */
+		regmap_write(chip->map, FUSB300_MEAS_REG, 0x31);
+		fusb300_update_valid_cc_rd(chip, tog_stat, vbus_stat_reg);
+		fusb300_enable_valid_pu_pd(chip, tog_stat);
 		phy->state = TYPEC_STATE_UNATTACHED_UFP;
 		mutex_unlock(&chip->lock);
 	} else
 		dev_warn(chip->dev, "unknown tog stat %x", tog_stat);
 
 	if (phy->state == TYPEC_STATE_UNATTACHED_UFP)
-		fusb300_check_vbus_state(chip, vbus_stat_reg);
+		fusb300_send_ufp_notification(chip, vbus_stat_reg);
 }
 
 static void fusb300_handle_vbus_int(struct fusb300_chip *chip, int vbus_on)
@@ -793,9 +881,7 @@ static void fusb300_handle_vbus_int(struct fusb300_chip *chip, int vbus_on)
 	chip->i_vbus = (bool)vbus_on;
 	mutex_unlock(&chip->lock);
 	if (vbus_on) {
-		if (state == TYPEC_STATE_UNATTACHED_DFP)
-			complete(&chip->int_complete);
-		else if (state == TYPEC_STATE_PU_PD_SWAP) {
+		if (state == TYPEC_STATE_PU_PD_SWAP) {
 			mutex_lock(&chip->lock);
 			phy->state = TYPEC_STATE_ATTACHED_UFP;
 			mutex_unlock(&chip->lock);
@@ -804,13 +890,17 @@ static void fusb300_handle_vbus_int(struct fusb300_chip *chip, int vbus_on)
 			phy->state = TYPEC_STATE_ATTACHED_DFP;
 			mutex_unlock(&chip->lock);
 		}
+		complete(&chip->vbus_complete);
 
-		if (chip->is_fusb300)
-			atomic_notifier_call_chain(&phy->notifier,
+		atomic_notifier_call_chain(&phy->notifier,
 				 TYPEC_EVENT_VBUS, phy);
 		/* TOG_DONE will be used with FUSB302 */
 	} else {
 		if (state == TYPEC_STATE_ATTACHED_UFP) {
+			mutex_lock(&chip->lock);
+			fusb300_reset_valid_cc(phy);
+			mutex_unlock(&chip->lock);
+
 			atomic_notifier_call_chain(&phy->notifier,
 					TYPEC_EVENT_NONE, phy);
 		}
@@ -822,21 +912,19 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 	struct fusb300_chip *chip = dev;
 	struct typec_phy *phy = &chip->phy;
 	int ret;
-	struct fusb300_int_stat int_stat;
 	void *int_ptr;
 	unsigned int reg_start;
 	size_t count;
 	int phy_state;
 
-	memset(&int_stat, 0x00, sizeof(int_stat));
 	pm_runtime_get_sync(chip->dev);
 
 	if (chip->is_fusb300) {
-		int_ptr = (void *) &int_stat.stat_reg;
+		int_ptr = (void *) &chip->int_stat.stat_reg;
 		reg_start = FUSB300_STAT0_REG;
 		count = FUSB300_MAX_INT_STAT;
 	} else {
-		int_ptr = (void *)&int_stat;
+		int_ptr = (void *)&chip->int_stat;
 		reg_start = FUSB302_STAT0A_REG;
 		count = FUSB302_MAX_INT_STAT;
 	}
@@ -848,24 +936,24 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 		return IRQ_NONE;
 	}
 
-	dev_dbg(chip->dev, "int=%x stat0=%x stat1=%x", int_stat.int_reg,
-					int_stat.stat_reg, int_stat.stat1_reg);
+	dev_dbg(chip->dev, "int=%x stat0=%x stat1=%x", chip->int_stat.int_reg,
+			chip->int_stat.stat_reg, chip->int_stat.stat1_reg);
 	dev_dbg(chip->dev, "inta=%x, intb=%x, stat0a=%x stat1a=%x",
-			int_stat.inta_reg, int_stat.intb_reg,
-			int_stat.stat0a_reg, int_stat.stat1a_reg);
+			chip->int_stat.inta_reg, chip->int_stat.intb_reg,
+			chip->int_stat.stat0a_reg, chip->int_stat.stat1a_reg);
 
 	mutex_lock(&chip->lock);
 	phy_state = phy->state;
 	mutex_unlock(&chip->lock);
 
 	if (!chip->is_fusb300) {
-		if (int_stat.inta_reg & FUSB302_INTA_TOG_DONE) {
+		if (chip->int_stat.inta_reg & FUSB302_INTA_TOG_DONE) {
 			dev_dbg(phy->dev, "TOG_DONE INTR");
 			schedule_work(&chip->tog_work);
 		}
 	}
 
-	if (int_stat.int_reg & FUSB300_INT_WAKE &&
+	if (chip->int_stat.int_reg & FUSB300_INT_WAKE &&
 		(phy_state == TYPEC_STATE_UNATTACHED_UFP ||
 		phy_state == TYPEC_STATE_UNATTACHED_DFP)) {
 		unsigned int val;
@@ -876,37 +964,30 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 			((val & FUSB300_SWITCH0_PU_EN) == 0))
 			atomic_notifier_call_chain(&phy->notifier,
 				TYPEC_EVENT_DRP, phy);
-		complete(&chip->int_complete);
 	}
 
-	if (int_stat.int_reg & FUSB300_INT_VBUS_OK) {
+	if (chip->int_stat.int_reg & FUSB300_INT_VBUS_OK) {
 		fusb300_handle_vbus_int(chip,
-			((int_stat.stat_reg & FUSB300_STAT0_VBUS_OK) ==
+			((chip->int_stat.stat_reg & FUSB300_STAT0_VBUS_OK) ==
 			FUSB300_STAT0_VBUS_OK));
 	}
 
-
-	if (int_stat.int_reg & (FUSB300_INT_COMP | FUSB300_INT_BC_LVL))
-		complete(&chip->int_complete);
-
-
-	if ((int_stat.int_reg & FUSB300_INT_COMP) &&
-			(int_stat.stat_reg & FUSB300_STAT0_COMP)) {
+	if ((chip->int_stat.int_reg & FUSB300_INT_COMP) &&
+			(chip->int_stat.stat_reg & FUSB300_STAT0_COMP)) {
 		/* COMP change can be treated as disconnect in
 		 * DFP or UFP state as comp change can also happen
 		 * during role swap.
 		 */
 		if ((phy_state == TYPEC_STATE_ATTACHED_UFP) ||
 			(phy_state == TYPEC_STATE_ATTACHED_DFP)) {
-			atomic_notifier_call_chain(&phy->notifier,
-				 TYPEC_EVENT_NONE, phy);
-			fusb300_flush_fifo(phy, FIFO_TYPE_TX | FIFO_TYPE_RX);
+			schedule_work(&chip->dfp_disconn_work);
 		}
 	}
 
-	if (chip->process_pd && (int_stat.int_reg & FUSB300_INT_ACTIVITY) &&
-		(int_stat.int_reg & FUSB300_INT_COLLISION) &&
-		!(int_stat.stat_reg & FUSB300_STAT0_ACTIVITY)) {
+	if (chip->process_pd &&
+		(chip->int_stat.int_reg & FUSB300_INT_ACTIVITY) &&
+		(chip->int_stat.int_reg & FUSB300_INT_COLLISION) &&
+		!(chip->int_stat.stat_reg & FUSB300_STAT0_ACTIVITY)) {
 		mutex_lock(&chip->lock);
 		chip->transmit = false;
 		mutex_unlock(&chip->lock);
@@ -914,20 +995,20 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 			phy->notify_protocol(phy, PROT_PHY_EVENT_COLLISION);
 	}
 
-	if (chip->process_pd && (int_stat.int_reg & FUSB300_INT_CRCCHK)) {
+	if (chip->process_pd && (chip->int_stat.int_reg & FUSB300_INT_CRCCHK)) {
 		if (phy->notify_protocol)
 			phy->notify_protocol(phy, PROT_PHY_EVENT_MSG_RCV);
 	}
 
-	if (int_stat.int_reg & FUSB300_INT_ALERT) {
-		if (int_stat.stat1_reg & FUSB300_STAT1_TXFULL) {
+	if (chip->int_stat.int_reg & FUSB300_INT_ALERT) {
+		if (chip->int_stat.stat1_reg & FUSB300_STAT1_TXFULL) {
 			dev_info(phy->dev, "alert int tx fifo full");
 			mutex_lock(&chip->lock);
 			regmap_update_bits(chip->map, FUSB300_CONTROL0_REG,
 					(1<<6), (1<<6));
 			mutex_unlock(&chip->lock);
 		}
-		if (int_stat.stat1_reg & FUSB300_STAT1_RXFULL) {
+		if (chip->int_stat.stat1_reg & FUSB300_STAT1_RXFULL) {
 			dev_info(phy->dev, "alert int rx fifo full");
 			mutex_lock(&chip->lock);
 			regmap_update_bits(chip->map, FUSB300_CONTROL1_REG,
@@ -937,7 +1018,7 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 	}
 
 	if (!chip->is_fusb300 && chip->process_pd) {
-		if (int_stat.intb_reg & FUSB302_INTB_GCRC_SENT) {
+		if (chip->int_stat.intb_reg & FUSB302_INTB_GCRC_SENT) {
 			dev_dbg(phy->dev, "GoodCRC sent");
 			if (phy->notify_protocol)
 				phy->notify_protocol(phy,
@@ -947,9 +1028,9 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 	/* indication of activity means there is some transaction on CC
 	 * FUSB302 has TXSENT interrupt  for TX completion
 	 */
-	if (chip->is_fusb300 && int_stat.int_reg & FUSB300_INT_ACTIVITY) {
-		if (!(int_stat.stat_reg & FUSB300_STAT0_ACTIVITY) &&
-			!(int_stat.int_reg & FUSB300_INT_CRCCHK)) {
+	if (chip->is_fusb300 && chip->int_stat.int_reg & FUSB300_INT_ACTIVITY) {
+		if (!(chip->int_stat.stat_reg & FUSB300_STAT0_ACTIVITY) &&
+			!(chip->int_stat.int_reg & FUSB300_INT_CRCCHK)) {
 			dev_info(phy->dev,
 				"Activity happend and bus is idle tx complete");
 			if (phy->notify_protocol)
@@ -960,7 +1041,7 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 	if (!chip->is_fusb300 && chip->process_pd) {
 		/* handle FUSB302 specific interrupt */
 
-		if (int_stat.inta_reg & FUSB302_INTA_HARD_RST) {
+		if (chip->int_stat.inta_reg & FUSB302_INTA_HARD_RST) {
 			if (phy->notify_protocol)
 				phy->notify_protocol(phy,
 						PROT_PHY_EVENT_HARD_RST);
@@ -968,14 +1049,14 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 			regmap_update_bits(chip->map,
 				FUSB300_SOFT_POR_REG, 2, 2);
 		}
-		if (int_stat.inta_reg & FUSB302_INTA_SOFT_RST) {
+		if (chip->int_stat.inta_reg & FUSB302_INTA_SOFT_RST) {
 			/* flush fifo ? */
 			if (phy->notify_protocol)
 				phy->notify_protocol(phy,
 						PROT_PHY_EVENT_SOFT_RST);
 		}
 
-		if (int_stat.inta_reg & FUSB302_INTA_TX_SENT) {
+		if (chip->int_stat.inta_reg & FUSB302_INTA_TX_SENT) {
 			dev_dbg(phy->dev,
 				"Activity happend and bus is idle tx complete");
 			if (phy->notify_protocol)
@@ -983,19 +1064,19 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 						PROT_PHY_EVENT_TX_SENT);
 		}
 
-		if (int_stat.inta_reg & FUSB302_INTA_TX_RETRY_FAIL) {
+		if (chip->int_stat.inta_reg & FUSB302_INTA_TX_RETRY_FAIL) {
 			if (phy->notify_protocol)
 				phy->notify_protocol(phy,
 						PROT_PHY_EVENT_TX_FAIL);
 		}
 
-		if (int_stat.inta_reg & FUSB302_INTA_TX_SOFT_RST_FAIL) {
+		if (chip->int_stat.inta_reg & FUSB302_INTA_TX_SOFT_RST_FAIL) {
 			if (phy->notify_protocol)
 				phy->notify_protocol(phy,
 						PROT_PHY_EVENT_SOFT_RST_FAIL);
 		}
 
-		if (int_stat.inta_reg & FUSB302_INTA_TX_HARD_RST) {
+		if (chip->int_stat.inta_reg & FUSB302_INTA_TX_HARD_RST) {
 			if (phy->notify_protocol)
 				phy->notify_protocol(phy,
 						PROT_PHY_EVENT_TX_HARD_RST);
@@ -1199,115 +1280,168 @@ static inline int fusb302_pd_send_hard_rst(struct typec_phy *phy)
 
 }
 
-static int fusb300_measure_cc(struct typec_phy *phy, enum typec_cc_pin pin,
-				struct typec_cc_psy *cc_psy,
-				unsigned long timeout)
+static void fusb300_update_bclvl(struct cc_pin *pin, int rd)
+{
+	switch (rd) {
+	case FUSB300_BC_LVL_VRA:
+		pin->rd = USB_TYPEC_CC_VRA;
+		pin->cur = 0;
+		break;
+	case FUSB300_BC_LVL_USB:
+		pin->rd = USB_TYPEC_CC_VRD_USB;
+		pin->cur = host_cur[1];
+		break;
+	case FUSB300_BC_LVL_1500:
+		pin->rd = USB_TYPEC_CC_VRD_1500;
+		pin->cur = host_cur[2];
+		break;
+	case FUSB300_BC_LVL_3000:
+		pin->rd = USB_TYPEC_CC_VRD_3000;
+		pin->cur = host_cur[3];
+		break;
+	}
+}
+
+static int fusb300_measure_cc(struct typec_phy *phy, struct cc_pin *pin)
 {
 	struct fusb300_chip *chip;
 	int ret, s_comp, s_bclvl;
 	unsigned int val, stat_reg;
 
 	if (!phy) {
-		cc_psy->v_rd = -1;
+		pin->rd = -1;
+		pin->valid = false;
 		return -ENODEV;
 	}
 
 	chip = dev_get_drvdata(phy->dev);
-	timeout = msecs_to_jiffies(20);
 
 	pm_runtime_get_sync(chip->dev);
 
 	mutex_lock(&chip->lock);
 
-	if (pin == TYPEC_PIN_CC1) {
+	if (pin->id == TYPEC_PIN_CC1) {
 		val = FUSB300_SWITCH0_MEASURE_CC1;
 		if (phy->state == TYPEC_STATE_UNATTACHED_DFP)
 			val |= FUSB300_SWITCH0_PU_CC1_EN;
 		else
-			val |= FUSB300_SWITCH0_PD_CC1_EN;
+			val |= (FUSB300_SWITCH0_PD_CC1_EN |
+				FUSB300_SWITCH0_PD_CC2_EN);
 	} else {
 		val = FUSB300_SWITCH0_MEASURE_CC2;
 		if (phy->state == TYPEC_STATE_UNATTACHED_DFP)
 			val |= FUSB300_SWITCH0_PU_CC2_EN;
 		else
-			val |= FUSB300_SWITCH0_PD_CC2_EN;
+			val |= (FUSB300_SWITCH0_PD_CC1_EN |
+				FUSB300_SWITCH0_PD_CC2_EN);
 	}
 
 	dev_dbg(phy->dev,
 		"%s state %d unattached_dfp: %d switch0: %x val: %x\n",
 		 __func__, phy->state, TYPEC_STATE_UNATTACHED_DFP,
 		FUSB300_SWITCH0_REG, val);
-	reinit_completion(&chip->int_complete);
 	ret = regmap_write(chip->map, FUSB300_SWITCH0_REG, val);
-	if (ret < 0)
+	if (ret < 0) {
+		mutex_unlock(&chip->lock);
 		goto err_measure;
-
-	if (!chip->is_fusb300) {
-		/* after toggle, it takes 1 to 1.2ms to measure */
-		usleep_range(1000, 1200);
-		regmap_read(chip->map, FUSB300_STAT0_REG, &stat_reg);
-		goto do_bclvl;
-	} else {
-		usleep_range(10000, 15000);
-		regmap_read(chip->map, FUSB300_STAT0_REG, &stat_reg);
-		goto do_bclvl;
 	}
-
 	mutex_unlock(&chip->lock);
 
-	ret = wait_for_completion_timeout(&chip->int_complete, timeout);
-	if (ret == 0) {
-		ret = -ETIME;
-		goto err_measure;
-	}
+	/* DAC status update shall take 250uS */
+	usleep_range(250, 260);/* wait for update in the status register */
 
 	mutex_lock(&chip->lock);
 	regmap_read(chip->map, FUSB300_STAT0_REG, &stat_reg);
 
-do_bclvl:
 	dev_dbg(chip->dev, "STAT0_REG = %x\n", stat_reg);
 	if ((stat_reg & FUSB300_STAT0_VBUS_OK) &&
 		phy->state == TYPEC_STATE_UNATTACHED_DFP) {
-		ret = -EPROTO;
-		goto err;
+		dev_err(chip->dev, "vbus in unattached dfp?");
 	}
 	s_comp = stat_reg & FUSB300_STAT0_COMP;
 	s_bclvl = stat_reg & FUSB300_STAT0_BC_LVL_MASK;
 	mutex_unlock(&chip->lock);
 
 	if (!s_comp) {
-		switch (s_bclvl) {
-		case FUSB300_BC_LVL_VRA:
-			cc_psy->v_rd = USB_TYPEC_CC_VRA;
-			cc_psy->cur = 0;
-			break;
-		case FUSB300_BC_LVL_USB:
-			cc_psy->v_rd = USB_TYPEC_CC_VRD_USB;
-			cc_psy->cur = host_cur[1];
-			break;
-		case FUSB300_BC_LVL_1500:
-			cc_psy->v_rd = USB_TYPEC_CC_VRD_1500;
-			cc_psy->cur = host_cur[2];
-			break;
-		case FUSB300_BC_LVL_3000:
-			cc_psy->v_rd = USB_TYPEC_CC_VRD_3000;
-			cc_psy->cur = host_cur[3];
-			break;
-		}
+		fusb300_update_bclvl(pin, s_bclvl);
+		pin->valid = true;
 	} else {
 		dev_dbg(phy->dev, "chip->stat = %x s_comp %x",
 				stat_reg, s_comp);
-		cc_psy->v_rd = USB_TYPEC_CC_VRD_UNKNOWN; /* illegal */
-		cc_psy->cur = TYPEC_CURRENT_UNKNOWN; /* illegal */
+		pin->rd = USB_TYPEC_CC_VRD_UNKNOWN; /* illegal */
+		pin->cur = TYPEC_CURRENT_UNKNOWN; /* illegal */
+		pin->valid = false;
 	}
+
 	pm_runtime_put_sync(chip->dev);
 	return 0;
-err:
-	mutex_unlock(&chip->lock);
 err_measure:
-	cc_psy->cur = TYPEC_CURRENT_UNKNOWN;
-	cc_psy->v_rd = USB_TYPEC_CC_VRD_UNKNOWN;
+	pin->cur = TYPEC_CURRENT_UNKNOWN;
+	pin->rd = USB_TYPEC_CC_VRD_UNKNOWN;
+	pin->valid = false;
 	pm_runtime_put_sync(chip->dev);
+	return ret;
+}
+
+static void fusb300_valid_disconnect(struct work_struct *work)
+{
+	struct fusb300_chip *chip = container_of(work, struct fusb300_chip,
+						dfp_disconn_work);
+
+	struct typec_phy *phy = &chip->phy;
+	unsigned int val, stat;
+
+	/* In UFP, VBUS drop is considered disconnect */
+	if (phy->state == TYPEC_STATE_ATTACHED_UFP)
+		return;
+
+	/*
+	 * According to TypeC Spec DFP transistion to unattached state
+	 * if CC open for tPDDebounce period (10ms)
+	 */
+	usleep_range(PD_DEBOUNCE_MIN, PD_DEBOUNCE_MAX);
+	/*
+	 * do measurement on the already setup cc and
+	 * check whether the disconnect is a valid one
+	 * as the other device doing measurement on invalid
+	 * cc could trigger a comp change interrupt, which
+	 * should not be considered as disconnect
+	 */
+	regmap_read(chip->map, FUSB300_SWITCH0_REG, &val);
+	regmap_write(chip->map, FUSB300_SWITCH0_REG, val);
+
+	regmap_read(chip->map, FUSB300_STAT0_REG, &stat);
+
+	dev_dbg(chip->dev, "%s: stat0 %x", __func__, stat);
+	if (stat & FUSB300_STAT0_COMP) {
+		fusb300_reset_valid_cc(phy);
+		atomic_notifier_call_chain(&phy->notifier,
+						 TYPEC_EVENT_NONE, phy);
+		fusb300_flush_fifo(phy, FIFO_TYPE_TX | FIFO_TYPE_RX);
+	}
+}
+
+static int fusb300_enable_valid_pu(struct typec_phy *phy)
+{
+	struct fusb300_chip *chip;
+	unsigned int val = 0;
+	int ret;
+
+	chip = dev_get_drvdata(phy->dev);
+
+	mutex_lock(&chip->lock);
+	dev_dbg(chip->dev, "phy->cc1.valid = %d, phy->cc1.rd = %d",
+			phy->cc1.valid, phy->cc1.rd);
+	dev_dbg(chip->dev, "phy->cc2.valid = %d, phy->cc2.rd = %d",
+			phy->cc2.valid, phy->cc2.rd);
+
+	if (phy->cc1.valid)
+		val |= FUSB300_SWITCH0_PU_CC1_EN;
+	if (phy->cc2.valid)
+		val |= FUSB300_SWITCH0_PU_CC2_EN;
+	ret = regmap_write(chip->map, FUSB300_SWITCH0_REG, val);
+	mutex_unlock(&chip->lock);
+
 	return ret;
 }
 
@@ -1410,6 +1544,8 @@ static inline int fusb302_enable_toggle(struct fusb300_chip *chip, bool en,
 	unsigned int mask;
 	int ret;
 
+	dev_dbg(chip->dev, "%s: en %d", __func__, en);
+
 	if (en) {
 		val = (mode << FUSB302_CONTROL2_TOG_MODE_SHIFT) |
 				 FUSB302_CONTROL2_TOGGLE_EN;
@@ -1419,6 +1555,8 @@ static inline int fusb302_enable_toggle(struct fusb300_chip *chip, bool en,
 			FUSB302_CONTROL2_TOG_MODE_SHIFT);
 		mask = 0;
 	}
+	/* wait for 40ms between toggle cycle */
+	val |= FUSB302_CONTROL2_TOG_40MS;
 
 	ret = regmap_write(chip->map, FUSB302_CONTROL2_REG, val);
 	if (ret < 0)
@@ -1541,6 +1679,7 @@ static int fusb300_probe(struct i2c_client *client,
 	chip->phy.ops.get_host_current = fusb300_get_host_current;
 	chip->phy.ops.switch_mode = fusb300_switch_mode;
 	chip->phy.ops.setup_cc = fusb300_setup_cc;
+	chip->phy.ops.enable_valid_pu = fusb300_enable_valid_pu;
 
 	chip->phy.get_pd_version = fusb300_pd_version;
 	chip->phy.is_pd_capable = fusb300_pd_capable;
@@ -1560,9 +1699,10 @@ static int fusb300_probe(struct i2c_client *client,
 		client->irq = fusb300_get_irq(client);
 
 	mutex_init(&chip->lock);
-	init_completion(&chip->int_complete);
+	init_completion(&chip->vbus_complete);
 	i2c_set_clientdata(client, chip);
 	INIT_WORK(&chip->tog_work, fusb300_tog_stat_work);
+	INIT_WORK(&chip->dfp_disconn_work, fusb300_valid_disconnect);
 
 	typec_add_phy(&chip->phy);
 
@@ -1610,7 +1750,8 @@ static int fusb300_probe(struct i2c_client *client,
 
 	} else {
 		atomic_notifier_call_chain(&chip->phy.notifier,
-				TYPEC_EVENT_DRP, &chip->phy);
+			chip->is_fusb300 ? TYPEC_EVENT_DRP : TYPEC_EVENT_UFP,
+			&chip->phy);
 		atomic_notifier_call_chain(&chip->phy.notifier,
 				TYPEC_EVENT_VBUS, &chip->phy);
 	}
