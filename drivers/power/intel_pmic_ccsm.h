@@ -247,6 +247,9 @@
 #define CHGDISFN_DIS_CCSM_VAL		0x11
 #define CHGDISFN_CCSM_MASK		0x51
 
+#define USBPHYRSTB_EN			1
+#define USBPHYRSTB_DIS			0
+
 /*Interrupt registers*/
 #define BATT_CHR_BATTDET_MASK	(1 << 2)
 /*Status registers*/
@@ -379,7 +382,19 @@ struct pmic_chrgr_drv_context {
 	bool current_sense_enabled;
 	bool is_internal_usb_phy;
 	enum pmic_charger_cable_type charger_type;
+	/* Variables to hold otg and host data mode status*/
 	bool otg_mode_enabled;
+	bool dev_mode_enabled;
+	/* Variables to hold src and sink power mode status*/
+	bool src_enabled;
+	bool snk_enabled;
+	/* Vatiabled to represent extcon cable's status */
+	bool host_cable_state;
+	bool device_cable_state;
+	bool src_cable_state;
+	bool snk_cable_state;
+	bool is_usb_typec;
+
 	bool tt_lock;
 	unsigned int irq[PMIC_CCSM_IRQ_MAX];		/* GPE_ID or IRQ# */
 	int vbus_state;
@@ -389,7 +404,6 @@ struct pmic_chrgr_drv_context {
 	int pmic_model;
 	int intmap_size;
 	int reg_cnt;
-	int cable_state;
 	void __iomem *pmic_intr_iomap;
 	struct pmic_regs *reg_map;
 	struct device *dev;
@@ -402,7 +416,11 @@ struct pmic_chrgr_drv_context {
 	struct thermal_cooling_device *vbus_cdev;
 	struct list_head evt_queue;
 	struct delayed_work evt_work;
+	struct extcon_dev *edev;
 	struct extcon_specific_cable_nb host_cable;
+	struct extcon_specific_cable_nb device_cable;
+	struct extcon_specific_cable_nb src_cable;
+	struct extcon_specific_cable_nb snk_cable;
 	struct notifier_block cable_nb;
 	struct work_struct extcon_work;
 };
