@@ -66,7 +66,7 @@ static inline struct power_supply *wcove_gpio_get_psy_charger(void)
 
 	class_dev_iter_init(&iter, power_supply_class, NULL, NULL);
 	while ((dev = class_dev_iter_next(&iter))) {
-		pst = (struct power_supply *)dev_get_drvdata(dev);
+		pst = dev_get_drvdata(dev);
 		if (IS_CHARGER(pst)) {
 			class_dev_iter_exit(&iter);
 			return pst;
@@ -140,7 +140,7 @@ static int wcgpio_check_events(struct wcove_gpio_info *info,
 		return -ENOMEM;
 	}
 
-	evt->is_src_connected = extcon_get_cable_state(edev, "USB-Host");
+	evt->is_src_connected = extcon_get_cable_state(edev, "USB_TYPEC_SRC");
 	dev_info(&info->pdev->dev,
 			"[extcon notification] evt: Provider - %s\n",
 			evt->is_src_connected ? "Connected" : "Disconnected");
@@ -201,7 +201,7 @@ static int wcove_gpio_probe(struct platform_device *pdev)
 
 	info->nb.notifier_call = wcgpio_event_handler;
 	ret = extcon_register_interest(&info->otg_cable_obj, NULL,
-						"USB-Host",
+						"USB_TYPEC_SRC",
 						&info->nb);
 	if (ret) {
 		dev_err(&pdev->dev,
