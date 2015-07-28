@@ -33,6 +33,8 @@
 #include <linux/extcon.h>
 #include <linux/gpio.h>
 #include <linux/acpi.h>
+#include <linux/power_supply.h>
+#include "../power/power_supply_charger.h"
 
 #define WCOVE_GPIO_VCHGIN	"vchgin_desc"
 #define WCOVE_GPIO_OTG		"otg_desc"
@@ -41,8 +43,6 @@
 struct wcove_gpio_info {
 	struct platform_device *pdev;
 	struct notifier_block nb;
-	struct extcon_specific_cable_nb dc_cable_obj;
-	struct extcon_specific_cable_nb sdp_cable_obj;
 	struct extcon_specific_cable_nb otg_cable_obj;
 	struct gpio_desc *gpio_vchgrin;
 	struct gpio_desc *gpio_otg;
@@ -55,9 +55,39 @@ struct wcove_gpio_info {
 
 struct wcove_gpio_event {
 	struct list_head node;
-	bool is_sdp_connected;
-	bool is_otg_connected;
+	bool is_src_connected;
 };
+
+static inline struct power_supply *wcove_gpio_get_psy_charger(void)
+{
+	struct class_dev_iter iter;
+	struct device *dev;
+	struct power_supply *pst;
+
+	class_dev_iter_init(&iter, power_supply_class, NULL, NULL);
+	while ((dev = class_dev_iter_next(&iter))) {
+		pst = (struct power_supply *)dev_get_drvdata(dev);
+		if (IS_CHARGER(pst)) {
+			class_dev_iter_exit(&iter);
+			return pst;
+		}
+	}
+	class_dev_iter_exit(&iter);
+	return NULL;
+}
+
+static void wcove_gpio_set_charger_state(struct wcove_gpio_info *info,
+						bool state)
+{
+	struct power_supply *psy;
+
+	psy = wcove_gpio_get_psy_charger();
+	if (psy == NULL) {
+		dev_err(&info->pdev->dev, "Unable to get psy for charger\n");
+		return;
+	}
+	set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGER, state);
+}
 
 static void wcove_gpio_ctrl_worker(struct work_struct *work)
 {
@@ -73,20 +103,18 @@ static void wcove_gpio_ctrl_worker(struct work_struct *work)
 
 		dev_info(&info->pdev->dev,
 				"%s:%d state=%d\n", __FILE__, __LINE__,
-				evt->is_sdp_connected || evt->is_otg_connected);
+				evt->is_src_connected);
 
 		mutex_lock(&info->lock);
-		/* set high only when otg connected */
-		if (!evt->is_sdp_connected)
-			gpiod_set_value_cansleep(info->gpio_otg,
-							evt->is_otg_connected);
-		/**
-		 * set high when sdp/otg connected and set low when sdp/otg
-		 * disconnected
-		 */
-		gpiod_set_value_cansleep(info->gpio_vchgrin,
-			(evt->is_sdp_connected ||
-				evt->is_otg_connected) ? 1 : 0);
+		if (evt->is_src_connected) /* put charging into HiZ mode */
+			wcove_gpio_set_charger_state(info, false);
+
+		/* enable/disable vbus based on the provider(source) event */
+		gpiod_set_value_cansleep(info->gpio_otg,
+						evt->is_src_connected);
+
+		/* FIXME: vchrgin GPIO is not setting here to select
+		 * Wireless Charging */
 		mutex_unlock(&info->lock);
 		spin_lock_irqsave(&info->gpio_queue_lock, flags);
 		kfree(evt);
@@ -112,12 +140,10 @@ static int wcgpio_check_events(struct wcove_gpio_info *info,
 		return -ENOMEM;
 	}
 
-	evt->is_sdp_connected = extcon_get_cable_state(edev, "USB");
-	evt->is_otg_connected = extcon_get_cable_state(edev, "USB-Host");
+	evt->is_src_connected = extcon_get_cable_state(edev, "USB-Host");
 	dev_info(&info->pdev->dev,
-			"[extcon notification] evt: SDP - %s OTG - %s\n",
-			evt->is_sdp_connected ? "Connected" : "Disconnected",
-			evt->is_otg_connected ? "Connected" : "Disconnected");
+			"[extcon notification] evt: Provider - %s\n",
+			evt->is_src_connected ? "Connected" : "Disconnected");
 
 	INIT_LIST_HEAD(&evt->node);
 	spin_lock(&info->gpio_queue_lock);
@@ -163,7 +189,7 @@ static int wcove_gpio_probe(struct platform_device *pdev)
 	if (!info) {
 		dev_err(&pdev->dev, "kzalloc failed\n");
 		ret = -ENOMEM;
-		goto error_mem;
+		goto error;
 	}
 
 	info->pdev = pdev;
@@ -174,20 +200,13 @@ static int wcove_gpio_probe(struct platform_device *pdev)
 	spin_lock_init(&info->gpio_queue_lock);
 
 	info->nb.notifier_call = wcgpio_event_handler;
-	ret = extcon_register_interest(&info->sdp_cable_obj, NULL, "USB",
-						&info->nb);
-	if (ret) {
-		dev_err(&pdev->dev,
-			"failed to register extcon notifier for SDP charger\n");
-		goto error_sdp;
-	}
-
-	ret = extcon_register_interest(&info->otg_cable_obj, NULL, "USB-Host",
+	ret = extcon_register_interest(&info->otg_cable_obj, NULL,
+						"USB-Host",
 						&info->nb);
 	if (ret) {
 		dev_err(&pdev->dev,
 			"failed to register extcon notifier for otg\n");
-		goto error_otg;
+		goto error;
 	}
 
 	/* FIXME: hardcoding of the index 0, 1 & 2 should fix when upstreaming.
@@ -243,10 +262,7 @@ static int wcove_gpio_probe(struct platform_device *pdev)
 
 error_gpio:
 	extcon_unregister_interest(&info->otg_cable_obj);
-error_otg:
-	extcon_unregister_interest(&info->sdp_cable_obj);
-error_sdp:
-error_mem:
+error:
 	return ret;
 }
 
@@ -254,10 +270,8 @@ static int wcove_gpio_remove(struct platform_device *pdev)
 {
 	struct wcove_gpio_info *info =  dev_get_drvdata(&pdev->dev);
 
-	if (info) {
+	if (info)
 		extcon_unregister_interest(&info->otg_cable_obj);
-		extcon_unregister_interest(&info->sdp_cable_obj);
-	}
 
 	return 0;
 }
