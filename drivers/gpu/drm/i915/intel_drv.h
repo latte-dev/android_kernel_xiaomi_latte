@@ -980,7 +980,10 @@ void intel_mode_from_pipe_config(struct drm_display_mode *mode,
 				 struct intel_crtc_config *pipe_config);
 int intel_format_to_fourcc(int format);
 void intel_crtc_wait_for_pending_flips(struct drm_crtc *crtc);
-
+void chv_set_lpe_audio_reg_pipe(struct drm_device *dev,
+			    struct intel_encoder *intel_encoder,
+			    struct hdmi_audio_priv *hdmi_priv,
+			    enum port port);
 
 /* intel_dp.c */
 void intel_dp_init(struct drm_device *dev, int output_reg, enum port port);

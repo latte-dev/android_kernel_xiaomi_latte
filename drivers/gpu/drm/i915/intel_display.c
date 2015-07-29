@@ -13495,6 +13495,85 @@ static void intel_setup_outputs(struct drm_device *dev)
 	drm_helper_move_panel_connectors_to_head(dev);
 }
 
+void chv_set_lpe_audio_reg_pipe(struct drm_device *dev,
+				   struct intel_encoder *intel_encoder,
+				   struct hdmi_audio_priv *hdmi_priv,
+				   enum port port)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	/*
+	 * Due to hardware limitaion, Port D will always
+	 * be driven by Pipe C. So Port B and Port C will
+	 * be driven by either Pipe A or PipeB, depending
+	 * on whether the LFP is MIPI or EDP.
+	 */
+
+	if (port == PORT_D) {
+		hdmi_priv->hdmi_lpe_audio_reg =
+			I915_HDMI_AUDIO_LPE_C_CONFIG;
+		hdmi_priv->pipe = PIPE_C;
+		if (intel_encoder->type == INTEL_OUTPUT_HDMI)
+			hdmi_priv->hdmi_reg =
+				VLV_CHV_HDMID;
+		else if (intel_encoder->type == INTEL_OUTPUT_DISPLAYPORT)
+			hdmi_priv->hdmi_reg =
+				CHV_DP_D;
+	} else {
+		list_for_each_entry(intel_encoder, &dev->
+			mode_config.encoder_list, base.head) {
+
+			/*
+			 * MIPI always comes on Pipe A or Pipe B
+			 * depending on Port A or Port C and EDP
+			 * comes on Pipe B. So the other pipe
+			 * will only be able to drive the DP.
+			 * MIPI on Port A is driven by Pipe A
+			 * and MIPI on Port C is driven by
+			 * Pipe B. So the other pipe will
+			 * drive DP.
+			 */
+
+			if (intel_encoder->type == INTEL_OUTPUT_EDP) {
+				hdmi_priv->hdmi_lpe_audio_reg =
+					I915_HDMI_AUDIO_LPE_A_CONFIG;
+				hdmi_priv->pipe = PIPE_A;
+				break;
+			} else if (intel_encoder->type == INTEL_OUTPUT_DSI &&
+				dev_priv->vbt.dsi.port == DVO_PORT_MIPIA) {
+				hdmi_priv->hdmi_lpe_audio_reg =
+					I915_HDMI_AUDIO_LPE_B_CONFIG;
+				hdmi_priv->pipe = PIPE_B;
+				break;
+			} else if (intel_encoder->type == INTEL_OUTPUT_DSI &&
+				dev_priv->vbt.dsi.port == DVO_PORT_MIPIC) {
+				hdmi_priv->hdmi_lpe_audio_reg =
+					I915_HDMI_AUDIO_LPE_A_CONFIG;
+				hdmi_priv->pipe = PIPE_A;
+				break;
+			}
+		}
+
+		if (port == PORT_B) {
+			if (intel_encoder->type == INTEL_OUTPUT_HDMI)
+				hdmi_priv->hdmi_reg =
+					VLV_CHV_HDMIB;
+			else if (intel_encoder->type ==
+					INTEL_OUTPUT_DISPLAYPORT)
+				hdmi_priv->hdmi_reg =
+					VLV_DP_B;
+		} else {
+			if (intel_encoder->type == INTEL_OUTPUT_HDMI)
+				hdmi_priv->hdmi_reg =
+					VLV_CHV_HDMIC;
+			else if (intel_encoder->type ==
+					INTEL_OUTPUT_DISPLAYPORT)
+				hdmi_priv->hdmi_reg =
+					VLV_DP_C;
+		}
+	}
+}
+
 static void intel_user_framebuffer_destroy(struct drm_framebuffer *fb)
 {
 	struct intel_framebuffer *intel_fb = to_intel_framebuffer(fb);

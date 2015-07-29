@@ -5478,45 +5478,8 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 		hdmi_priv->dev = dev;
 
 		if (IS_CHERRYVIEW(dev)) {
-			/*
-			 * Due to hardware limitaion, Port D will always
-			 * be driven by Pipe C. So Port B and Port C will
-			 * be driven by either Pipe A or PipeB, depending
-			 * on whether the LFP is MIPI or EDP.
-			 */
-			if (port == PORT_D) {
-				hdmi_priv->hdmi_lpe_audio_reg =
-					I915_HDMI_AUDIO_LPE_C_CONFIG;
-				hdmi_priv->pipe = PIPE_C;
-				hdmi_priv->hdmi_reg = CHV_DP_D;
-			} else {
-				list_for_each_entry(intel_encoder, &dev->
-					mode_config.encoder_list, base.head) {
-					/*
-					 * MIPI always comes on Pipe A and EDP
-					 * on Pipe B. So the other pipe will
-					 * only be able to drive the DP.
-					 */
-					if (intel_encoder->type ==
-						INTEL_OUTPUT_EDP) {
-						hdmi_priv->hdmi_lpe_audio_reg =
-						I915_HDMI_AUDIO_LPE_A_CONFIG;
-						hdmi_priv->pipe = PIPE_A;
-						break;
-					} else if (intel_encoder->type ==
-						INTEL_OUTPUT_DSI) {
-						hdmi_priv->hdmi_lpe_audio_reg =
-						I915_HDMI_AUDIO_LPE_B_CONFIG;
-						hdmi_priv->pipe = PIPE_B;
-						break;
-					}
-				}
-
-				if (port == PORT_B)
-					hdmi_priv->hdmi_reg = VLV_DP_B;
-				else
-					hdmi_priv->hdmi_reg = VLV_DP_C;
-			}
+			chv_set_lpe_audio_reg_pipe(dev, intel_encoder,
+						hdmi_priv, port);
 		} else {
 			hdmi_priv->hdmi_lpe_audio_reg =
 				I915_HDMI_AUDIO_LPE_B_CONFIG;
