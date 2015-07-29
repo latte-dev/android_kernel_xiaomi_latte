@@ -2058,48 +2058,6 @@ static inline int register_otg_vbus(struct bq24192_chip *chip)
 	return 0;
 }
 
-int bq24192_slave_mode_enable_charging(int volt, int cur, int ilim)
-{
-	struct bq24192_chip *chip = i2c_get_clientdata(bq24192_client);
-	int ret;
-
-	mutex_lock(&chip->event_lock);
-	chip->inlmt = ilim;
-	if (chip->inlmt >= 0)
-		bq24192_set_inlmt(chip, chip->inlmt);
-	mutex_unlock(&chip->event_lock);
-
-	chip->cc = chrg_cur_to_reg(cur);
-	if (chip->cc)
-		bq24192_set_cc(chip, chip->cc);
-
-	chip->cv = chrg_volt_to_reg(volt);
-	if (chip->cv)
-		bq24192_set_cv(chip, chip->cv);
-
-	mutex_lock(&chip->event_lock);
-	ret = bq24192_enable_charging(chip, true);
-	if (ret < 0)
-		dev_err(&chip->client->dev, "charge enable failed\n");
-
-	mutex_unlock(&chip->event_lock);
-	return ret;
-}
-EXPORT_SYMBOL(bq24192_slave_mode_enable_charging);
-
-int bq24192_slave_mode_disable_charging(void)
-{
-	struct bq24192_chip *chip = i2c_get_clientdata(bq24192_client);
-	int ret;
-
-	mutex_lock(&chip->event_lock);
-	ret = bq24192_enable_charging(chip, false);
-	if (ret < 0)
-		dev_err(&chip->client->dev, "charge enable failed\n");
-
-	mutex_unlock(&chip->event_lock);
-	return ret;
-}
 static int bq24192_get_chip_version(struct bq24192_chip *chip)
 {
 	int ret;
@@ -2484,24 +2442,10 @@ static int bq24192_remove(struct i2c_client *client)
 #ifdef CONFIG_PM
 static int bq24192_suspend(struct device *dev)
 {
-	int ret;
 	struct bq24192_chip *chip = dev_get_drvdata(dev);
 
 	dev_dbg(&chip->client->dev, "bq24192 suspend\n");
-	if (chip->is_charging_enabled) {
-		mutex_lock(&chip->event_lock);
-		ret = bq24192_enable_charging(chip, true);
-		if (ret < 0)
-			dev_err(&chip->client->dev, "charging enable failed\n");
-		mutex_unlock(&chip->event_lock);
-	} else {
-		mutex_lock(&chip->event_lock);
-		ret = bq24192_enable_charging(chip, false);
-		if (ret < 0)
-			dev_err(&chip->client->dev, "charging disable failed\n");
-		mutex_unlock(&chip->event_lock);
-	}
-	return ret;
+	return 0;
 }
 
 static int bq24192_resume(struct device *dev)
