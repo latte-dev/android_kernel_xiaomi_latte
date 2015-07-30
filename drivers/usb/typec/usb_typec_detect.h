@@ -63,11 +63,18 @@ struct typec_detect {
 	struct work_struct lock_ufp_work;
 	struct completion lock_ufp_complete;
 	int timer_evt;
-	bool got_vbus;
-	bool is_pd_capable;
+	int valid_cc;
 	int drp_counter;
 	wait_queue_head_t wq;
 	struct mutex lock;
+
+	/* One bit status variables. */
+	unsigned got_vbus:1;
+	unsigned is_pd_capable:1;
+	unsigned usb_state:1;
+	unsigned usb_host_state:1;
+	unsigned snk_state:1;
+	unsigned src_state:1;
 };
 
 extern int typec_bind_detect(struct typec_phy *phy);
