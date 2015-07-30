@@ -53,6 +53,7 @@
 #define TYPEC_PS_TRANSITION_TIMER	550 /* min 450mSec; max: 550mSec */
 #define TYPEC_SINK_ACTIVITY_TIMER	150 /* min 120mSec; max: 150mSec */
 #define TYPEC_SINK_REQUEST_TIMER	100 /* min 100mSec; max: ? */
+#define TYPEC_PS_SRC_OFF_TIMER		920 /* min 750mSec; max: 920mSec */
 #define HARD_RESET_COUNT_N		2
 
 enum {
@@ -74,6 +75,7 @@ enum snkpe_timeout {
 	PS_TRANSITION_TIMER,
 	NO_RESPONSE_TIMER,
 	SENDER_RESPONSE_TIMER,
+	PS_SRC_OFF_TIMER,
 };
 
 struct req_cap {
@@ -92,6 +94,7 @@ struct sink_port_pe {
 	struct completion pstt_complete; /* PS Transition timer */
 	struct completion sat_complete; /* Sink Activity timer */
 	struct completion srqt_complete; /* Sink Request timer */
+	struct completion pssoff_complete; /* PS Source Off timer */
 	struct completion pktwt_complete; /* fifo write complete */
 	struct kfifo pkt_fifo;
 	struct req_cap rcap;
@@ -102,8 +105,8 @@ struct sink_port_pe {
 	struct mutex snkpe_state_lock;
 	enum snkpe_timeout timeout;
 	struct work_struct timer_work;
+	bool is_sink_cable_connected;
 	u8 hard_reset_count;
-	bool is_vbus_connected;
 };
 
 static int snkpe_start(struct sink_port_pe *sink);

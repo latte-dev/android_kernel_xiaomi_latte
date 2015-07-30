@@ -181,8 +181,7 @@ static int snkpe_create_reqmsg(struct sink_port_pe *sink,
 	rdo->obj_pos = rcap->obj_pos;
 	rdo->cap_mismatch = rcap->cap_mismatch;
 	rdo->op_cur = CURRENT_TO_DATA_OBJ(rcap->ma);
-	/* FIXME: Need to select max current from the profile provided by SRC */
-	rdo->max_cur = CURRENT_TO_DATA_OBJ(mpcap.ma);
+	rdo->max_cur = rdo->op_cur;
 
 	return 0;
 
@@ -222,6 +221,52 @@ static int snkpe_handle_gotomin_msg(struct sink_port_pe *sink)
 	return snkpe_handle_transition_sink_state(sink);
 }
 
+static int snkpe_send_pr_swap_accept(struct sink_port_pe *sink)
+{
+	snkpe_update_state(sink, PE_PRS_SNK_SRC_ACCEPT_PR_SWAP);
+	sink->pevt = PE_EVT_SEND_ACCEPT;
+	return policy_send_packet(&sink->p, NULL, 0,
+					PD_CTRL_MSG_ACCEPT, sink->pevt);
+}
+
+static int snkpe_send_pr_swap_reject(struct sink_port_pe *sink)
+{
+	snkpe_update_state(sink, PE_PRS_SNK_SRC_REJECT_PR_SWAP);
+	sink->pevt = PE_EVT_SEND_REJECT;
+	return policy_send_packet(&sink->p, NULL, 0,
+					PD_CTRL_MSG_REJECT, sink->pevt);
+}
+
+static int snkpe_handle_pr_swap(struct sink_port_pe *sink)
+{
+	enum pwr_role prole;
+	int ret = 0;
+
+	prole = policy_get_power_role(&sink->p);
+	if (prole <= 0) {
+		pr_err("SINKPE: Error in getting power role\n");
+		return -EINVAL;
+	}
+	snkpe_update_state(sink, PE_PRS_SNK_SRC_EVALUATE_PR_SWAP);
+
+	if (prole == POWER_ROLE_SINK) {
+		/* As the request to transition to provider mode, It
+		 * will be accepted only if VBAT >= 50% else reject.
+		 * returns: 1 - accepted, 0 - rejected or error code.
+		 */
+		ret = policy_is_pr_swap_support(&sink->p, prole);
+		if (ret > 0)
+			return snkpe_send_pr_swap_accept(sink);
+		else
+			return snkpe_send_pr_swap_reject(sink);
+	} else {
+		pr_warn("SNKPE: Current Power Role - %d\n", prole);
+		ret = -ENOTSUPP;
+	}
+
+	return ret;
+}
+
 static inline int snkpe_do_prot_reset(struct sink_port_pe *sink)
 {
 	return	policy_send_packet(&sink->p, NULL, 0, PD_CMD_PROTOCOL_RESET,
@@ -236,12 +281,13 @@ static void snkpe_reinitialize_completion(struct sink_port_pe *sink)
 	reinit_completion(&sink->pstt_complete);
 	reinit_completion(&sink->sat_complete);
 	reinit_completion(&sink->srqt_complete);
+	reinit_completion(&sink->pssoff_complete);
 	reinit_completion(&sink->pktwt_complete);
 }
 
 static int snkpe_start(struct sink_port_pe *sink)
 {
-	enum cable_state vbus_state;
+	enum cable_state sink_cable_state;
 	int ret = 0;
 
 	pr_debug("SNKPE: %s\n", __func__);
@@ -251,25 +297,25 @@ static int snkpe_start(struct sink_port_pe *sink)
 	}
 
 	/*---------- Start of Sink Port PE --------------*/
-	/* get the vbus state, in case of boot of vbus */
-	vbus_state = policy_get_cable_state(&sink->p,
-				CABLE_TYPE_CONSUMER);
-	if (vbus_state < 0) {
+	/* get the sink_cable_state, in case of boot with cable */
+	sink_cable_state = policy_get_cable_state(&sink->p,
+					CABLE_TYPE_CONSUMER);
+	if (sink_cable_state < 0) {
 		pr_err("SNKPE: Error in getting vbus state!\n");
 		return ret;
 	}
-	if (vbus_state == CABLE_ATTACHED)
-		sink->is_vbus_connected = true;
+	if (sink_cable_state == CABLE_ATTACHED)
+		sink->is_sink_cable_connected = true;
 	else
-		sink->is_vbus_connected = false;
+		sink->is_sink_cable_connected = false;
 
-	if (sink->is_vbus_connected) {
+	if (sink->is_sink_cable_connected) {
 		if (sink->cur_state != PE_SNK_STARTUP)
 			return 0;
 	} else {
 		mutex_lock(&sink->snkpe_state_lock);
 		sink->cur_state = PE_SNK_STARTUP;
-		mutex_lock(&sink->snkpe_state_lock);
+		mutex_unlock(&sink->snkpe_state_lock);
 		return snkpe_do_prot_reset(sink);
 	}
 
@@ -279,7 +325,7 @@ static int snkpe_start(struct sink_port_pe *sink)
 	/* wait for vbus: get notification from device policy manager
 	 * to continue the next state.
 	 */
-	if (sink->is_vbus_connected)
+	if (sink->is_sink_cable_connected)
 		snkpe_vbus_attached(sink);
 
 	return ret;
@@ -311,7 +357,7 @@ static int sink_port_policy_stop(struct policy *p)
 	sink->hard_reset_count = 0;
 	p->status = POLICY_STATUS_UNKNOWN;
 	p->state = POLICY_STATE_OFFLINE;
-	sink->is_vbus_connected = false;
+	sink->is_sink_cable_connected = false;
 	mutex_unlock(&sink->snkpe_state_lock);
 	policy_set_pd_state(p, false);
 
@@ -350,17 +396,57 @@ static int sink_port_policy_rcv_cmd(struct policy *p, enum pe_event evt)
 	return ret;
 }
 
+/* This function will set the role to POWER_ROLE_SWAP, disable charging
+ * and schedule worker to wait for ps_rdy after accepting the pr_swap.
+ */
+static int snkpe_handle_pss_transition_to_off(struct sink_port_pe *sink)
+{
+	int ret;
+
+	snkpe_update_state(sink, PE_PRS_SNK_SRC_TRANSITION_TO_OFF);
+
+	ret = policy_set_power_role(&sink->p, POWER_ROLE_SWAP);
+	if (ret < 0) {
+		pr_err("SNKPE: Error in setting POWER_ROLE_SWAP (%d)\n", ret);
+		goto trans_to_off_err;
+	}
+	/* request the Device Policy Manager to turn off the Sink
+	 * by putting the charger into HiZ mode */
+	ret = policy_set_charger_mode(&sink->p, CHRGR_SET_HZ);
+	if (ret < 0) {
+		pr_err("SNKPE: Error in putting into HiZ mode (%d)\n", ret);
+		goto trans_to_off_err;
+	}
+
+	schedule_work(&sink->timer_work);
+	return 0;
+
+trans_to_off_err:
+	/* Move to PE_SNK_Hard_Reset state */
+	snkpe_update_state(sink, PE_SNK_HARD_RESET);
+	return ret;
+}
+
 static int snkpe_received_msg_good_crc(struct sink_port_pe *sink)
 {
 	int ret = 0;
 
-	if (snkpe_is_cur_state(sink, PE_SNK_SELECT_CAPABILITY)) {
+	if (snkpe_is_cur_state(sink, PE_SNK_SELECT_CAPABILITY) ||
+		snkpe_is_cur_state(sink, PE_PRS_SNK_SRC_SEND_PR_SWAP)) {
 		schedule_work(&sink->timer_work);
 		pr_debug("SNKPE: Received ack for PD_DATA_MSG_REQUEST\n");
 	} else if (snkpe_is_cur_state(sink, PE_SNK_GIVE_SINK_CAP) &&
 		snkpe_is_prev_evt(sink, PE_EVT_SEND_SNK_CAP)) {
 		pr_debug("SNKPE: Received ack for PD_DATA_MSG_SINK_CAP\n");
 		return snkpe_handle_snk_ready_state(sink, sink->pevt);
+	} else if (snkpe_is_cur_state(sink, PE_PRS_SNK_SRC_REJECT_PR_SWAP)) {
+		snkpe_update_state(sink, PE_SNK_READY);
+	} else if (snkpe_is_cur_state(sink, PE_PRS_SNK_SRC_ACCEPT_PR_SWAP)) {
+		ret = snkpe_handle_pss_transition_to_off(sink);
+	} else if (snkpe_is_cur_state(sink, PE_PRS_SNK_SRC_SOURCE_ON) &&
+		snkpe_is_prev_evt(sink, PE_EVT_SEND_PS_RDY)) {
+		pr_debug("SNKPE: PR_SWAP Authentication Success!\n");
+		policy_switch_policy(&sink->p, POLICY_TYPE_SOURCE);
 	} else {
 		pr_warn("SNKPE: Received Good CRC at state %d pevt %d\n",
 					 sink->cur_state, sink->pevt);
@@ -381,12 +467,38 @@ static int snkpe_received_msg_ps_rdy(struct sink_port_pe *sink)
 	} else if (snkpe_is_prev_state(sink, PE_SNK_SELECT_CAPABILITY) &&
 		snkpe_is_cur_state(sink, PE_SNK_READY)) {
 		complete(&sink->srqt_complete);
+	} else if (snkpe_is_cur_state(sink,
+			PE_PRS_SNK_SRC_TRANSITION_TO_OFF)) {
+		complete(&sink->pssoff_complete);
 	} else {
 		pr_err("SNKPE: Error in State Machine!\n");
 		ret = -EINVAL;
 	}
 
 	return ret;
+}
+
+static int sink_port_policy_rcv_request(struct policy *p, enum pe_event evt)
+{
+	struct sink_port_pe *sink = container_of(p,
+					struct sink_port_pe, p);
+
+	switch (evt) {
+	case PE_EVT_SEND_PR_SWAP:
+		snkpe_update_state(sink, PE_PRS_SNK_SRC_SEND_PR_SWAP);
+		sink->pevt = evt;
+		policy_send_packet(&sink->p, NULL, 0,
+				PD_CTRL_MSG_PR_SWAP, sink->pevt);
+		/* work schedule for rcv good crc for PR_SWAP and
+		 * recevice Accept */
+		schedule_work(&sink->timer_work);
+		break;
+	case PE_EVT_SEND_DR_SWAP:
+	default:
+		break;
+	}
+
+	return 0;
 }
 
 static int sink_port_policy_rcv_pkt(struct policy *p, struct pd_packet *pkt,
@@ -396,6 +508,7 @@ static int sink_port_policy_rcv_pkt(struct policy *p, struct pd_packet *pkt,
 					struct sink_port_pe, p);
 	int ret = 0;
 
+	pr_debug("SNKPE:%s:evt = %d\n", __func__, evt);
 	/* good crc is the ack for the actual command/message */
 	if (evt != PE_EVT_RCVD_GOODCRC)
 		sink->pevt = evt;
@@ -426,9 +539,10 @@ static int sink_port_policy_rcv_pkt(struct policy *p, struct pd_packet *pkt,
 	case PE_EVT_RCVD_REJECT:
 	case PE_EVT_RCVD_WAIT:
 		/* Move to PE_SNK_Ready state as per state machine */
-		if ((sink->prev_state == PE_SNK_EVALUATE_CAPABILITY ||
+		if (((sink->prev_state == PE_SNK_EVALUATE_CAPABILITY ||
 			sink->prev_state == PE_SNK_READY) &&
-			sink->cur_state == PE_SNK_SELECT_CAPABILITY) {
+			sink->cur_state == PE_SNK_SELECT_CAPABILITY) ||
+			snkpe_is_cur_state(sink, PE_PRS_SNK_SRC_SEND_PR_SWAP)) {
 			complete(&sink->srt_complete);
 		} else {
 			pr_err("SNKPE: Error in State Machine!\n");
@@ -454,6 +568,14 @@ static int sink_port_policy_rcv_pkt(struct policy *p, struct pd_packet *pkt,
 		break;
 	case PE_EVT_RCVD_GOODCRC:
 		ret = snkpe_received_msg_good_crc(sink);
+		break;
+	case PE_EVT_RCVD_PR_SWAP:
+		if (sink->cur_state != ERROR_RECOVERY) {
+			return snkpe_handle_pr_swap(sink);
+		} else {
+			pr_err("SNKPE: SM is in Error Recovery Mode!\n");
+			ret = -EINVAL;
+		}
 		break;
 	default:
 		break;
@@ -608,9 +730,12 @@ static int snkpe_handle_after_request_sent(struct sink_port_pe *sink)
 		goto error;
 	}
 
-	if (sink->pevt == PE_EVT_RCVD_ACCEPT)
-		ret = snkpe_handle_transition_sink_state(sink);
-	else if (sink->pevt == PE_EVT_RCVD_REJECT ||
+	if (sink->pevt == PE_EVT_RCVD_ACCEPT) {
+		if (snkpe_is_cur_state(sink, PE_PRS_SNK_SRC_SEND_PR_SWAP))
+			ret = snkpe_handle_pss_transition_to_off(sink);
+		else
+			ret = snkpe_handle_transition_sink_state(sink);
+	} else if (sink->pevt == PE_EVT_RCVD_REJECT ||
 		sink->pevt == PE_EVT_RCVD_WAIT)
 		ret = snkpe_handle_snk_ready_state(sink, sink->pevt);
 	else
@@ -763,16 +888,70 @@ error:
 	return ret;
 }
 
+static int snkpe_handle_assert_rp_src_on(struct sink_port_pe *sink)
+{
+	int ret;
+
+	snkpe_update_state(sink, PE_PRS_SNK_SRC_SOURCE_ON);
+
+	/* Pull-up CC (enable Rp) and Vbus 5V enable */
+	ret = policy_set_power_role(&sink->p, POWER_ROLE_SOURCE);
+	if (ret < 0) {
+		pr_err("SNKPE: Error in enabling source %d\n", ret);
+		return ret;
+	}
+	/* SourceActivityTimer (40 - 50mSec) is not used to monitor source
+	 * activity. Assuming the source activity can be done within the time
+	 */
+	sink->pevt = PE_EVT_SEND_PS_RDY;
+	return policy_send_packet(&sink->p, NULL, 0,
+					PD_CTRL_MSG_PS_RDY, sink->pevt);
+}
+
+/* After accepting the pr_swap and disabling the charging
+ * (in PE_PRS_SNK_SRC_TRANSITION_TO_OFF state), this function
+ * will wait for ps_rdy from source with timeout. On timeout,
+ * pe will move to hard reset state. If ps_rdy received on-time
+ * then move to source mode.
+ */
+static void snkpe_handle_pss_transition_off(struct sink_port_pe *sink)
+{
+	int ret;
+	unsigned long timeout;
+
+	/* initialize and run the PSSourceOffTimer */
+	timeout = msecs_to_jiffies(TYPEC_PS_SRC_OFF_TIMER);
+	/* unblock this once PS_RDY msg received by checking the
+	 * cur_state */
+	ret = wait_for_completion_timeout(&sink->pssoff_complete,
+						timeout);
+	if (!ret)
+		goto trans_off_err;
+
+	pr_info("SNKPE: Received PS_RDY\n");
+	ret = snkpe_handle_assert_rp_src_on(sink);
+	if (!ret)
+		return;
+
+trans_off_err:
+	/* Move to PE_SNK_Hard_Reset state */
+	snkpe_update_state(sink, PE_SNK_HARD_RESET);
+	return;
+}
+
 static void snkpe_timer_worker(struct work_struct *work)
 {
 	struct sink_port_pe *sink = container_of(work,
 					struct sink_port_pe,
 					timer_work);
 
-	if (snkpe_is_cur_state(sink, PE_SNK_SELECT_CAPABILITY) &&
-		snkpe_is_prev_evt(sink, PE_EVT_SEND_REQUEST))
+	if ((snkpe_is_cur_state(sink, PE_SNK_SELECT_CAPABILITY) &&
+		snkpe_is_prev_evt(sink, PE_EVT_SEND_REQUEST)) ||
+		(snkpe_is_cur_state(sink, PE_PRS_SNK_SRC_SEND_PR_SWAP) &&
+		snkpe_is_prev_evt(sink, PE_EVT_SEND_PR_SWAP)))
 		snkpe_handle_after_request_sent(sink);
-	/* FIXME: To be handled for role swap and others */
+	else if (snkpe_is_cur_state(sink, PE_PRS_SNK_SRC_TRANSITION_TO_OFF))
+		snkpe_handle_pss_transition_off(sink);
 }
 
 static int snkpe_vbus_attached(struct sink_port_pe *sink)
@@ -827,6 +1006,7 @@ struct policy *sink_port_policy_init(struct policy_engine *pe)
 	p->state = POLICY_STATE_OFFLINE;
 	p->status = POLICY_STATUS_UNKNOWN;
 	p->pe = pe;
+	p->rcv_request = sink_port_policy_rcv_request;
 	p->rcv_pkt = sink_port_policy_rcv_pkt;
 	p->rcv_cmd = sink_port_policy_rcv_cmd;
 	p->start = sink_port_policy_start;
@@ -839,6 +1019,7 @@ struct policy *sink_port_policy_init(struct policy_engine *pe)
 	init_completion(&snkpe->pstt_complete);
 	init_completion(&snkpe->sat_complete);
 	init_completion(&snkpe->srqt_complete);
+	init_completion(&snkpe->pssoff_complete);
 	init_completion(&snkpe->pktwt_complete);
 	mutex_init(&snkpe->snkpe_state_lock);
 
