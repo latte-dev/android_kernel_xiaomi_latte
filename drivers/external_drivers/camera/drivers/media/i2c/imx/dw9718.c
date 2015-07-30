@@ -87,10 +87,8 @@ int dw9718_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 	value = clamp(value, 0, DW9718_MAX_FOCUS_POS);
 	ret = dw9718_i2c_wr16(client, DW9718_DATA_M, value);
 	/*pr_info("%s: value = %d\n", __func__, value);*/
-	if (ret < 0) {
-		dev_err(&client->dev, "write DW9718_DATA_M  failed %d\n", ret);
+	if (ret < 0)
 		return ret;
-	}
 
 	getnstimeofday(&dw9718_dev.focus_time);
 	dw9718_dev.focus = value;

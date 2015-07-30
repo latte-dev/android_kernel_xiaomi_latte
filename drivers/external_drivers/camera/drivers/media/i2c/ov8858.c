@@ -1699,24 +1699,30 @@ static int ov8858_s_config(struct v4l2_subdev *sd,
 
 	dev->sensor_id = sensor_id;
 
-	/* Resolution settings depend on sensor type and platform */
-	ret = __update_ov8858_device_settings(dev, dev->sensor_id);
-	if (ret)
-		goto fail_detect;
-
 	/* power off sensor */
 	ret = __ov8858_s_power(sd, 0);
+	if (ret) {
+		dev->platform_data->csi_cfg(sd, 0);
+		dev_err(&client->dev, "__ov8858_s_power-down error %d!\n", ret);
+		goto fail_update;
+	}
+
+	/* Resolution settings depend on sensor type and platform */
+	ret = __update_ov8858_device_settings(dev, dev->sensor_id);
+	if (ret) {
+		dev->platform_data->csi_cfg(sd, 0);
+		dev_err(&client->dev, "__update_ov8858_device_settings error %d!\n", ret);
+		goto fail_update;
+	}
 
 	mutex_unlock(&dev->input_lock);
-	if (ret)
-		dev_err(&client->dev, "power-down error %d!\n", ret);
-
 	return ret;
 
 fail_detect:
 	dev->platform_data->csi_cfg(sd, 0);
 fail_csi_cfg:
 	__ov8858_s_power(sd, 0);
+fail_update:
 	if (dev->platform_data->platform_deinit)
 		dev->platform_data->platform_deinit();
 	mutex_unlock(&dev->input_lock);
