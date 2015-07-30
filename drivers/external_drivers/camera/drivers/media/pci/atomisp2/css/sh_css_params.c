@@ -54,6 +54,7 @@ more details.
 #include "ia_css_host_data.h"
 #include "ia_css_pipe.h"
 #include "ia_css_pipe_binarydesc.h"
+#include "ia_css_system_ctrl.h"
 
 #if !defined(IS_ISP_2500_SYSTEM)
 /* Include all kernel host interfaces for ISP1 */
@@ -1285,8 +1286,7 @@ sh_css_set_global_isp_config_on_pipe(
 	const struct ia_css_isp_config *config,
 	struct ia_css_pipe *pipe);
 
-extern enum ia_css_err
-store_latest_paramset_ptr(struct ia_css_pipe *pipe, hrt_vaddress ptr);
+
 
 #if defined(SH_CSS_ENABLE_PER_FRAME_PARAMS)
 static enum ia_css_err
@@ -4288,7 +4288,7 @@ sh_css_param_update_isp_params(struct ia_css_pipe *curr_pipe,
 			 */
 			g_param_buffer_enqueue_count++;
 			assert(g_param_buffer_enqueue_count < g_param_buffer_dequeue_count+50);
-			store_latest_paramset_ptr(pipe, cpy);
+			ia_css_save_latest_paramset_ptr(pipe, cpy);
 			/*
 			 * Tell the SP which queues are not empty,
 			 * by sending the software event.

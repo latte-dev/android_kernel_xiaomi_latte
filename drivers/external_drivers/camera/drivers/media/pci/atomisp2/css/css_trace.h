@@ -180,10 +180,20 @@ enum TRACE_DUMP_FORMAT {
 
 
 /* common majors */
+/* SP0 */
 #define MAJOR_MAIN              1
 #define MAJOR_ISP_STAGE_ENTRY   2
 #define MAJOR_DMA_PRXY          3
 #define MAJOR_START_ISP         4
+/* SP1 */
+#define MAJOR_OBSERVER_ISP0_EVENT          21
+#define MAJOR_OBSERVER_OUTPUT_FORM_EVENT   22
+#define MAJOR_OBSERVER_OUTPUT_SCAL_EVENT   23
+#define MAJOR_OBSERVER_IF_ACK              24
+#define MAJOR_OBSERVER_SP0_EVENT           25
+#define MAJOR_OBSERVER_SP_TERMINATE_EVENT  26
+#define MAJOR_OBSERVER_DMA_ACK             27
+#define MAJOR_OBSERVER_ACC_ACK             28
 
 #define DEBUG_PTR_SIGNATURE     0xABCD	/* signature for the debug parameter pointer */
 

@@ -1167,7 +1167,4 @@ ia_css_get_crop_offsets(
 #endif
 #endif /* !defined(__ISP) && !defined(__SP) */
 
-struct ia_css_pipe* sh_css_get_next_saved_pipe(unsigned int *curr_stream_num,
-		unsigned int *curr_pipe_num);
-
 #endif /* _SH_CSS_INTERNAL_H_ */
