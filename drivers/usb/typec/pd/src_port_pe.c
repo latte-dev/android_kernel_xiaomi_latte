@@ -71,22 +71,10 @@ enum src_pe_state {
 	SRC_PE_STATE_PD_FAILED,
 };
 
-static int src_pe_get_default_power_cap(struct src_port_pe *src_pe,
-					struct power_cap *pcap)
-{
-	/* By default 5V/500mA is supported in provider mode */
-	pcap->mv = VBUS_5V;
-	pcap->ma = IBUS_0P5A;
-	return 0;
-}
-
-static int src_pe_get_power_cap(struct src_port_pe *src_pe,
+static inline int src_pe_get_power_cap(struct src_port_pe *src_pe,
 				struct power_cap *pcap)
 {
-	/* The power capabilities should be read from dev policy manager.
-	 * Currently using default capabilities.
-	 */
-	return src_pe_get_default_power_cap(src_pe, pcap);
+	return policy_get_srcpwr_cap(&src_pe->p, pcap);
 }
 
 static void src_pe_reset_policy_engine(struct src_port_pe *src_pe)

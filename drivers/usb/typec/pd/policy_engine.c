@@ -259,6 +259,15 @@ static inline void policy_prot_update_power_role(struct policy_engine *pe,
 		pe->prot->policy_update_power_role(pe->prot, prole);
 }
 
+static int pe_get_srcpwr_cap(struct policy_engine *pe,
+					struct power_cap *cap)
+{
+	if (pe && pe->dpm)
+		return devpolicy_get_srcpwr_cap(pe->dpm, cap);
+
+	return -ENODEV;
+}
+
 static int pe_get_snkpwr_cap(struct policy_engine *pe,
 					struct power_cap *cap)
 {
@@ -760,6 +769,7 @@ static int pe_dpm_notification(struct policy_engine *pe,
 static struct pe_operations ops = {
 	.get_snkpwr_cap = pe_get_snkpwr_cap,
 	.get_snkpwr_caps = pe_get_snkpwr_caps,
+	.get_srcpwr_cap = pe_get_srcpwr_cap,
 	.get_max_snkpwr_cap = pe_get_max_snkpwr_cap,
 	.get_data_role = pe_get_data_role,
 	.get_power_role = pe_get_power_role,

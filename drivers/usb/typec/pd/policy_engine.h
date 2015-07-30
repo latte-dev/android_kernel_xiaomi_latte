@@ -330,6 +330,8 @@ struct policy_engine {
 struct pe_operations {
 	int (*get_snkpwr_cap)(struct policy_engine *pe,
 					struct power_cap *cap);
+	int (*get_srcpwr_cap)(struct policy_engine *pe,
+					struct power_cap *cap);
 	int (*get_snkpwr_caps)(struct policy_engine *pe,
 					struct power_caps *caps);
 	int (*get_max_snkpwr_cap)(struct policy_engine *pe,
@@ -386,6 +388,14 @@ static inline const char *policy_port_type_string(enum policy_type ptype)
 }
 
 /* methods to initialize/destroy the policy manager */
+static inline int policy_get_srcpwr_cap(struct policy *p, struct power_cap *cap)
+{
+	if (p && p->pe && p->pe->ops && p->pe->ops->get_srcpwr_cap)
+		return p->pe->ops->get_srcpwr_cap(p->pe, cap);
+
+	return -ENOTSUPP;
+}
+
 static inline int policy_get_snkpwr_cap(struct policy *p, struct power_cap *cap)
 {
 	if (p && p->pe && p->pe->ops && p->pe->ops->get_snkpwr_cap)

@@ -123,6 +123,29 @@ static int dpm_get_max_snkpwr_cap(struct devpolicy_mgr *dpm,
 	return 0;
 }
 
+static int dpm_get_source_power_cap(struct devpolicy_mgr *dpm,
+					struct power_cap *cap)
+{
+	int val;
+
+	val = typec_get_host_current(dpm->phy);
+	if (val < 0) {
+		pr_err("DPM: Unable to get the host current from phy\n");
+		return val;
+	}
+
+	if (val == TYPEC_CURRENT_USB)
+		/* setting 900mA source current in case of USB, as
+		 * typec connector is capable of supporting USB3.0 */
+		cap->ma = IBUS_0P9A;
+	else
+		cap->ma = val;
+
+	cap->mv = VBUS_5V;
+
+	return 0;
+}
+
 static enum batt_soc_status dpm_get_batt_status(struct devpolicy_mgr *dpm)
 {
 	int soc;
@@ -976,6 +999,7 @@ static void dpm_unregister_pd_class_dev(struct devpolicy_mgr *dpm)
 static struct dpm_interface interface = {
 	.get_max_srcpwr_cap = dpm_get_max_srcpwr_cap,
 	.get_max_snkpwr_cap = dpm_get_max_snkpwr_cap,
+	.get_source_power_cap = dpm_get_source_power_cap,
 	.get_sink_power_cap = dpm_get_sink_power_cap,
 	.get_sink_power_caps = dpm_get_sink_power_caps,
 	.get_cable_state = dpm_get_cable_state,

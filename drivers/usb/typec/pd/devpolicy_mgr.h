@@ -65,6 +65,7 @@ enum batt_soc_status {
 /* host mode: max of 5V, 1A */
 #define VBUS_5V		5000
 #define IBUS_1A		1000
+#define IBUS_0P9A	900
 #define IBUS_0P5A	500
 
 /* device mode: max of 12, 3A */
@@ -169,6 +170,8 @@ struct dpm_interface {
 					struct power_cap *cap);
 	int (*get_max_snkpwr_cap)(struct devpolicy_mgr *dpm,
 					struct power_cap *cap);
+	int (*get_source_power_cap)(struct devpolicy_mgr *dpm,
+					struct power_cap *cap);
 	int (*get_sink_power_cap)(struct devpolicy_mgr *dpm,
 					struct power_cap *cap);
 	int (*get_sink_power_caps)(struct devpolicy_mgr *dpm,
@@ -211,6 +214,15 @@ static inline int devpolicy_get_max_snkpwr_cap(struct devpolicy_mgr *dpm,
 		return dpm->interface->get_max_snkpwr_cap(dpm, caps);
 
 	return -ENODEV;
+}
+
+static inline int devpolicy_get_srcpwr_cap(struct devpolicy_mgr *dpm,
+					struct power_cap *cap)
+{
+	if (dpm && dpm->interface && dpm->interface->get_source_power_cap)
+		return dpm->interface->get_source_power_cap(dpm, cap);
+	else
+		return -ENODEV;
 }
 
 static inline int devpolicy_get_snkpwr_cap(struct devpolicy_mgr *dpm,
