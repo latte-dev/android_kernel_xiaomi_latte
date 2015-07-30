@@ -4,11 +4,8 @@
 #include <linux/extcon.h>
 #include <linux/usb_typec_phy.h>
 
-#define CABLE_CONSUMER	"USB_TYPEC_UFP"
-#define CABLE_PROVIDER	"USB_TYPEC_DFP"
-
-/* Assume soc is greater than 80% battery is good */
-#define IS_BATT_SOC_GOOD(x)	((x > 80) ? 1 : 0)
+#define CABLE_CONSUMER	"USB_TYPEC_SNK"
+#define CABLE_PROVIDER	"USB_TYPEC_SRC"
 
 enum cable_state {
 	CABLE_DETACHED,
@@ -34,6 +31,29 @@ enum psy_type {
 	PSY_TYPE_BATTERY,
 	PSY_TYPE_CHARGER,
 };
+
+enum batt_soc_status {
+	BATT_SOC_UNKNOWN = -1,
+	BATT_SOC_DEAD,	/* soc = 0		*/
+	BATT_SOC_LOW,	/* soc > 0 && < 25	*/
+	BATT_SOC_MID1,	/* soc >= 25 && < 50	*/
+	BATT_SOC_MID2,	/* soc >= 50 && < 80	*/
+	BATT_SOC_GOOD,	/* soc >= 80 && < 100	*/
+	BATT_SOC_FULL,	/* soc = 100		*/
+};
+
+#define BATT_CAP_FULL		100
+#define BATT_CAP_GOOD		80
+#define BATT_CAP_MID		50
+#define BATT_CAP_LOW		25
+#define BATT_CAP_DEAD		0
+
+#define IS_BATT_SOC_FULL(x)	((x) == BATT_CAP_FULL)
+#define IS_BATT_SOC_GOOD(x)	((x) >= BATT_CAP_GOOD && (x) < BATT_CAP_FULL)
+#define IS_BATT_SOC_MID2(x)	((x) >= BATT_CAP_MID && (x) < BATT_CAP_GOOD)
+#define IS_BATT_SOC_MID1(x)	((x) >= BATT_CAP_LOW && (x) < BATT_CAP_MID)
+#define IS_BATT_SOC_LOW(x)	((x) > BATT_CAP_DEAD && (x) < BATT_CAP_LOW)
+#define IS_BATT_SOC_DEAD(x)	((x) == BATT_CAP_DEAD)
 
 #define IS_BATTERY(psy) (psy->type == POWER_SUPPLY_TYPE_BATTERY)
 #define IS_CHARGER(psy) (psy->type == POWER_SUPPLY_TYPE_USB ||\
@@ -66,6 +86,8 @@ enum devpolicy_mgr_events {
 	DEVMGR_EVENT_DFP_DISCONNECTED,
 	DEVMGR_EVENT_UFP_CONNECTED,
 	DEVMGR_EVENT_UFP_DISCONNECTED,
+	DEVMGR_EVENT_PR_SWAP,
+	DEVMGR_EVENT_DR_SWAP,
 };
 
 enum policy_type {
@@ -79,12 +101,16 @@ enum pwr_role {
 	POWER_ROLE_NONE,
 	POWER_ROLE_SINK,
 	POWER_ROLE_SOURCE,
+	/* Power role swap in-progress */
+	POWER_ROLE_SWAP,
 };
 
 enum data_role {
 	DATA_ROLE_NONE,
 	DATA_ROLE_UFP,
 	DATA_ROLE_DFP,
+	/* Data role swap in-progress */
+	DATA_ROLE_SWAP,
 };
 
 struct power_cap {
@@ -99,8 +125,8 @@ struct power_caps {
 
 struct cable_event {
 	struct list_head node;
-	bool is_consumer_state;
-	bool is_provider_state;
+	enum cable_type cbl_type;
+	enum cable_state cbl_state;
 };
 
 struct pd_policy {
@@ -108,7 +134,28 @@ struct pd_policy {
 	size_t num_policies;
 };
 
-struct devpolicy_mgr;
+struct devpolicy_mgr {
+	struct pd_policy *policy;
+	struct extcon_specific_cable_nb provider_cable_nb;
+	struct extcon_specific_cable_nb consumer_cable_nb;
+	struct typec_phy *phy;
+	struct notifier_block provider_nb;
+	struct notifier_block consumer_nb;
+	struct list_head cable_event_queue;
+	struct work_struct cable_event_work;
+	struct mutex role_lock;
+	struct mutex charger_lock;
+	struct dpm_interface *interface;
+	spinlock_t cable_event_queue_lock;
+	enum cable_state consumer_state;    /* cosumer cable state */
+	enum cable_state provider_state;    /* provider cable state */
+	enum cable_state dp_state;    /* display cable state */
+	enum pwr_role cur_prole;
+	enum pwr_role prev_prole;
+	enum data_role cur_drole;
+	enum data_role prev_drole;
+	struct policy_engine *pe;
+};
 
 struct dpm_interface {
 	int (*get_max_srcpwr_cap)(struct devpolicy_mgr *dpm,
@@ -121,48 +168,24 @@ struct dpm_interface {
 					struct power_caps *caps);
 
 	/* methods to get/set the sink/source port states */
-	int (*set_provider_state)(struct devpolicy_mgr *dpm,
-					enum cable_state state);
-	int (*set_consumer_state)(struct devpolicy_mgr *dpm,
-					enum cable_state state);
-	enum cable_state (*get_provider_state)(struct devpolicy_mgr *dpm);
-	enum cable_state (*get_consumer_state)(struct devpolicy_mgr *dpm);
-
-	/* methods to get/set data/power roles */
-	enum data_role (*get_data_role)(struct devpolicy_mgr *dpm);
-	enum pwr_role (*get_pwr_role)(struct devpolicy_mgr *dpm);
-	void (*set_data_role)(struct devpolicy_mgr *dpm, enum data_role role);
-	void (*set_pwr_role)(struct devpolicy_mgr *dpm, enum pwr_role role);
+	enum cable_state (*get_cable_state)(struct devpolicy_mgr *dpm,
+						enum cable_type type);
+	/* Policy engine to update the current data and pwr roles*/
+	void (*update_data_role)(struct devpolicy_mgr *dpm,
+					enum data_role drole);
+	void (*update_power_role)(struct devpolicy_mgr *dpm,
+					enum pwr_role prole);
 	int (*set_charger_mode)(struct devpolicy_mgr *dpm,
 					enum charger_mode mode);
 	int (*update_current_lim)(struct devpolicy_mgr *dpm,
 					int ilim);
 	int (*get_min_current)(struct devpolicy_mgr *dpm,
 					int *ma);
+	int (*is_pr_swapped)(struct devpolicy_mgr *dpm,
+					enum pwr_role prole);
 	int (*set_display_port_state)(struct devpolicy_mgr *dpm,
 					enum cable_state state,
 					enum typec_dp_cable_type type);
-};
-
-struct devpolicy_mgr {
-	struct pd_policy *policy;
-	struct extcon_specific_cable_nb provider_cable_nb;
-	struct extcon_specific_cable_nb consumer_cable_nb;
-	struct typec_phy *phy;
-	struct notifier_block nb;
-	struct list_head cable_event_queue;
-	struct work_struct cable_event_work;
-	struct mutex cable_event_lock;
-	struct mutex role_lock;
-	struct mutex charger_lock;
-	struct dpm_interface *interface;
-	spinlock_t cable_event_queue_lock;
-	enum cable_state consumer_state;    /* cosumer cable state */
-	enum cable_state provider_state;    /* provider cable state */
-	enum cable_state dp_state;    /* display cable state */
-	enum cable_type prev_cable_evt;
-	enum pwr_role prole;
-	enum data_role drole;
 };
 
 static inline int devpolicy_get_max_srcpwr_cap(struct devpolicy_mgr *dpm,
@@ -170,8 +193,8 @@ static inline int devpolicy_get_max_srcpwr_cap(struct devpolicy_mgr *dpm,
 {
 	if (dpm && dpm->interface && dpm->interface->get_max_srcpwr_cap)
 		return dpm->interface->get_max_srcpwr_cap(dpm, caps);
-	else
-		return -ENODEV;
+
+	return -ENODEV;
 }
 
 static inline int devpolicy_get_max_snkpwr_cap(struct devpolicy_mgr *dpm,
@@ -179,8 +202,8 @@ static inline int devpolicy_get_max_snkpwr_cap(struct devpolicy_mgr *dpm,
 {
 	if (dpm && dpm->interface && dpm->interface->get_max_snkpwr_cap)
 		return dpm->interface->get_max_snkpwr_cap(dpm, caps);
-	else
-		return -ENODEV;
+
+	return -ENODEV;
 }
 
 static inline int devpolicy_get_snkpwr_cap(struct devpolicy_mgr *dpm,
@@ -188,8 +211,8 @@ static inline int devpolicy_get_snkpwr_cap(struct devpolicy_mgr *dpm,
 {
 	if (dpm && dpm->interface && dpm->interface->get_sink_power_cap)
 		return dpm->interface->get_sink_power_cap(dpm, cap);
-	else
-		return -ENODEV;
+
+	return -ENODEV;
 }
 
 static inline int devpolicy_get_snkpwr_caps(struct devpolicy_mgr *dpm,
@@ -197,38 +220,8 @@ static inline int devpolicy_get_snkpwr_caps(struct devpolicy_mgr *dpm,
 {
 	if (dpm && dpm->interface && dpm->interface->get_sink_power_caps)
 		return dpm->interface->get_sink_power_caps(dpm, caps);
-	else
-		return -ENODEV;
-}
 
-static inline enum data_role devpolicy_get_data_role(struct devpolicy_mgr *dpm)
-{
-	if (dpm && dpm->interface && dpm->interface->get_data_role)
-		return dpm->interface->get_data_role(dpm);
-	else
-		return -ENODEV;
-}
-
-static inline enum pwr_role devpolicy_get_power_role(struct devpolicy_mgr *dpm)
-{
-	if (dpm && dpm->interface && dpm->interface->get_pwr_role)
-		return dpm->interface->get_pwr_role(dpm);
-	else
-		return -ENODEV;
-}
-
-static inline void devpolicy_set_data_role(struct devpolicy_mgr *dpm,
-					enum data_role role)
-{
-	if (dpm && dpm->interface && dpm->interface->set_data_role)
-		dpm->interface->set_data_role(dpm, role);
-}
-
-static inline void devpolicy_set_power_role(struct devpolicy_mgr *dpm,
-					enum pwr_role role)
-{
-	if (dpm && dpm->interface && dpm->interface->set_pwr_role)
-		dpm->interface->set_pwr_role(dpm, role);
+	return -ENODEV;
 }
 
 static inline int devpolicy_set_charger_mode(struct devpolicy_mgr *dpm,
@@ -236,8 +229,8 @@ static inline int devpolicy_set_charger_mode(struct devpolicy_mgr *dpm,
 {
 	if (dpm && dpm->interface && dpm->interface->set_charger_mode)
 		return dpm->interface->set_charger_mode(dpm, mode);
-	else
-		return -ENODEV;
+
+	return -ENODEV;
 }
 
 static inline int devpolicy_update_current_limit(struct devpolicy_mgr *dpm,
@@ -245,8 +238,8 @@ static inline int devpolicy_update_current_limit(struct devpolicy_mgr *dpm,
 {
 	if (dpm && dpm->interface && dpm->interface->update_current_lim)
 		return dpm->interface->update_current_lim(dpm, ilim);
-	else
-		return -ENODEV;
+
+	return -ENODEV;
 }
 
 static inline int devpolicy_get_min_snk_current(struct devpolicy_mgr *dpm,
@@ -254,47 +247,31 @@ static inline int devpolicy_get_min_snk_current(struct devpolicy_mgr *dpm,
 {
 	if (dpm && dpm->interface && dpm->interface->get_min_current)
 		return dpm->interface->get_min_current(dpm, ma);
-	else
-		return -ENODEV;
+
+	return -ENODEV;
 }
 
-static inline int devpolicy_set_provider_state(struct devpolicy_mgr *dpm,
-						enum cable_state state)
+static inline int devpolicy_is_pr_swap_support(struct devpolicy_mgr *dpm,
+							enum pwr_role prole)
 {
-	if (dpm && dpm->interface && dpm->interface->set_provider_state)
-		return dpm->interface->set_provider_state(dpm, state);
-	else
-		return -ENODEV;
+	if (dpm && dpm->interface && dpm->interface->is_pr_swapped)
+		return dpm->interface->is_pr_swapped(dpm, prole);
+
+	return -ENODEV;
 }
 
-static inline int devpolicy_set_consumer_state(struct devpolicy_mgr *dpm,
-					enum cable_state state)
+static inline enum cable_state devpolicy_get_cable_state(
+					struct devpolicy_mgr *dpm,
+					enum cable_type type)
 {
-	if (dpm && dpm->interface && dpm->interface->set_consumer_state)
-		return dpm->interface->set_consumer_state(dpm, state);
-	else
-		return -ENODEV;
-}
+	if (dpm && dpm->interface && dpm->interface->get_cable_state)
+		return dpm->interface->get_cable_state(dpm, type);
 
-static inline enum cable_state devpolicy_get_provider_state(
-					struct devpolicy_mgr *dpm)
-{
-	if (dpm && dpm->interface && dpm->interface->get_provider_state)
-		return dpm->interface->get_provider_state(dpm);
-	else
-		return -ENODEV;
-}
-
-static inline enum cable_state devpolicy_get_consumer_state(
-					struct devpolicy_mgr *dpm)
-{
-	if (dpm && dpm->interface && dpm->interface->get_consumer_state)
-		return dpm->interface->get_consumer_state(dpm);
-	else
-		return -ENODEV;
+	return -ENODEV;
 }
 
 void typec_notify_cable_state(struct typec_phy *phy, char *type, bool state);
+void typec_set_pu_pd(struct typec_phy *phy, bool pu_pd);
 
 /* methods to register/unregister device manager policy notifier */
 extern int devpolicy_mgr_reg_notifier(struct notifier_block *nb);

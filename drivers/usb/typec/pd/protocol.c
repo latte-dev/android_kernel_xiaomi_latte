@@ -30,60 +30,32 @@
 #include "message.h"
 #include "protocol.h"
 
-static LIST_HEAD(protocol_list);
-static DEFINE_SPINLOCK(protocol_lock);
-
 struct prot_msg {
 	struct list_head node;
 	struct pd_packet pkt;
 };
 
-static int pd_extcon_ufp_ntf(struct notifier_block *nb,
-				unsigned long event, void *param)
+static void pd_policy_update_data_role(struct pd_prot *prot,
+					enum data_role drole)
 {
-	struct pd_prot *prot =
-		container_of(nb, struct pd_prot, ufp_nb);
-	struct extcon_dev *edev = param;
-	bool cable_state;
+	if (drole == DATA_ROLE_NONE || drole == DATA_ROLE_UFP)
+		prot->data_role = PD_DATA_ROLE_UFP;
+	else if (drole == DATA_ROLE_DFP)
+		prot->data_role = PD_DATA_ROLE_DFP;
 
-	if (!edev)
-		return NOTIFY_DONE;
-
-	prot->init_data_role = PD_DATA_ROLE_UFP;
-	prot->new_data_role = PD_DATA_ROLE_UFP;
-	prot->init_pwr_role = PD_POWER_ROLE_CONSUMER;
-	prot->new_pwr_role = PD_POWER_ROLE_CONSUMER;
-
-	cable_state = extcon_get_cable_state(edev, CABLE_CONSUMER);
-	if (cable_state)
-		queue_work(system_nrt_wq, &prot->cable_event_work);
-
-	return NOTIFY_OK;
+	queue_work(system_nrt_wq, &prot->role_chng_work);
 }
 
-static int pd_extcon_dfp_ntf(struct notifier_block *nb,
-				unsigned long event, void *param)
+static void pd_policy_update_power_role(struct pd_prot *prot,
+					enum pwr_role prole)
 {
-	struct pd_prot *prot =
-		container_of(nb, struct pd_prot, dfp_nb);
-	struct extcon_dev *edev = param;
-	bool cable_state;
+	if (prole == POWER_ROLE_NONE || prole == POWER_ROLE_SINK)
+		prot->pwr_role = PD_POWER_ROLE_CONSUMER;
+	else if (prole == POWER_ROLE_SOURCE)
+		prot->pwr_role = PD_POWER_ROLE_CONSUMER;
 
-	if (!edev)
-		return NOTIFY_DONE;
-
-	prot->init_data_role = PD_DATA_ROLE_DFP;
-	prot->new_data_role = PD_DATA_ROLE_DFP;
-	prot->init_pwr_role = PD_POWER_ROLE_PROVIDER;
-	prot->new_pwr_role = PD_POWER_ROLE_PROVIDER;
-
-	cable_state = extcon_get_cable_state(edev, CABLE_PROVIDER);
-	if (cable_state)
-		queue_work(system_nrt_wq, &prot->cable_event_work);
-
-	return NOTIFY_OK;
+	queue_work(system_nrt_wq, &prot->role_chng_work);
 }
-
 
 static struct prot_msg *prot_alloc_msg(void)
 {
@@ -201,14 +173,14 @@ static int pd_prot_rcv_pkt_from_policy(struct pd_prot *prot, u8 msg_type,
 	pkt = &prot->tx_buf;
 	memset(pkt, 0, sizeof(struct pd_packet));
 	pkt->header.msg_type = msg_type;
-	pkt->header.data_role = prot->new_data_role;
+	pkt->header.data_role = prot->data_role;
 	if (prot->pd_version == 2)
 		pkt->header.rev_id = 1;
 	else
 		pkt->header.rev_id = 0;
 
-	if ((prot->new_pwr_role == PD_POWER_ROLE_PROVIDER)
-		|| (prot->new_pwr_role == PD_POWER_ROLE_CONSUMER_PROVIDER))
+	if ((prot->pwr_role == PD_POWER_ROLE_PROVIDER)
+		|| (prot->pwr_role == PD_POWER_ROLE_CONSUMER_PROVIDER))
 		pkt->header.pwr_role = PD_PWR_ROLE_SRC;
 
 	pkt->header.msg_id = prot->tx_msg_id;
@@ -452,12 +424,6 @@ phy_rcv_end:
 	mutex_unlock(&pd->rx_data_lock);
 }
 
-static int pd_handle_phy_ntf(struct notifier_block *nb,
-			unsigned long event, void *data)
-{
-	return NOTIFY_OK;
-}
-
 static void pd_notify_protocol(struct typec_phy *phy, unsigned long event)
 {
 	struct pd_prot *pd = phy->proto;
@@ -509,30 +475,21 @@ static void pd_notify_protocol(struct typec_phy *phy, unsigned long event)
 		break;
 	}
 }
-
-static void prot_cable_worker(struct work_struct *work)
+static void prot_role_chnage_worker(struct work_struct *work)
 {
 	struct pd_prot *prot =
-		container_of(work, struct pd_prot, cable_event_work);
+		container_of(work, struct pd_prot, role_chng_work);
 
-	pd_prot_setup_role(prot, prot->new_data_role, prot->new_pwr_role);
-}
-
-static void *to_prot(struct typec_phy *phy)
-{
-	struct pd_prot *prot, *temp;
-	list_for_each_entry_safe(prot, temp, &protocol_list, list) {
-		if (prot->phy == phy)
-			return prot;
-	}
-	return NULL;
+	pd_prot_setup_role(prot, prot->data_role, prot->pwr_role);
 }
 
 int protocol_bind_pe(struct policy_engine *pe)
 {
 	struct typec_phy *phy = pe_get_phy(pe);
-	struct pd_prot *prot = to_prot(phy);
-
+	struct pd_prot *prot;
+	if (!phy)
+		return -ENODEV;
+	prot = phy->proto;
 	if (!prot)
 		return -ENODEV;
 	pe->prot = prot;
@@ -543,20 +500,13 @@ EXPORT_SYMBOL_GPL(protocol_bind_pe);
 
 void protocol_unbind_pe(struct policy_engine *pe)
 {
-	struct typec_phy *phy = pe_get_phy(pe);
-	struct pd_prot *prot = to_prot(phy);
-
-	if (!prot)
-		return;
-
+	pe->prot->pe = NULL;
 	pe->prot = NULL;
-	prot->pe = NULL;
 }
 EXPORT_SYMBOL_GPL(protocol_unbind_pe);
 
 int protocol_bind_dpm(struct typec_phy *phy)
 {
-	int ret;
 	struct pd_prot *prot;
 
 	prot = devm_kzalloc(phy->dev, sizeof(struct pd_prot), GFP_KERNEL);
@@ -571,43 +521,26 @@ int protocol_bind_dpm(struct typec_phy *phy)
 		return -EINVAL;
 	}
 
+	/* Bind the phy to the protocol */
 	phy->proto = prot;
 	prot->phy->notify_protocol = pd_notify_protocol;
-	prot->phy_nb.notifier_call = pd_handle_phy_ntf;
-
-	ret = typec_register_prot_notifier(phy, &prot->phy_nb);
-	if (ret < 0) {
-		dev_err(phy->dev, "%s: unable to register notifier", __func__);
-		kfree(prot);
-		return -EIO;
-	}
-
-	INIT_LIST_HEAD(&prot->list);
-
 	mutex_init(&prot->tx_lock);
 	mutex_init(&prot->tx_data_lock);
 	mutex_init(&prot->rx_data_lock);
 	init_completion(&prot->tx_complete);
 
-	prot->init_data_role = PD_DATA_ROLE_UFP;
-	prot->new_data_role = PD_DATA_ROLE_UFP;
-	prot->init_pwr_role = PD_POWER_ROLE_CONSUMER;
-	prot->new_pwr_role = PD_POWER_ROLE_CONSUMER;
+	prot->data_role = PD_DATA_ROLE_UFP;
+	prot->pwr_role = PD_POWER_ROLE_CONSUMER;
 
 	prot->rx_msg_id = -1; /* no message is stored */
 	pd_reset_counters(prot);
 	pd_tx_fsm_state(prot, PROT_TX_PHY_LAYER_RESET);
-	INIT_WORK(&prot->cable_event_work, prot_cable_worker);
-
-	prot->ufp_nb.notifier_call = pd_extcon_ufp_ntf;
-	extcon_register_interest(&prot->cable_ufp, "usb-typec",
-					"USB_TYPEC_UFP", &prot->ufp_nb);
-	prot->dfp_nb.notifier_call = pd_extcon_dfp_ntf;
-	extcon_register_interest(&prot->cable_dfp, "usb-typec",
-					"USB_TYPEC_DFP", &prot->dfp_nb);
+	INIT_WORK(&prot->role_chng_work, prot_role_chnage_worker);
 	prot->policy_fwd_pkt = pd_prot_rcv_pkt_from_policy;
-	list_add_tail(&prot->list, &protocol_list);
+	prot->policy_update_data_role = pd_policy_update_data_role;
+	prot->policy_update_power_role = pd_policy_update_power_role;
 
+	/* Init Rx list and the worker to preocess rx msgs */
 	INIT_LIST_HEAD(&prot->rx_list);
 	INIT_WORK(&prot->proc_rx_msg, prot_process_rx_work);
 	mutex_init(&prot->rx_list_lock);
@@ -616,33 +549,9 @@ int protocol_bind_dpm(struct typec_phy *phy)
 }
 EXPORT_SYMBOL_GPL(protocol_bind_dpm);
 
-static void remove_protocol(struct pd_prot *prot)
-{
-	if (!prot)
-		return;
-
-	extcon_unregister_interest(&prot->cable_dfp);
-	extcon_unregister_interest(&prot->cable_ufp);
-	typec_unregister_prot_notifier(prot->phy, &prot->phy_nb);
-	kfree(prot);
-}
-
 void protocol_unbind_dpm(struct typec_phy *phy)
 {
-	struct pd_prot *prot, *temp;
-
-	if (list_empty(&protocol_list))
-		return;
-
-	spin_lock(&protocol_lock);
-	list_for_each_entry_safe(prot, temp, &protocol_list, list) {
-		if (prot->phy == phy) {
-			list_del(&prot->list);
-			remove_protocol(prot);
-			break;
-		}
-	}
-	spin_unlock(&protocol_lock);
+	struct pd_prot *prot = phy->proto;
 
 	/* Clear the rx list and reset phy */
 	pd_reset_counters(prot);
@@ -650,6 +559,7 @@ void protocol_unbind_dpm(struct typec_phy *phy)
 	pd_prot_flush_fifo(prot, FIFO_TYPE_TX);
 	pd_prot_flush_fifo(prot, FIFO_TYPE_RX);
 	pd_prot_reset_phy(prot);
+	kfree(prot);
 }
 EXPORT_SYMBOL_GPL(protocol_unbind_dpm);
 

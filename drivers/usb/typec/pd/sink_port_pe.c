@@ -252,7 +252,8 @@ static int snkpe_start(struct sink_port_pe *sink)
 
 	/*---------- Start of Sink Port PE --------------*/
 	/* get the vbus state, in case of boot of vbus */
-	vbus_state = policy_get_vbus_state(&sink->p);
+	vbus_state = policy_get_cable_state(&sink->p,
+				CABLE_TYPE_CONSUMER);
 	if (vbus_state < 0) {
 		pr_err("SNKPE: Error in getting vbus state!\n");
 		return ret;

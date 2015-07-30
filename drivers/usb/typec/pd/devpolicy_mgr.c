@@ -123,13 +123,9 @@ static int dpm_get_max_snkpwr_cap(struct devpolicy_mgr *dpm,
 	return 0;
 }
 
-static int dpm_get_sink_power_cap(struct devpolicy_mgr *dpm,
-					struct power_cap *cap)
+static enum batt_soc_status dpm_get_batt_status(struct devpolicy_mgr *dpm)
 {
 	int soc;
-	/* if the battery capacity is > 80% of cap, 5V, 3A
-	 * <=80% of cpacity 12V, 3A.
-	 */
 
 	if (dpm_read_soc(&soc)) {
 		pr_err("DPM: Error in getting soc\n");
@@ -138,11 +134,46 @@ static int dpm_get_sink_power_cap(struct devpolicy_mgr *dpm,
 		pr_debug("DPM: capacity = %d\n", soc);
 	}
 
-	if (!IS_BATT_SOC_GOOD(soc))
-		cap->mv = VIN_12V;
+	if (IS_BATT_SOC_FULL(soc))
+		return BATT_SOC_FULL;
+	else if (IS_BATT_SOC_GOOD(soc))
+		return BATT_SOC_GOOD;
+	else if (IS_BATT_SOC_MID2(soc))
+		return BATT_SOC_MID2;
+	else if (IS_BATT_SOC_MID1(soc))
+		return BATT_SOC_MID1;
+	else if (IS_BATT_SOC_LOW(soc))
+		return BATT_SOC_LOW;
+	else if (IS_BATT_SOC_DEAD(soc))
+		return BATT_SOC_DEAD;
 	else
-		cap->mv = VIN_5V;
+		return BATT_SOC_UNKNOWN;
+}
 
+static int dpm_get_sink_power_cap(struct devpolicy_mgr *dpm,
+					struct power_cap *cap)
+{
+	enum batt_soc_status sts;
+
+	/* if the battery capacity is >= 80% of cap, 5V, 3A
+	 * <80% of cpacity 12V, 3A.
+	 */
+	sts = dpm_get_batt_status(dpm);
+	switch (sts) {
+	case BATT_SOC_FULL:
+	case BATT_SOC_GOOD:
+		cap->mv = VIN_5V;
+		break;
+	case BATT_SOC_MID2:
+	case BATT_SOC_MID1:
+	case BATT_SOC_LOW:
+	case BATT_SOC_DEAD:
+		cap->mv = VIN_12V;
+		break;
+	case BATT_SOC_UNKNOWN:
+	default:
+		return -EINVAL;
+	}
 	cap->ma = ICHRG_3A;
 
 	return 0;
@@ -158,32 +189,6 @@ static int dpm_get_sink_power_caps(struct devpolicy_mgr *dpm,
 	caps->pcap = spcaps;
 	caps->n_cap = ARRAY_SIZE(spcaps);
 	return 0;
-}
-
-static enum data_role dpm_get_data_role(struct devpolicy_mgr *dpm)
-{
-	return dpm->drole;
-}
-
-static enum pwr_role dpm_get_power_role(struct devpolicy_mgr *dpm)
-{
-	return dpm->prole;
-}
-
-static void dpm_set_data_role(struct devpolicy_mgr *dpm, enum data_role role)
-{
-	mutex_lock(&dpm->role_lock);
-	if (dpm->drole != role)
-		dpm->drole = role;
-	mutex_unlock(&dpm->role_lock);
-}
-
-static void dpm_set_power_role(struct devpolicy_mgr *dpm, enum pwr_role role)
-{
-	mutex_lock(&dpm->role_lock);
-	if (dpm->prole != role)
-		dpm->prole = role;
-	mutex_unlock(&dpm->role_lock);
 }
 
 static int dpm_set_charger_state(struct power_supply *psy, bool state)
@@ -270,6 +275,43 @@ error:
 
 }
 
+static int dpm_get_sink_pr_swap_status(struct devpolicy_mgr *dpm)
+{
+	enum batt_soc_status sts;
+	int ret;
+
+	/* if the battery capacity is >= 50% returns 1,
+	 * else 0 or error code
+	 */
+	sts = dpm_get_batt_status(dpm);
+	switch (sts) {
+	case BATT_SOC_FULL:
+	case BATT_SOC_GOOD:
+	case BATT_SOC_MID2:
+		ret = 1;
+		break;
+	case BATT_SOC_MID1:
+	case BATT_SOC_LOW:
+	case BATT_SOC_DEAD:
+		ret = 0;
+		break;
+	case BATT_SOC_UNKNOWN:
+	default:
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
+static int dpm_is_pr_swapped(struct devpolicy_mgr *dpm,
+					enum pwr_role prole)
+{
+	if (prole == POWER_ROLE_SINK)
+		return dpm_get_sink_pr_swap_status(dpm);
+
+	return 0;
+}
+
 static int dpm_get_min_current(struct devpolicy_mgr *dpm,
 					int *ma)
 {
@@ -288,103 +330,204 @@ static enum cable_state dpm_get_cable_state(struct devpolicy_mgr *dpm,
 		return dpm->consumer_state;
 }
 
-static void dpm_set_cable_state(struct devpolicy_mgr *dpm,
-				enum cable_type type, enum cable_state state)
+static void dpm_notify_policy_evt(struct devpolicy_mgr *dpm,
+					enum devpolicy_mgr_events evt)
 {
-	mutex_lock(&dpm->cable_event_lock);
-	switch (type) {
-	case CABLE_TYPE_PROVIDER:
-		if (dpm->provider_state != state) {
-			dpm->provider_state = state;
-			typec_notify_cable_state(dpm->phy, "USB-Host",
-							(bool)state);
+	if (dpm && dpm->pe && dpm->pe->ops && dpm->pe->ops->notify_dpm_evt)
+		dpm->pe->ops->notify_dpm_evt(dpm->pe, evt);
+
+}
+
+static void dpm_set_pu_pd(struct devpolicy_mgr *dpm, bool pu_pd)
+{
+	if (dpm && dpm->phy && dpm->phy->set_pu_pd)
+		dpm->phy->set_pu_pd(dpm->phy, pu_pd);
+}
+
+static void dpm_update_data_role(struct devpolicy_mgr *dpm,
+				enum data_role drole)
+{
+	enum data_role cur_drole;
+	char *cbl_type = NULL;
+	bool cbl_state = false;
+
+	mutex_lock(&dpm->role_lock);
+	cur_drole = dpm->cur_drole;
+	if (cur_drole == drole)
+		goto drole_err;
+	switch (drole) {
+	case DATA_ROLE_SWAP:
+		if (cur_drole == DATA_ROLE_DFP) {
+			/* Role swap from DFP to UFP, Send DFP disconnect */
+			cbl_type = "USB-Host";
+			cbl_state = CABLE_DETACHED;
+		} else if (cur_drole == DATA_ROLE_UFP) {
+			/* Role swap from UFP to DFP, Send UFP disconnect */
+			cbl_type = "USB";
+			cbl_state = CABLE_DETACHED;
+		} else {
+			pr_warn("DPM:%s:DR_SWAP cann't be processed\n",
+					__func__);
+			goto drole_err;
 		}
 		break;
-	case CABLE_TYPE_CONSUMER:
-		if (dpm->consumer_state != state) {
-			dpm->consumer_state = state;
-			typec_notify_cable_state(dpm->phy, "USB", (bool)state);
+	case DATA_ROLE_UFP:
+		/* Send UFP connect */
+		cbl_type = "USB";
+		cbl_state = CABLE_ATTACHED;
+		break;
+
+	case DATA_ROLE_DFP:
+		/* Send DFP connect */
+		cbl_type = "USB-Host";
+		cbl_state = CABLE_ATTACHED;
+		break;
+
+	case DATA_ROLE_NONE:
+		if (cur_drole == DATA_ROLE_SWAP)
+			cur_drole = dpm->prev_drole;
+		if (cur_drole == DATA_ROLE_DFP) {
+			cbl_type = "USB-Host";
+			cbl_state = CABLE_DETACHED;
+		} else if (cur_drole == DATA_ROLE_UFP) {
+			cbl_type = "USB";
+			cbl_state = CABLE_DETACHED;
+		} else
+			goto drole_err;
+		break;
+	default:
+		pr_debug("DPM:%s: unknown data role!!\n", __func__);
+		goto drole_err;
+	}
+	dpm->prev_drole = dpm->cur_drole;
+	dpm->cur_drole = drole;
+	typec_notify_cable_state(dpm->phy, cbl_type, cbl_state);
+
+drole_err:
+	mutex_unlock(&dpm->role_lock);
+}
+
+static void dpm_update_power_role(struct devpolicy_mgr *dpm,
+				enum pwr_role prole)
+{
+	enum pwr_role cur_prole;
+	enum pwr_role prev_prole;
+	char *cbl_type = NULL;
+	bool cbl_state = false;
+	bool set_pu_pd = false;
+	bool pu_pd = false;
+
+	mutex_lock(&dpm->role_lock);
+	cur_prole = dpm->cur_prole;
+	prev_prole = dpm->prev_prole;
+	if (cur_prole == prole)
+		goto update_prole_err;
+
+	switch (prole) {
+	case POWER_ROLE_SWAP:
+		if (cur_prole == POWER_ROLE_SOURCE) {
+			dpm->provider_state = CABLE_DETACHED;
+			/* Role swap from SRC to SNK, Send SRC disconnect */
+			cbl_type = "USB_TYPEC_SRC";
+			cbl_state = CABLE_DETACHED;
+			/* Pull-Down the CC line */
+			set_pu_pd = true;
+			pu_pd = false;
+		} else if (cur_prole == POWER_ROLE_SINK) {
+			dpm->consumer_state = CABLE_DETACHED;
+			/* Role swap from SNK to SRC, Send SNK disconnect */
+			cbl_type = "USB_TYPEC_SNK";
+			cbl_state = CABLE_DETACHED;
+			/* PR SWAP from SNK to SRC.
+			 * Pull-Up the CC line
+			 */
+			set_pu_pd = true;
+			pu_pd = true;
+		} else {
+			pr_warn("DPM:%s:PR_SWAP cann't be processed\n",
+					__func__);
+			goto update_prole_err;
 		}
 		break;
-	case CABLE_TYPE_DP_SOURCE:
-		if (dpm->dp_state != state) {
-			dpm->dp_state = state;
-			typec_notify_cable_state(dpm->phy,
-				"USB_TYPEC_DP_SOURCE", (bool)state);
+	case POWER_ROLE_SINK:
+		if (cur_prole == POWER_ROLE_SWAP
+			&& prev_prole == POWER_ROLE_SINK) {
+			/* PR swap from SINK to SRC failed.
+			 * Pull-Down the CC line.
+			 */
+			set_pu_pd = true;
+			pu_pd = false;
+		} else if (cur_prole == POWER_ROLE_SOURCE
+				&& prev_prole == POWER_ROLE_SWAP) {
+			/* During PR SWAP from SNK to SRC, after source
+			 * is enabled, the other device failed to switch
+			 * to sink and did send PS_RDY ontime. So switch
+			 * back from src to snk.
+			 */
+			set_pu_pd = true;
+			pu_pd = false;
+			dpm->provider_state = CABLE_DETACHED;
+			typec_notify_cable_state(dpm->phy, "USB_TYPEC_SRC",
+						CABLE_DETACHED);
+		}
+		dpm->consumer_state = CABLE_ATTACHED;
+		/* Send SNK connect */
+		cbl_type = "USB_TYPEC_SNK";
+		cbl_state = CABLE_ATTACHED;
+		break;
+
+	case POWER_ROLE_SOURCE:
+		if (cur_prole == POWER_ROLE_SWAP
+			&& prev_prole == POWER_ROLE_SOURCE) {
+			/* PR SWAP from SRC to SNK failed and falling
+			 * back to SRC, Pull-Up the CC line
+			 */
+			set_pu_pd = true;
+			pu_pd = true;
+		}
+		dpm->provider_state = CABLE_ATTACHED;
+		/* Send SRC connect */
+		cbl_type = "USB_TYPEC_SRC";
+		cbl_state = CABLE_ATTACHED;
+		break;
+
+	case POWER_ROLE_NONE:
+		/* Cable disconnected */
+		if (cur_prole == POWER_ROLE_SOURCE) {
+			cbl_type = "USB_TYPEC_SRC";
+			cbl_state = CABLE_DETACHED;
+		} else if (cur_prole == POWER_ROLE_SINK) {
+			cbl_type = "USB_TYPEC_SNK";
+			cbl_state = CABLE_DETACHED;
 		}
 		break;
 	default:
-		pr_warn("DPM: Unknown cable type=%d\n", type);
+		pr_debug("DPM:%s: unknown pwr role!!\n", __func__);
+		goto update_prole_err;
 	}
-	mutex_unlock(&dpm->cable_event_lock);
-	return;
-}
+	dpm->prev_prole = cur_prole;
+	dpm->cur_prole = prole;
+	typec_notify_cable_state(dpm->phy, cbl_type, cbl_state);
+	if (set_pu_pd)
+		dpm_set_pu_pd(dpm, pu_pd);
+update_prole_err:
+	mutex_unlock(&dpm->role_lock);
 
-static int dpm_set_provider_state(struct devpolicy_mgr *dpm,
-					enum cable_state state)
-{
-	dpm_set_cable_state(dpm, CABLE_TYPE_PROVIDER, state);
-	return 0;
-}
-
-static int dpm_set_consumer_state(struct devpolicy_mgr *dpm,
-					enum cable_state state)
-{
-	dpm_set_cable_state(dpm, CABLE_TYPE_CONSUMER, state);
-	return 0;
 }
 
 static int dpm_set_display_port_state(struct devpolicy_mgr *dpm,
 					enum cable_state state,
 					enum typec_dp_cable_type type)
 {
+	mutex_lock(&dpm->role_lock);
 	dpm->phy->dp_type = type;
-	dpm_set_cable_state(dpm, CABLE_TYPE_DP_SOURCE, state);
+	if (dpm->dp_state != state) {
+		dpm->dp_state = state;
+		typec_notify_cable_state(dpm->phy,
+			"USB_TYPEC_DP_SOURCE", state);
+	}
+	mutex_unlock(&dpm->role_lock);
 	return 0;
-}
-
-static enum cable_state dpm_get_provider_state(struct devpolicy_mgr *dpm)
-{
-	return dpm_get_cable_state(dpm, CABLE_TYPE_PROVIDER);
-}
-
-static enum cable_state dpm_get_consumer_state(struct devpolicy_mgr *dpm)
-{
-	return dpm_get_cable_state(dpm, CABLE_TYPE_CONSUMER);
-}
-
-static void dpm_set_cur_data_role(struct devpolicy_mgr *dpm)
-{
-	enum cable_state state;
-
-	state = dpm_get_cable_state(dpm, CABLE_TYPE_PROVIDER);
-	if (state == CABLE_ATTACHED) {
-		dpm_set_data_role(dpm, DATA_ROLE_DFP);
-		return;
-	}
-
-	state = dpm_get_cable_state(dpm, CABLE_TYPE_CONSUMER);
-	if (state == CABLE_ATTACHED)
-		dpm_set_data_role(dpm, DATA_ROLE_UFP);
-	else
-		dpm_set_data_role(dpm, DATA_ROLE_NONE);
-}
-
-static void dpm_set_cur_power_role(struct devpolicy_mgr *dpm)
-{
-	enum cable_state state;
-
-	state = dpm_get_cable_state(dpm, CABLE_TYPE_PROVIDER);
-	if (state == CABLE_ATTACHED) {
-		dpm_set_power_role(dpm, POWER_ROLE_SOURCE);
-		return;
-	}
-
-	state = dpm_get_cable_state(dpm, CABLE_TYPE_CONSUMER);
-	if (state == CABLE_ATTACHED)
-		dpm_set_power_role(dpm, POWER_ROLE_SINK);
-	else
-		dpm_set_power_role(dpm, POWER_ROLE_NONE);
 }
 
 static void dpm_cable_worker(struct work_struct *work)
@@ -393,7 +536,6 @@ static void dpm_cable_worker(struct work_struct *work)
 		container_of(work, struct devpolicy_mgr, cable_event_work);
 	struct cable_event *evt, *tmp;
 	unsigned long flags;
-	enum cable_state provider_state;
 	struct list_head new_list;
 
 	if (list_empty(&dpm->cable_event_queue))
@@ -405,51 +547,50 @@ static void dpm_cable_worker(struct work_struct *work)
 	spin_unlock_irqrestore(&dpm->cable_event_queue_lock, flags);
 
 	list_for_each_entry_safe(evt, tmp, &new_list, node) {
-		pr_debug("DPM: %s Consumer - %s Provider - %s\n", __func__,
-			evt->is_consumer_state ? "Connected" : "Disconnected",
-			evt->is_provider_state ? "Connected" : "Disconnected");
+		pr_debug("DPM:%s: Cable type=%s - %s\n", __func__,
+			((evt->cbl_type == CABLE_TYPE_CONSUMER) ? "Consumer" :
+			((evt->cbl_type == CABLE_TYPE_PROVIDER) ? "Provider" :
+			"Unknown")),
+			evt->cbl_state ? "Connected" : "Disconnected");
 
-		if (evt->is_consumer_state == CABLE_ATTACHED ||
-			dpm->prev_cable_evt == CABLE_TYPE_CONSUMER) {
-			dpm_set_cable_state(dpm, CABLE_TYPE_CONSUMER,
-						evt->is_consumer_state);
-			if  (dpm->prev_cable_evt == CABLE_TYPE_CONSUMER)
-				dpm->prev_cable_evt = CABLE_TYPE_UNKNOWN;
-			else
-				 dpm->prev_cable_evt = CABLE_TYPE_CONSUMER;
-		} else if (evt->is_provider_state == CABLE_ATTACHED ||
-				dpm->prev_cable_evt == CABLE_TYPE_PROVIDER) {
-			dpm_set_cable_state(dpm, CABLE_TYPE_PROVIDER,
-						evt->is_provider_state);
-			if  (dpm->prev_cable_evt == CABLE_TYPE_CONSUMER)
-				dpm->prev_cable_evt = CABLE_TYPE_UNKNOWN;
-			else
-				dpm->prev_cable_evt = CABLE_TYPE_PROVIDER;
-		}
+		mutex_lock(&dpm->role_lock);
+		if (evt->cbl_type == CABLE_TYPE_CONSUMER
+			&& evt->cbl_state != dpm->consumer_state) {
+			dpm->consumer_state = evt->cbl_state;
+			if (evt->cbl_state == CABLE_ATTACHED) {
+				dpm_notify_policy_evt(dpm,
+					DEVMGR_EVENT_UFP_CONNECTED);
+			} else if (evt->cbl_state == CABLE_DETACHED) {
+				dpm_notify_policy_evt(dpm,
+					DEVMGR_EVENT_UFP_DISCONNECTED);
+			}
 
-		dpm_set_cur_power_role(dpm);
-		dpm_set_cur_data_role(dpm);
+		} else if (evt->cbl_type == CABLE_TYPE_PROVIDER
+			&& evt->cbl_state != dpm->provider_state) {
+			dpm->provider_state = evt->cbl_state;
+			if (evt->cbl_state == CABLE_ATTACHED) {
+				dpm_notify_policy_evt(dpm,
+					DEVMGR_EVENT_DFP_CONNECTED);
+			} else if (evt->cbl_state == CABLE_DETACHED) {
+				dpm_notify_policy_evt(dpm,
+					DEVMGR_EVENT_DFP_DISCONNECTED);
+			}
+		} else
+			pr_debug("DPM: consumer/provider state not changed\n");
 
-		provider_state = dpm_get_cable_state(dpm, CABLE_TYPE_PROVIDER);
-		if (provider_state == CABLE_ATTACHED) {
-			/* FIXME: Notify Policy Engine to Advertise
-			 * Source Capabilities, in case of provider mode
-			 */
-		}
+		mutex_unlock(&dpm->role_lock);
 		list_del(&evt->node);
 		kfree(evt);
 	}
-
-	return;
 }
 
-static int dpm_cable_event(struct notifier_block *nblock,
+static int dpm_consumer_cable_event(struct notifier_block *nblock,
 						unsigned long event,
 						void *param)
 {
 	struct devpolicy_mgr *dpm = container_of(nblock,
 						struct devpolicy_mgr,
-						nb);
+						consumer_nb);
 	struct extcon_dev *edev = param;
 	struct cable_event *evt;
 
@@ -462,13 +603,11 @@ static int dpm_cable_event(struct notifier_block *nblock,
 		return NOTIFY_DONE;
 	}
 
-	evt->is_consumer_state = extcon_get_cable_state(edev, CABLE_CONSUMER);
-	evt->is_provider_state = extcon_get_cable_state(edev, CABLE_PROVIDER);
-	pr_debug("DPM: extcon notification evt Consumer - %s Provider - %s\n",
-			evt->is_consumer_state ? "Connected" : "Disconnected",
-			evt->is_provider_state ? "Connected" : "Disconnected");
+	evt->cbl_type = CABLE_TYPE_CONSUMER;
+	evt->cbl_state = extcon_get_cable_state(edev, CABLE_CONSUMER);
+	pr_debug("DPM: extcon notification evt Consumer - %s\n",
+			evt->cbl_state ? "Connected" : "Disconnected");
 
-	INIT_LIST_HEAD(&evt->node);
 	spin_lock(&dpm->cable_event_queue_lock);
 	list_add_tail(&evt->node, &dpm->cable_event_queue);
 	spin_unlock(&dpm->cable_event_queue_lock);
@@ -477,34 +616,50 @@ static int dpm_cable_event(struct notifier_block *nblock,
 	return NOTIFY_OK;
 }
 
-int devpolicy_mgr_reg_notifier(struct notifier_block *nb)
+static int dpm_provider_cable_event(struct notifier_block *nblock,
+						unsigned long event,
+						void *param)
 {
-	return atomic_notifier_chain_register(&devpolicy_mgr_notifier, nb);
-}
-EXPORT_SYMBOL_GPL(devpolicy_mgr_reg_notifier);
+	struct devpolicy_mgr *dpm = container_of(nblock,
+						struct devpolicy_mgr,
+						provider_nb);
+	struct extcon_dev *edev = param;
+	struct cable_event *evt;
 
-void devpolicy_mgr_unreg_notifier(struct notifier_block *nb)
-{
-	atomic_notifier_chain_unregister(&devpolicy_mgr_notifier, nb);
+	if (!edev)
+		return NOTIFY_DONE;
+
+	evt = kzalloc(sizeof(*evt), GFP_ATOMIC);
+	if (!evt) {
+		pr_err("DPM: failed to allocate memory for cable event\n");
+		return NOTIFY_DONE;
+	}
+
+	evt->cbl_type = CABLE_TYPE_PROVIDER;
+	evt->cbl_state = extcon_get_cable_state(edev, CABLE_PROVIDER);
+	pr_debug("DPM: extcon notification evt Provider - %s\n",
+			evt->cbl_state ? "Connected" : "Disconnected");
+
+	spin_lock(&dpm->cable_event_queue_lock);
+	list_add_tail(&evt->node, &dpm->cable_event_queue);
+	spin_unlock(&dpm->cable_event_queue_lock);
+
+	queue_work(system_nrt_wq, &dpm->cable_event_work);
+	return NOTIFY_OK;
 }
-EXPORT_SYMBOL_GPL(devpolicy_mgr_unreg_notifier);
 
 static struct dpm_interface interface = {
 	.get_max_srcpwr_cap = dpm_get_max_srcpwr_cap,
 	.get_max_snkpwr_cap = dpm_get_max_snkpwr_cap,
 	.get_sink_power_cap = dpm_get_sink_power_cap,
 	.get_sink_power_caps = dpm_get_sink_power_caps,
-	.set_provider_state = dpm_set_provider_state,
-	.set_consumer_state = dpm_set_consumer_state,
-	.get_provider_state = dpm_get_provider_state,
-	.get_consumer_state = dpm_get_consumer_state,
-	.get_data_role = dpm_get_data_role,
-	.get_pwr_role = dpm_get_power_role,
-	.set_data_role = dpm_set_data_role,
-	.set_pwr_role = dpm_set_power_role,
+	.get_cable_state = dpm_get_cable_state,
 	.set_charger_mode = dpm_set_charger_mode,
 	.update_current_lim = dpm_update_current_lim,
 	.get_min_current = dpm_get_min_current,
+	.update_data_role = dpm_update_data_role,
+	.update_power_role = dpm_update_power_role,
+	.is_pr_swapped = dpm_is_pr_swapped,
 	.set_display_port_state = dpm_set_display_port_state,
 };
 
@@ -531,17 +686,16 @@ struct devpolicy_mgr *dpm_register_syspolicy(struct typec_phy *phy,
 	INIT_LIST_HEAD(&dpm->cable_event_queue);
 	INIT_WORK(&dpm->cable_event_work, dpm_cable_worker);
 	spin_lock_init(&dpm->cable_event_queue_lock);
-	mutex_init(&dpm->cable_event_lock);
 	mutex_init(&dpm->role_lock);
 	mutex_init(&dpm->charger_lock);
-	dpm->prev_cable_evt = CABLE_TYPE_UNKNOWN;
 
 	/* register for extcon notifier */
-	dpm->nb.notifier_call = dpm_cable_event;
+	dpm->consumer_nb.notifier_call = dpm_consumer_cable_event;
+	dpm->provider_nb.notifier_call = dpm_provider_cable_event;
 	ret = extcon_register_interest(&dpm->consumer_cable_nb,
 						NULL,
 						CABLE_CONSUMER,
-						&dpm->nb);
+						&dpm->consumer_nb);
 	if (ret < 0) {
 		pr_err("DPM: failed to register notifier for Consumer (%d)\n",
 						ret);
@@ -551,7 +705,7 @@ struct devpolicy_mgr *dpm_register_syspolicy(struct typec_phy *phy,
 	ret = extcon_register_interest(&dpm->provider_cable_nb,
 						NULL,
 						CABLE_PROVIDER,
-						&dpm->nb);
+						&dpm->provider_nb);
 	if (ret < 0) {
 		pr_err("DPM: failed to register notifier for Provider\n");
 		goto error1;

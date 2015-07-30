@@ -33,12 +33,8 @@ struct pd_prot {
 	u32 retry_count;
 	u8 pd_version;
 
-	u8 init_data_role;
-	u8 new_data_role;
-	u8 assumed_data_role;
-	u8 init_pwr_role;
-	u8 new_pwr_role;
-	u8 assumed_pwr_role;
+	u8 data_role;
+	u8 pwr_role;
 	u8 event;
 	u8 tx_msg_id;
 	u8 retry_counter;
@@ -54,21 +50,20 @@ struct pd_prot {
 	struct mutex tx_data_lock;
 	struct mutex tx_lock;
 
-	struct list_head list;
-	struct work_struct cable_event_work;
+	struct work_struct role_chng_work;
 
 	/* list and worker to process received messages */
 	struct list_head rx_list;
 	struct work_struct proc_rx_msg;
 	struct mutex rx_list_lock;
 
-	struct extcon_specific_cable_nb cable_ufp;
-	struct extcon_specific_cable_nb cable_dfp;
-	struct notifier_block ufp_nb;
-	struct notifier_block dfp_nb;
-	struct notifier_block phy_nb;
 	int (*policy_fwd_pkt)(struct pd_prot *prot, u8 msg_type,
 					void *data, int len);
+
+	void (*policy_update_data_role)(struct pd_prot *prot,
+					enum data_role drole);
+	void (*policy_update_power_role)(struct pd_prot *prot,
+					enum pwr_role prole);
 };
 
 static inline int pd_prot_send_phy_packet(struct pd_prot *pd, void *buf,

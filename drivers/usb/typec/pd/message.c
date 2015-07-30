@@ -33,9 +33,9 @@ int pd_ctrl_msg(struct pd_prot *pd, u8 msg_type, u8 msg_id)
 	struct pd_pkt_header *header = &buf->header;
 
 	header->msg_type = msg_type & PD_MSG_HEAD_MSG_TYPE;
-	header->data_role = pd->new_data_role & PD_MSG_HEADER_ROLE_BITS_MASK;
+	header->data_role = pd->data_role & PD_MSG_HEADER_ROLE_BITS_MASK;
 	header->rev_id = PD_REV_ID_2 & PD_MSG_HEADER_REVID_BITS_MASK;
-	if (pd->new_pwr_role == PD_POWER_ROLE_PROVIDER)
+	if (pd->pwr_role == PD_POWER_ROLE_PROVIDER)
 		header->pwr_role = 1;
 	else
 		header->pwr_role = 0;
@@ -51,9 +51,9 @@ int pd_data_msg(struct pd_prot *pd, int len, u8 msg_type)
 	struct pd_pkt_header *header = &buf->header;
 
 	header->msg_type = msg_type & PD_MSG_HEAD_MSG_TYPE;
-	header->data_role = pd->new_data_role & PD_MSG_HEADER_ROLE_BITS_MASK;
+	header->data_role = pd->data_role & PD_MSG_HEADER_ROLE_BITS_MASK;
 	header->rev_id = PD_REV_ID_2 & PD_MSG_HEADER_REVID_BITS_MASK;
-	if (pd->new_pwr_role == PD_POWER_ROLE_PROVIDER)
+	if (pd->pwr_role == PD_POWER_ROLE_PROVIDER)
 		header->pwr_role = 1;
 	else
 		header->pwr_role = 0;

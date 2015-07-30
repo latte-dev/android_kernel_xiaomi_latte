@@ -304,33 +304,26 @@ struct policy {
 	int (*rcv_pkt)(struct policy *p, struct pd_packet *pkt,
 				enum pe_event evt);
 	int (*rcv_cmd)(struct policy *p, enum pe_event evt);
+	int (*rcv_request)(struct policy *p, enum pe_event evt);
 	void (*exit)(struct policy *p);
 };
 
 struct policy_engine {
 	struct pd_prot *prot;
-	struct notifier_block proto_nb;
-	struct notifier_block dpm_nb;
-	struct mutex dpmwk_lock;
 	struct mutex pe_lock;
-	struct list_head dpm_queue;
-	struct work_struct dpm_work;
+
+	struct list_head dpm_evt_queue;
+	struct work_struct dpm_evt_work;
 	struct devpolicy_mgr *dpm;
+	struct mutex dpm_evt_lock;
+
 	struct pe_operations *ops;
-	struct list_head list;
-
-	spinlock_t dpm_queue_lock;
-
 	struct pd_policy *supported_policies;
-	struct notifier_block sink_nb;
-	struct notifier_block source_nb;
-	struct extcon_specific_cable_nb sink_cable_nb;
-	struct extcon_specific_cable_nb source_cable_nb;
-	struct work_struct policy_work;
 	struct work_struct policy_init_work;
 
 	struct list_head policy_list;
-	enum cable_type cbl_type;
+	enum data_role	cur_drole;
+	enum pwr_role cur_prole;
 	bool is_pd_connected;
 };
 
@@ -343,19 +336,23 @@ struct pe_operations {
 					struct power_cap *cap);
 	enum data_role (*get_data_role)(struct policy_engine *pe);
 	enum pwr_role (*get_power_role)(struct policy_engine *pe);
-	void (*set_data_role)(struct policy_engine *pe, enum data_role role);
-	void (*set_power_role)(struct policy_engine *pe, enum pwr_role role);
+	int (*set_data_role)(struct policy_engine *pe, enum data_role role);
+	int (*set_power_role)(struct policy_engine *pe, enum pwr_role role);
 	int (*set_charger_mode)(struct policy_engine *pe,
 					enum charger_mode mode);
 	int (*update_charger_ilim)(struct policy_engine *pe,
 					int ilim);
 	int (*get_min_snk_current)(struct policy_engine *pe,
 					int *ma);
+	int (*is_pr_swap_support)(struct policy_engine *pe,
+						enum pwr_role prole);
 	int (*send_packet)(struct policy_engine *pe, void *data,
 				int len, u8 msg_type, enum pe_event evt);
-	enum cable_state (*get_vbus_state)(struct policy_engine *pe);
+	enum cable_state (*get_cable_state)(struct policy_engine *pe,
+						enum cable_type type);
 	int (*set_pd_state)(struct policy_engine *pe, bool state);
 	bool (*get_pd_state)(struct policy_engine *pe);
+	int (*switch_policy)(struct policy_engine *pe,  enum policy_type type);
 	int (*process_data_msg)(struct policy_engine *pe, enum pe_event evt,
 				struct pd_packet *data);
 	int (*process_ctrl_msg)(struct policy_engine *pe, enum pe_event evt,
@@ -363,16 +360,13 @@ struct pe_operations {
 	int (*process_cmd)(struct policy_engine *pe, enum pe_event cmd);
 	void (*policy_status_changed)(struct policy_engine *pe, int policy_type,
 					int state);
-};
-
-struct pe_proto_evt {
-	struct list_head node;
-	struct pd_packet pkt;
+	int (*notify_dpm_evt)(struct policy_engine *pe,
+					enum devpolicy_mgr_events evt);
 };
 
 struct pe_dpm_evt {
 	struct list_head node;
-	struct power_cap caps;
+	enum devpolicy_mgr_events evt;
 };
 
 #define pe_get_phy(x)	((x) ?  x->dpm->phy : NULL)
@@ -434,16 +428,20 @@ static inline enum pwr_role policy_get_power_role(struct policy *p)
 	return POWER_ROLE_NONE;
 }
 
-static inline void policy_set_data_role(struct policy *p, int role)
+static inline int policy_set_data_role(struct policy *p, enum data_role role)
 {
 	if (p && p->pe && p->pe->ops && p->pe->ops->set_data_role)
-		p->pe->ops->set_data_role(p->pe, role);
+		return p->pe->ops->set_data_role(p->pe, role);
+
+	return -ENOTSUPP;
 }
 
-static inline void policy_set_power_role(struct policy *p, int role)
+static inline int policy_set_power_role(struct policy *p, enum pwr_role role)
 {
 	if (p && p->pe && p->pe->ops && p->pe->ops->set_power_role)
-		p->pe->ops->set_power_role(p->pe, role);
+		return p->pe->ops->set_power_role(p->pe, role);
+
+	return -ENOTSUPP;
 }
 
 static inline int policy_set_charger_mode(struct policy *p,
@@ -473,6 +471,15 @@ static inline int policy_get_min_current(struct policy *p,
 	return -ENOTSUPP;
 }
 
+static inline int policy_is_pr_swap_support(struct policy *p,
+						enum pwr_role prole)
+{
+	if (p && p->pe && p->pe->ops && p->pe->ops->is_pr_swap_support)
+		return p->pe->ops->is_pr_swap_support(p->pe, prole);
+
+	return -ENOTSUPP;
+}
+
 static inline int policy_send_packet(struct policy *p, void *data, int len,
 					u8 msg_type, enum pe_event evt)
 {
@@ -489,10 +496,11 @@ static inline void pe_notify_policy_status_changed(struct policy *p,
 		p->pe->ops->policy_status_changed(p->pe, type, status);
 }
 
-static inline enum cable_state policy_get_vbus_state(struct policy *p)
+static inline enum cable_state policy_get_cable_state(struct policy *p,
+							enum cable_type type)
 {
-	if (p && p->pe && p->pe->ops && p->pe->ops->get_vbus_state)
-		return p->pe->ops->get_vbus_state(p->pe);
+	if (p && p->pe && p->pe->ops && p->pe->ops->get_cable_state)
+		return p->pe->ops->get_cable_state(p->pe, type);
 
 	return -ENOTSUPP;
 }
@@ -505,10 +513,18 @@ static inline int policy_set_pd_state(struct policy *p, bool state)
 	return -ENOTSUPP;
 }
 
-static inline bool policy_get_pd_state(struct policy *p)
+static inline int policy_get_pd_state(struct policy *p)
 {
 	if (p && p->pe && p->pe->ops && p->pe->ops->get_pd_state)
 		return p->pe->ops->get_pd_state(p->pe);
+
+	return -ENOTSUPP;
+}
+
+static inline int policy_switch_policy(struct policy *p, enum policy_type type)
+{
+	if (p && p->pe && p->pe->ops && p->pe->ops->switch_policy)
+		return p->pe->ops->switch_policy(p->pe, type);
 
 	return -ENOTSUPP;
 }
@@ -562,6 +578,22 @@ static inline int pe_process_ctrl_msg(struct policy_engine *pe,
 		return pe->ops->process_ctrl_msg(pe, evt, pkt);
 
 	return -ENOTSUPP;
+}
+
+static inline void policy_dpm_update_data_role(struct policy_engine *pe,
+				enum data_role drole)
+{
+	if (pe && pe->dpm && pe->dpm->interface &&
+		pe->dpm->interface->update_data_role)
+		pe->dpm->interface->update_data_role(pe->dpm, drole);
+}
+
+static inline void policy_dpm_update_power_role(struct policy_engine *pe,
+				enum pwr_role prole)
+{
+	if (pe && pe->dpm && pe->dpm->interface &&
+		pe->dpm->interface->update_power_role)
+		pe->dpm->interface->update_power_role(pe->dpm, prole);
 }
 
 extern struct policy *sink_port_policy_init(struct policy_engine *pe);
