@@ -478,6 +478,56 @@ static int fusb300_switch_mode(struct typec_phy *phy, enum typec_mode mode)
 	return 0;
 }
 
+static int fusb300_set_pu_pd(struct typec_phy *phy, bool pu_pd)
+{
+	struct fusb300_chip *chip;
+	u8 val = 0;
+
+	if (!phy)
+		return -ENODEV;
+	chip = dev_get_drvdata(phy->dev);
+
+	dev_dbg(phy->dev, "%s cc:%d, pi_pd:%d\n", __func__,
+				phy->valid_cc, pu_pd);
+
+	mutex_lock(&chip->lock);
+	if (phy->valid_cc == TYPEC_PIN_CC1) {
+		if (pu_pd)
+			val |= FUSB300_SWITCH0_PU_CC1_EN;
+		else
+			val |= FUSB300_SWITCH0_PD_CC1_EN;
+
+		regmap_update_bits(chip->map, FUSB300_SWITCH0_REG,
+			FUSB300_SWITCH0_PU_CC1_EN | FUSB300_SWITCH0_PD_CC1_EN,
+			val);
+
+	} else if (phy->valid_cc == TYPEC_PIN_CC2) {
+		if (pu_pd)
+			val |= FUSB300_SWITCH0_PU_CC2_EN;
+		else
+			val |= FUSB300_SWITCH0_PD_CC2_EN;
+
+		regmap_update_bits(chip->map, FUSB300_SWITCH0_REG,
+			FUSB300_SWITCH0_PU_CC2_EN | FUSB300_SWITCH0_PD_CC2_EN,
+			val);
+	}
+
+	/* If cc pulled up in UFP state, this pull-up is for pr swap.
+	 * Change the state to TYPEC_STATE_PD_PU_SWAP.
+	 */
+	if (pu_pd && phy->state == TYPEC_STATE_ATTACHED_UFP)
+		phy->state = TYPEC_STATE_PD_PU_SWAP;
+
+	/* If cc pulled down in DFP state, this pull-down is for pr swap.
+	 * Change the state to TYPEC_STATE_PU_PD_SWAP.
+	 */
+	if ((!pu_pd) && (phy->state == TYPEC_STATE_ATTACHED_DFP))
+		phy->state = TYPEC_STATE_PU_PD_SWAP;
+
+	mutex_unlock(&chip->lock);
+	return 0;
+}
+
 static int fusb300_setup_cc(struct typec_phy *phy, enum typec_cc_pin cc,
 				enum typec_state state)
 {
@@ -745,21 +795,25 @@ static void fusb300_handle_vbus_int(struct fusb300_chip *chip, int vbus_on)
 	if (vbus_on) {
 		if (state == TYPEC_STATE_UNATTACHED_DFP)
 			complete(&chip->int_complete);
+		else if (state == TYPEC_STATE_PU_PD_SWAP) {
+			mutex_lock(&chip->lock);
+			phy->state = TYPEC_STATE_ATTACHED_UFP;
+			mutex_unlock(&chip->lock);
+		} else if (state == TYPEC_STATE_PD_PU_SWAP) {
+			mutex_lock(&chip->lock);
+			phy->state = TYPEC_STATE_ATTACHED_DFP;
+			mutex_unlock(&chip->lock);
+		}
 
 		if (chip->is_fusb300)
 			atomic_notifier_call_chain(&phy->notifier,
 				 TYPEC_EVENT_VBUS, phy);
 		/* TOG_DONE will be used with FUSB302 */
 	} else {
-		mutex_lock(&chip->lock);
-		phy->valid_cc = 0;
-		mutex_unlock(&chip->lock);
 		if (state == TYPEC_STATE_ATTACHED_UFP) {
-			fusb300_wake_on_cc_change(chip);
 			atomic_notifier_call_chain(&phy->notifier,
 					TYPEC_EVENT_NONE, phy);
 		}
-		fusb300_flush_fifo(phy, FIFO_TYPE_TX | FIFO_TYPE_RX);
 	}
 }
 
@@ -838,12 +892,16 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 
 	if ((int_stat.int_reg & FUSB300_INT_COMP) &&
 			(int_stat.stat_reg & FUSB300_STAT0_COMP)) {
+		/* COMP change can be treated as disconnect in
+		 * DFP or UFP state as comp change can also happen
+		 * during role swap.
+		 */
 		if ((phy_state == TYPEC_STATE_ATTACHED_UFP) ||
-			(phy_state == TYPEC_STATE_ATTACHED_DFP))
+			(phy_state == TYPEC_STATE_ATTACHED_DFP)) {
 			atomic_notifier_call_chain(&phy->notifier,
 				 TYPEC_EVENT_NONE, phy);
-			/*fusb300_wake_on_cc_change(chip);*/
-		fusb300_flush_fifo(phy, FIFO_TYPE_TX | FIFO_TYPE_RX);
+			fusb300_flush_fifo(phy, FIFO_TYPE_TX | FIFO_TYPE_RX);
+		}
 	}
 
 	if (chip->process_pd && (int_stat.int_reg & FUSB300_INT_ACTIVITY) &&
@@ -1321,6 +1379,24 @@ static int fusb300_wake_on_cc_change(struct fusb300_chip *chip)
 	return ret;
 }
 
+static int fusb300_enable_typec_detection(struct typec_phy *phy, bool en)
+{
+	struct fusb300_chip *chip;
+
+	if (!phy)
+		return -ENODEV;
+
+	chip = dev_get_drvdata(phy->dev);
+
+	dev_dbg(&chip->client->dev, "%s: en=%d\n", __func__, en);
+	if (en) {
+		phy->valid_cc = 0;
+		return fusb300_wake_on_cc_change(chip);
+	}
+
+	return fusb302_enable_toggle(chip, en, FUSB302_TOG_MODE_DRP);
+}
+
 static struct regmap_config fusb300_regmap_config = {
 	.reg_bits = 8,
 	.val_bits = 8,
@@ -1473,9 +1549,11 @@ static int fusb300_probe(struct i2c_client *client,
 	chip->phy.send_packet = fusb300_send_pkt;
 	chip->phy.recv_packet = fusb300_recv_pkt;
 	chip->phy.reset_pd = fusb300_reset_pd;
+	chip->phy.set_pu_pd = fusb300_set_pu_pd;
 	if (!chip->is_fusb300) {
 		chip->phy.setup_role = fusb300_setup_role;
 		chip->phy.enable_autocrc = fusb300_enable_autocrc;
+		chip->phy.enable_detection = fusb300_enable_typec_detection;
 	}
 
 	if (IS_ENABLED(CONFIG_ACPI))

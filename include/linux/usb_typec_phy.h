@@ -36,6 +36,10 @@ enum typec_state {
 	TYPEC_STATE_UNATTACHED_DFP,
 	TYPEC_STATE_ATTACHED_UFP,
 	TYPEC_STATE_ATTACHED_DFP,
+	/* CC pull-down to pull-up during PR SWAP*/
+	TYPEC_STATE_PD_PU_SWAP,
+	/* CC pull-up to pull-down during PR SWAP*/
+	TYPEC_STATE_PU_PD_SWAP,
 };
 
 enum typec_cc_pin {
@@ -194,6 +198,8 @@ struct typec_phy {
 	bool (*is_pd_capable)(struct typec_phy *phy);
 	int (*enable_autocrc)(struct typec_phy *phy, bool en);
 	int (*reset_pd)(struct typec_phy *phy);
+	int (*set_pu_pd)(struct typec_phy *phy, bool pu_pd);
+	int (*enable_detection)(struct typec_phy *phy, bool en);
 };
 
 extern struct typec_phy *typec_get_phy(int type);
