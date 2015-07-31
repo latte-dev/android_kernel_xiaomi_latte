@@ -2503,11 +2503,55 @@ static int gen8_init_render_ring(struct intel_engine_cs *ring)
 	return init_workarounds_ring(ring);
 }
 
+static int intel_logical_ring_emit_pdps(struct intel_engine_cs *ring,
+					struct intel_context *ctx)
+{
+	struct i915_hw_ppgtt *ppgtt = ctx->ppgtt;
+	struct intel_ringbuffer *ringbuf = ctx->engine[ring->id].ringbuf;
+	const int num_lri_cmds = GEN8_LEGACY_PDPES * 2;
+	int i, ret;
+
+	ret = intel_logical_ring_begin(ringbuf, num_lri_cmds * 2 + 2);
+	if (ret)
+		return ret;
+
+	intel_logical_ring_emit(ringbuf, MI_LOAD_REGISTER_IMM(num_lri_cmds));
+	for (i = GEN8_LEGACY_PDPES - 1; i >= 0; i--) {
+		const dma_addr_t pd_daddr = i915_page_dir_dma_addr(ppgtt, i);
+
+		intel_logical_ring_emit(ringbuf, GEN8_RING_PDP_UDW(ring, i));
+		intel_logical_ring_emit(ringbuf, upper_32_bits(pd_daddr));
+		intel_logical_ring_emit(ringbuf, GEN8_RING_PDP_LDW(ring, i));
+		intel_logical_ring_emit(ringbuf, lower_32_bits(pd_daddr));
+	}
+
+	intel_logical_ring_emit(ringbuf, MI_NOOP);
+	intel_logical_ring_advance(ringbuf);
+
+	return 0;
+}
+
 static int gen8_emit_bb_start(struct intel_ringbuffer *ringbuf,
 			      u64 offset, unsigned flags)
 {
+	struct intel_engine_cs *ring = ringbuf->ring;
+	struct intel_context *ctx = ringbuf->FIXME_lrc_ctx;
 	bool ppgtt = !(flags & I915_DISPATCH_SECURE);
 	int ret;
+
+	/* Don't rely in hw updating PDPs, specially in lite-restore.
+	 * Ideally, we should set Force PD Restore in ctx descriptor,
+	 * but we can't. Force Restore would be a second option, but
+	 * it is unsafe in case of lite-restore (because the ctx is
+	 * not idle). */
+	if (ctx->ppgtt &&
+	    (intel_ring_flag(ring) & ctx->ppgtt->pd_dirty_rings)) {
+		ret = intel_logical_ring_emit_pdps(ring, ctx);
+		if (ret)
+			return ret;
+
+		ctx->ppgtt->pd_dirty_rings &= ~intel_ring_flag(ring);
+	}
 
 	ret = intel_logical_ring_begin(ringbuf, 4);
 	if (ret)
