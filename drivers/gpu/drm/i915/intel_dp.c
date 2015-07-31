@@ -2188,6 +2188,8 @@ static void intel_vlv_psr_do_enable(struct intel_dp *intel_dp)
 	intel_vlv_psr_enable_sink(intel_dp);
 
 	intel_vlv_psr_enable_source(intel_dp);
+
+	DRM_DEBUG_KMS("PSR Enabled\n");
 }
 
 static bool intel_vlv_psr_do_exit(struct intel_dp *intel_dp, bool disable)
@@ -2304,6 +2306,7 @@ static bool intel_vlv_psr_do_exit(struct intel_dp *intel_dp, bool disable)
 
 done:
 	cancel_delayed_work(&dev_priv->psr.work);
+	DRM_DEBUG_KMS("PSR Disabled\n");
 
 	return true;
 }
@@ -2370,6 +2373,35 @@ void intel_vlv_edp_psr_exit(struct drm_device *dev, bool disable)
 
 	if (dev_priv->psr.enabled)
 		intel_vlv_psr_do_exit(dev_priv->psr.enabled, disable);
+
+	mutex_unlock(&dev_priv->psr.lock);
+}
+
+/**
+ * intel_vlv_edp_psr_reset - Reset PSR software state machine
+ * @dev: drm device structure
+ *
+ * During i9xx_crtc_disable() psr_disable() is called. However, if PSR
+ * was not disabled during that call (e.g enabled but not active) we
+ * turn off pipe and this leaves PSR software state machine as 'enabled'.
+ * This function resets the state machine in such a situation. This
+ * function should _only_ be called from crtc_disable() _after_ crtc is
+ * disabled and also protected by 'dev->struct_mutex'.
+ * All other cases should use 'psr_disable()'.
+ */
+void intel_vlv_edp_psr_reset(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	if (!is_edp_psr(dev))
+		return;
+
+	mutex_lock(&dev_priv->psr.lock);
+
+	if (dev_priv->psr.enabled) {
+		intel_vlv_psr_do_exit(dev_priv->psr.enabled, true);
+		dev_priv->psr.enabled = NULL;
+	}
 
 	mutex_unlock(&dev_priv->psr.lock);
 }

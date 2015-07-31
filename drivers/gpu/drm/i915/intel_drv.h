@@ -1015,6 +1015,7 @@ void intel_edp_psr_disable(struct intel_dp *intel_dp);
 void intel_edp_psr_update(struct drm_device *dev, bool suspend);
 void intel_vlv_edp_psr_update(struct drm_device *dev);
 void intel_vlv_edp_psr_disable(struct drm_device *dev);
+void intel_vlv_edp_psr_reset(struct drm_device *dev);
 void intel_vlv_edp_psr_exit(struct drm_device *dev, bool disable);
 void intel_vlv_psr_irq_handler(struct drm_device *dev, enum pipe pipe);
 enum pipe vlv_power_sequencer_pipe(struct intel_dp *intel_dp);
