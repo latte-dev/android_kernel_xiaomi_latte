@@ -2252,6 +2252,9 @@ static bool intel_pipe_handle_vblank(struct drm_device *dev, enum pipe pipe)
 	crtc = to_intel_crtc(intel_get_crtc_for_pipe(dev, pipe));
 	wake_up(&crtc->vbl_wait);
 
+	if (intel_dsi_is_enc_on_crtc_cmd_mode(&crtc->base))
+		crtc->te_int = true;
+
 	return true;
 }
 

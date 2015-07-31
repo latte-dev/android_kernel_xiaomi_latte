@@ -1008,6 +1008,40 @@ void intel_wait_for_vblank(struct drm_device *dev, int pipe)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int pipestat_reg = PIPESTAT(pipe);
+	struct drm_crtc *crtc;
+	struct intel_crtc *intel_crtc = NULL;
+
+	for_each_crtc(dev, crtc) {
+		intel_crtc = to_intel_crtc(crtc);
+
+		if (intel_crtc->pipe == pipe)
+			break;
+	}
+
+	if (intel_crtc->pipe != pipe) {
+		DRM_DEBUG_KMS("couldn't find pipe crtc\n");
+		return;
+	}
+
+	if (intel_dsi_is_enc_on_crtc_cmd_mode(crtc)) {
+		if (drm_vblank_get(dev, pipe))
+			return;
+
+		/* FIXME: if intel_wait_for_vblank is called from 2 threads
+		 * then there is a possibility that after te_int is set to 0
+		 * and before wait_for executes, the irq_handler could set
+		 * te_int to 1 and intel_wait_for_vblank in parallel thread
+		 * could set it to 0. Due to this the wait_for_vblank will
+		 * take one frame time extra.
+		 */
+		intel_crtc->te_int = false;
+
+		if (wait_for(intel_crtc->te_int, 50))
+			DRM_DEBUG_KMS("TE interrupt wait timed out\n");
+
+		drm_vblank_put(dev, pipe);
+		return;
+	}
 
 	if (IS_G4X(dev) || INTEL_INFO(dev)->gen >= 5) {
 		g4x_wait_for_vblank(dev, pipe);

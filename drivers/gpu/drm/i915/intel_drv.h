@@ -525,6 +525,8 @@ struct intel_crtc {
 	 */
 	u32 hw_frm_cnt_at_enable;
 	bool skip_check_state;
+
+	bool te_int;
 };
 
 struct intel_plane_wm_parameters {
