@@ -852,6 +852,16 @@ err_out:
 	return -ENOMEM;
 }
 
+/* PDE TLBs are a pain invalidate pre GEN8. It requires a context reload. If we
+ * are switching between contexts with the same LRCA, we also must do a force
+ * restore.
+ */
+static inline void mark_tlbs_dirty(struct i915_hw_ppgtt *ppgtt)
+{
+	/* If current vm != vm, */
+	ppgtt->pd_dirty_rings = INTEL_INFO(ppgtt->base.dev)->ring_mask;
+}
+
 static int gen8_alloc_va_range(struct i915_address_space *vm,
 			       uint64_t start,
 			       uint64_t length)
@@ -947,6 +957,7 @@ static int gen8_alloc_va_range(struct i915_address_space *vm,
 	}
 
 	free_gen8_temp_bitmaps(new_page_dirs, new_page_tables);
+	mark_tlbs_dirty(ppgtt);
 	return 0;
 
 err_out:
@@ -956,6 +967,7 @@ err_out:
 		unmap_and_free_pd(ppgtt->pdp.page_directory[pdpe], vm->dev);
 
 	free_gen8_temp_bitmaps(new_page_dirs, new_page_tables);
+	mark_tlbs_dirty(ppgtt);
 	return ret;
 }
 
@@ -1375,16 +1387,6 @@ static void gen6_ppgtt_unmap_pages(struct i915_hw_ppgtt *ppgtt)
 				pt->daddr,
 				4096, PCI_DMA_BIDIRECTIONAL);
 	}
-}
-
-/* PDE TLBs are a pain invalidate pre GEN8. It requires a context reload. If we
- * are switching between contexts with the same LRCA, we also must do a force
- * restore.
- */
-static inline void mark_tlbs_dirty(struct i915_hw_ppgtt *ppgtt)
-{
-	/* If current vm != vm, */
-	ppgtt->pd_dirty_rings = INTEL_INFO(ppgtt->base.dev)->ring_mask;
 }
 
 static int gen6_alloc_va_range(struct i915_address_space *vm,
