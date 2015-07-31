@@ -2465,9 +2465,8 @@ void intel_vlv_edp_psr_update(struct drm_device *dev)
 void intel_vlv_edp_psr_exit(struct drm_device *dev, bool disable)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_dp *intel_dp = dev_priv->psr.enabled;
 
-	if (!intel_dp || !intel_dp->psr_setup_done || !IS_VALLEYVIEW(dev))
+	if (!IS_VALLEYVIEW(dev) || !is_edp_psr(dev))
 		return;
 
 	mutex_lock(&dev_priv->psr.lock);
