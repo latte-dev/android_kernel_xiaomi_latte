@@ -773,13 +773,16 @@ struct sh_css_config_on_frame_enqueue {
 /* Variable Sized Buffer Queue Elements */
 
 #if defined(IS_ISP_2500_SYSTEM)
-#define  IA_CSS_NUM_ELEMS_HOST2SP_BUFFER_QUEUE    5
+#define  IA_CSS_NUM_ELEMS_HOST2SP_BUFFER_QUEUE    (2 + 1) /* skycam mode of work is max 2 buffers per queue per pipe,
+							     +1 explained in description above */
 #else
 #define  IA_CSS_NUM_ELEMS_HOST2SP_BUFFER_QUEUE    6
 #endif
 
 #define  IA_CSS_NUM_ELEMS_HOST2SP_PARAM_QUEUE    3
+
 #define  IA_CSS_NUM_ELEMS_HOST2SP_TAG_CMD_QUEUE  6
+
 #if !defined(HAS_NO_INPUT_SYSTEM)
 /* sp-to-host queue is expected to be emptied in ISR since
  * it is used instead of HW interrupts (due to HW design issue).
@@ -800,13 +803,19 @@ struct sh_css_config_on_frame_enqueue {
 #define  IA_CSS_NUM_ELEMS_SP2HOST_PSYS_EVENT_QUEUE    26 /* holds events for all type of buffers, hence deeper */
 #else
 #if defined(IS_ISP_2500_SYSTEM)
-/*Skycam need to support 4 pipes with 7 queues max 2 buffers/queue and 4 simple commands per pipe*/
-#define  IA_CSS_NUM_ELEMS_HOST2SP_PSYS_EVENT_QUEUE    72
+/* Skycam supports 5 events from host2sp, number of elements for first event is computed based
+   on number of buffer events, the 4 others are simple events */
+#define  IA_CSS_NUM_ELEMS_HOST2SP_PSYS_EVENT_QUEUE    ((SH_CSS_MAX_NUM_QUEUES * SH_CSS_MAX_SP_THREADS * \
+							(IA_CSS_NUM_ELEMS_HOST2SP_BUFFER_QUEUE - 1)) + \
+						       SH_CSS_MAX_SP_THREADS * 4)
+#define  IA_CSS_NUM_ELEMS_SP2HOST_BUFFER_QUEUE        ((IA_CSS_NUM_ELEMS_HOST2SP_BUFFER_QUEUE - 1) * \
+						       SH_CSS_MAX_SP_THREADS)
+#define  IA_CSS_NUM_ELEMS_SP2HOST_PSYS_EVENT_QUEUE    (6 * SH_CSS_MAX_SP_THREADS)
 #else
 #define  IA_CSS_NUM_ELEMS_HOST2SP_PSYS_EVENT_QUEUE    6
-#endif
 #define  IA_CSS_NUM_ELEMS_SP2HOST_BUFFER_QUEUE        6
 #define  IA_CSS_NUM_ELEMS_SP2HOST_PSYS_EVENT_QUEUE    6
+#endif
 #endif
 
 struct sh_css_hmm_buffer {
