@@ -1030,7 +1030,7 @@ static bool vlv_hdmi_live_status(struct drm_device *dev,
  * if device is Gen 7 and above, read the live status reg
  * else, do not block the detection, return true
  */
-static bool intel_hdmi_live_status(struct drm_connector *connector)
+bool intel_hdmi_live_status(struct drm_connector *connector)
 {
 	struct drm_device *dev = connector->dev;
 	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
@@ -1249,6 +1249,8 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 			intel_hdmi->rgb_quant_range_selectable =
 				drm_rgb_quant_range_selectable(edid);
 
+			if (I915_HAS_DPST(dev) && i915.enable_dpst_wa)
+				i915_dpst_wa_action(dev, true);
 			DRM_DEBUG_DRIVER("Got edid, HDMI connected\n");
 		} else {
 			DRM_ERROR("No digital form EDID? Using stored one\n");

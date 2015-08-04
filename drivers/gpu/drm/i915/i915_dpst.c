@@ -85,6 +85,23 @@ i915_dpst_save_conn_on_edp(struct drm_device *dev)
 	return ret;
 }
 
+static bool i915_dpst_get_hdmi_status(struct drm_device *dev)
+{
+	struct intel_connector *i_connector = NULL;
+	struct drm_connector *d_connector;
+
+	list_for_each_entry(d_connector, &dev->mode_config.connector_list, head)
+	{
+		i_connector = to_intel_connector(d_connector);
+		if (i_connector->encoder
+			&& (i_connector->encoder->type == INTEL_OUTPUT_HDMI)) {
+			return intel_hdmi_live_status(d_connector);
+		}
+	}
+
+	return false;
+}
+
 int i915_dpst_sanitize_wa(struct drm_device *dev, int enable_dpst_wa)
 {
 	/* This W/A should be enabled only on CHV */
@@ -103,12 +120,22 @@ void i915_dpst_wa_action(struct drm_device *dev, bool hdmi_enabled)
 		/* HDMI display unplugged, so we can re-enable DPST again */
 		dev_priv->dpst.disabled_by_hdmi = false;
 		i915_dpst_display_on(dev);
-	} else if (hdmi_enabled && dpst_pipe_known &&
-				dev_priv->dpst.pipe == PIPE_B) {
-		/* Do not use DPST on PIPE_B if a HDMI display is connected */
-		if (dev_priv->dpst.user_enable)
-			i915_dpst_enable_disable(dev, 0);
-		dev_priv->dpst.disabled_by_hdmi = true;
+	} else if (hdmi_enabled && !dev_priv->dpst.disabled_by_hdmi &&
+			dpst_pipe_known && dev_priv->dpst.pipe == PIPE_B) {
+		/*
+		 * If HDMI is disconnected during sleep, it might not be
+		 * detected. We need to check the hdmi live status to avoid
+		 * this fake DPST disabling.
+		 */
+		if (i915_dpst_get_hdmi_status(dev)) {
+			/*
+			 * Do not use DPST on PIPE_B if a HDMI display
+			 * is connected.
+			 */
+			if (dev_priv->dpst.user_enable)
+				i915_dpst_enable_disable(dev, 0);
+			dev_priv->dpst.disabled_by_hdmi = true;
+		}
 	} else if (hdmi_enabled && !dpst_pipe_known) {
 		/*
 		 * We will make sure to sanitize disabled_by_hdmi when we have

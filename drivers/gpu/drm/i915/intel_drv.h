@@ -1067,6 +1067,7 @@ void intel_hdmi_init_connector(struct intel_digital_port *intel_dig_port,
 struct intel_hdmi *enc_to_intel_hdmi(struct drm_encoder *encoder);
 bool intel_hdmi_compute_config(struct intel_encoder *encoder,
 			       struct intel_crtc_config *pipe_config);
+bool intel_hdmi_live_status(struct drm_connector *connector);
 
 
 /* intel_lvds.c */
