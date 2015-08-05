@@ -50,9 +50,13 @@
 #define SILEAD_CMD_START	0x00
 
 #define SILEAD_POINT_DATA_LEN	0x04
+#define SILEAD_POINT_Y_OFF      0x00
+#define SILEAD_POINT_Y_MSB_OFF	0x01
 #define SILEAD_POINT_X_OFF	0x02
+#define SILEAD_POINT_X_MSB_OFF	0x03
 #define SILEAD_POINT_ID_OFF	0x03
 #define SILEAD_X_HSB_MASK	0xF0
+#define SILEAD_POINT_HSB_MASK	0x0F
 #define SILEAD_TOUCH_ID_MASK	0x0F
 
 #define SILEAD_DT_FW_NAME	"fw-name"
@@ -179,16 +183,20 @@ static void silead_ts_read_data(struct i2c_client *client)
 	for (i = 1; i <= touch_nr; i++) {
 		offset = i * SILEAD_POINT_DATA_LEN;
 
-		/* The last 4 bits are the touch id */
-		id = buf[offset + SILEAD_POINT_ID_OFF] & SILEAD_TOUCH_ID_MASK;
+		/* Bits 4-7 are the touch id */
+		id = (buf[offset + SILEAD_POINT_X_MSB_OFF] &
+		      SILEAD_TOUCH_ID_MASK) >> 4;
 
-		/* The 1st 4 bits are part of X */
-		buf[offset + SILEAD_POINT_ID_OFF] =
-			(buf[offset + SILEAD_POINT_ID_OFF] & SILEAD_X_HSB_MASK)
-			>> 4;
+		/* Bits 0-3 are MSB of X */
+		buf[offset + SILEAD_POINT_X_MSB_OFF] = buf[offset +
+			SILEAD_POINT_X_MSB_OFF] & SILEAD_POINT_HSB_MASK;
 
-		y = le16_to_cpup((u16 *) (buf + offset));
-		x = le16_to_cpup((u16 *) (buf + offset + SILEAD_POINT_X_OFF));
+		/* Bits 0-3 are MSB of Y */
+		buf[offset + SILEAD_POINT_Y_MSB_OFF] = buf[offset +
+			SILEAD_POINT_Y_MSB_OFF] & SILEAD_POINT_HSB_MASK;
+
+		x = le16_to_cpup((__le16 *)(buf + offset + SILEAD_POINT_X_OFF));
+		y = le16_to_cpup((__le16 *)(buf + offset + SILEAD_POINT_Y_OFF));
 
 		dev_dbg(dev, "x=%d y=%d id=%d\n", x, y, id);
 		if (data->chip_id == GSL1688_CHIP_ID)
