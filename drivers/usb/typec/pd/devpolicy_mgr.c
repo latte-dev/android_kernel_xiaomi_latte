@@ -648,6 +648,331 @@ static int dpm_provider_cable_event(struct notifier_block *nblock,
 	return NOTIFY_OK;
 }
 
+static void dpm_trigger_role_swap(struct devpolicy_mgr *dpm,
+			enum role_type rtype)
+{
+	switch (rtype) {
+	case ROLE_TYPE_DATA:
+		pr_debug("DPM:%s: Triggering data role swap\n", __func__);
+		dpm_notify_policy_evt(dpm,
+			DEVMGR_EVENT_DR_SWAP);
+		break;
+	case ROLE_TYPE_POWER:
+		pr_debug("DPM:%s: Triggering power role swap\n", __func__);
+		dpm_notify_policy_evt(dpm,
+			DEVMGR_EVENT_PR_SWAP);
+		break;
+	default:
+		pr_warn("DPM:%s: Invalid role type\n", __func__);
+	}
+}
+
+#define PD_DEV_ATTR(_name)					\
+{								\
+	.attr = { .name = #_name },				\
+	.show = dpm_pd_sysfs_show_property,			\
+	.store = dpm_pd_sysfs_store_property,			\
+}
+
+#define PD_SYSFS_ROLE_TEXT_NONE "none"
+#define PD_SYSFS_ROLE_TEXT_SINK "sink"
+#define PD_SYSFS_ROLE_TEXT_SRC "source"
+#define PD_SYSFS_ROLE_TEXT_USB "device"
+#define PD_SYSFS_ROLE_TEXT_HOST "host"
+#define PD_SYSFS_ROLE_TEXT_MAX_LEN	8
+
+static ssize_t dpm_pd_sysfs_show_property(struct device *dev,
+		struct device_attribute *attr, char *buf);
+static ssize_t dpm_pd_sysfs_store_property(struct device *dev,
+		struct device_attribute *attr, const char *buf,
+		size_t count);
+static umode_t dpm_pd_sysfs_attr_is_visible(struct kobject *kobj,
+		struct attribute *attr, int attrno);
+
+enum pd_sysfs_entries {
+	PD_DEV_SYSFS_NAME,
+	PD_DEV_SYSFS_PROLE,
+	PD_DEV_SYSFS_DROLE,
+};
+
+static char *pd_dev_sysfs_strs[] = {
+	"dev_name",
+	"power_role",
+	"data_role",
+};
+
+/* Order and name should be same as pd_dev_sysfs_strs.*/
+static struct device_attribute
+pd_dev_attrs[ARRAY_SIZE(pd_dev_sysfs_strs)] = {
+	PD_DEV_ATTR(dev_name),
+	PD_DEV_ATTR(power_role),
+	PD_DEV_ATTR(data_role),
+};
+
+static struct attribute *
+__pd_attrs[ARRAY_SIZE(pd_dev_attrs) + 1];
+
+static struct attribute_group pd_attr_group = {
+	.attrs = __pd_attrs,
+	.is_visible = dpm_pd_sysfs_attr_is_visible,
+};
+
+static const struct attribute_group *pd_attr_groups[] = {
+	&pd_attr_group,
+	NULL,
+};
+
+static enum pwr_role dpm_str_to_prole(const char *str, int cnt)
+{
+	enum pwr_role prole = POWER_ROLE_NONE;
+
+	if (!strncmp(str, PD_SYSFS_ROLE_TEXT_SINK, cnt))
+		prole = POWER_ROLE_SINK;
+	else if (!strncmp(str, PD_SYSFS_ROLE_TEXT_SRC, cnt))
+		prole = POWER_ROLE_SOURCE;
+
+	return prole;
+}
+
+static enum data_role dpm_str_to_drole(const char *str, int cnt)
+{
+	enum data_role drole = DATA_ROLE_NONE;
+
+	if (!strncmp(str, PD_SYSFS_ROLE_TEXT_USB, cnt))
+		drole = DATA_ROLE_UFP;
+	else if (!strncmp(str, PD_SYSFS_ROLE_TEXT_HOST, cnt))
+		drole = DATA_ROLE_DFP;
+
+	return drole;
+}
+
+static void dpm_prole_to_str(enum pwr_role prole, char *str)
+{
+	int max_len = sizeof(str);
+
+	switch (prole) {
+	case POWER_ROLE_SINK:
+		strncpy(str, PD_SYSFS_ROLE_TEXT_SINK, max_len);
+		break;
+	case POWER_ROLE_SOURCE:
+		strncpy(str, PD_SYSFS_ROLE_TEXT_SRC, max_len);
+		break;
+	default:
+		strncpy(str, PD_SYSFS_ROLE_TEXT_NONE, max_len);
+	}
+}
+
+static void dpm_drole_to_str(enum data_role drole, char *str)
+{
+	int max_len = sizeof(str);
+
+	switch (drole) {
+	case DATA_ROLE_UFP:
+		strncpy(str, PD_SYSFS_ROLE_TEXT_USB, max_len);
+		break;
+	case DATA_ROLE_DFP:
+		strncpy(str, PD_SYSFS_ROLE_TEXT_HOST, max_len);
+		break;
+	default:
+		strncpy(str, PD_SYSFS_ROLE_TEXT_NONE, max_len);
+	}
+}
+
+static ssize_t dpm_pd_sysfs_show_property(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	ssize_t cnt = 0;
+	int role;
+	struct devpolicy_mgr *dpm = dev_get_drvdata(dev);
+	const ptrdiff_t off  = attr - pd_dev_attrs;
+	char role_str[PD_SYSFS_ROLE_TEXT_MAX_LEN];
+
+	if (!dpm)
+		return 0;
+
+	switch (off) {
+	case PD_DEV_SYSFS_NAME:
+		cnt = snprintf(buf, PD_SYSFS_ROLE_TEXT_MAX_LEN,
+					"%s\n", dev_name(dev));
+		break;
+	case PD_DEV_SYSFS_PROLE:
+		mutex_lock(&dpm->role_lock);
+		if (dpm->cur_prole == POWER_ROLE_SWAP)
+			role = dpm->prev_prole;
+		else
+			role = dpm->cur_prole;
+		mutex_unlock(&dpm->role_lock);
+
+		dpm_prole_to_str(role, role_str);
+		cnt = snprintf(buf, PD_SYSFS_ROLE_TEXT_MAX_LEN,
+					"%s\n", role_str);
+		break;
+
+	case PD_DEV_SYSFS_DROLE:
+		mutex_lock(&dpm->role_lock);
+		if (dpm->cur_drole == DATA_ROLE_SWAP)
+			role = dpm->prev_drole;
+		else
+			role = dpm->cur_drole;
+		mutex_unlock(&dpm->role_lock);
+
+		dpm_drole_to_str(role, role_str);
+		cnt = snprintf(buf, PD_SYSFS_ROLE_TEXT_MAX_LEN,
+					"%s\n", role_str);
+		break;
+
+	default:
+		dev_warn(dev, "%s: Invalid attribute\n", __func__);
+	}
+	return cnt;
+}
+
+static ssize_t dpm_pd_sysfs_store_property(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	enum pwr_role req_prole, cur_prole;
+	enum data_role req_drole, cur_drole;
+	struct devpolicy_mgr *dpm = dev_get_drvdata(dev);
+	const ptrdiff_t off = attr - pd_dev_attrs;
+
+	if (!dpm)
+		return 0;
+
+	switch (off) {
+	case PD_DEV_SYSFS_NAME:
+		/* set name not supported */
+		break;
+	case PD_DEV_SYSFS_PROLE:
+		req_prole = dpm_str_to_prole(buf, count - 1);
+		mutex_lock(&dpm->role_lock);
+		cur_prole = dpm->cur_prole;
+		mutex_unlock(&dpm->role_lock);
+		dev_dbg(dev, "%s:power role to set=%d\n", __func__, req_prole);
+		if (((cur_prole == POWER_ROLE_SINK)
+			&& (req_prole == POWER_ROLE_SOURCE))
+			|| ((cur_prole == POWER_ROLE_SOURCE)
+			&& (req_prole == POWER_ROLE_SINK))) {
+			/* Trigger power role swap. */
+			dpm_trigger_role_swap(dpm, ROLE_TYPE_POWER);
+		}
+		break;
+	case PD_DEV_SYSFS_DROLE:
+		req_drole = dpm_str_to_drole(buf, count - 1);
+		mutex_lock(&dpm->role_lock);
+		cur_drole = dpm->cur_drole;
+		mutex_unlock(&dpm->role_lock);
+		dev_dbg(dev, "%s:data role to set=%d\n", __func__, req_drole);
+		if (((cur_drole == DATA_ROLE_UFP)
+			&& (req_drole == DATA_ROLE_DFP))
+			|| ((cur_drole == DATA_ROLE_DFP)
+			&& (req_drole == DATA_ROLE_UFP))) {
+			/* Trigger power role swap. */
+			dpm_trigger_role_swap(dpm, ROLE_TYPE_DATA);
+		}
+		break;
+	default:
+		dev_warn(dev, "%s: Invalid attribute\n", __func__);
+		break;
+	}
+
+	return count;
+}
+
+static umode_t dpm_pd_sysfs_attr_is_visible(struct kobject *kobj,
+					   struct attribute *attr,
+					   int attrno)
+{
+	struct device *dev = container_of(kobj, struct device, kobj);
+	umode_t mode = S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR;
+
+	switch (attrno) {
+	case PD_DEV_SYSFS_NAME:
+		mode = S_IRUSR | S_IRGRP | S_IROTH;
+		break;
+	case PD_DEV_SYSFS_PROLE:
+	case PD_DEV_SYSFS_DROLE:
+		mode = S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR;
+		break;
+	default:
+		dev_err(dev, "%s: Invalid attrno=%d\n", __func__, attrno);
+		break;
+	}
+	return mode;
+}
+
+void dpm_pd_sysfs_init_attrs(struct device_type *dev_type)
+{
+	int i;
+
+	dev_type->groups = pd_attr_groups;
+
+	for (i = 0; i < ARRAY_SIZE(pd_dev_attrs); i++)
+		__pd_attrs[i] = &pd_dev_attrs[i].attr;
+}
+
+static struct device_type pd_dev_type;
+static void dpm_pd_dev_release(struct device *dev)
+{
+	struct devpolicy_mgr *dpm = dev_get_drvdata(dev);
+
+	kfree(dev);
+	dpm->pd_dev = NULL;
+}
+
+static int dpm_register_pd_class_dev(struct devpolicy_mgr *dpm)
+{
+	struct device *dev;
+	struct typec_phy *phy = dpm->phy;
+	int ret;
+
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+	if (!dev)
+		return -ENOMEM;
+
+	device_initialize(dev);
+	dpm_pd_sysfs_init_attrs(&pd_dev_type);
+
+	dev->class = power_delivery_class;
+	dev->type = &pd_dev_type;
+	dev->parent = phy->dev;
+	dev->release = dpm_pd_dev_release;
+	dev_set_drvdata(dev, dpm);
+	dpm->pd_dev = dev;
+
+	ret = dev_set_name(dev, "%s-%s", phy->label, "pd");
+	if (ret) {
+		pr_err("DPM:%s: Failed to set drv name, ret=%d\n",
+				__func__, ret);
+		goto dev_add_failed;
+	}
+
+	ret = device_add(dev);
+	if (ret) {
+		pr_err("DPM:%s: Failed to add pd class dev, ret=%d\n",
+				__func__, ret);
+		goto dev_add_failed;
+	}
+
+	return 0;
+
+dev_add_failed:
+	put_device(dev);
+	return ret;
+}
+
+static void dpm_unregister_pd_class_dev(struct devpolicy_mgr *dpm)
+{
+	struct device *dev;
+
+	dev = dpm->pd_dev;
+
+	if (WARN(!dev, "DPM: Null device\n"))
+		return;
+
+	device_del(dev);
+	put_device(dev);
+}
+
 static struct dpm_interface interface = {
 	.get_max_srcpwr_cap = dpm_get_max_srcpwr_cap,
 	.get_max_snkpwr_cap = dpm_get_max_snkpwr_cap,
@@ -723,8 +1048,16 @@ struct devpolicy_mgr *dpm_register_syspolicy(struct typec_phy *phy,
 		goto error3;
 	}
 
+	ret = dpm_register_pd_class_dev(dpm);
+	if (ret) {
+		pr_err("DPM: Unable to register pd class dev\n");
+		goto pd_dev_reg_fail;
+	}
+
 	return dpm;
 
+pd_dev_reg_fail:
+	policy_engine_unbind_dpm(dpm);
 error3:
 	protocol_unbind_dpm(dpm->phy);
 error2:
@@ -740,6 +1073,7 @@ EXPORT_SYMBOL(dpm_register_syspolicy);
 void dpm_unregister_syspolicy(struct devpolicy_mgr *dpm)
 {
 	if (dpm) {
+		dpm_unregister_pd_class_dev(dpm);
 		policy_engine_unbind_dpm(dpm);
 		protocol_unbind_dpm(dpm->phy);
 		extcon_unregister_interest(&dpm->provider_cable_nb);

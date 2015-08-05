@@ -97,6 +97,11 @@ enum policy_type {
 	POLICY_TYPE_DISPLAY,
 };
 
+enum role_type {
+	ROLE_TYPE_DATA,
+	ROLE_TYPE_POWER,
+};
+
 enum pwr_role {
 	POWER_ROLE_NONE,
 	POWER_ROLE_SINK,
@@ -155,6 +160,8 @@ struct devpolicy_mgr {
 	enum data_role cur_drole;
 	enum data_role prev_drole;
 	struct policy_engine *pe;
+	/* power delivery class device*/
+	struct device *pd_dev;
 };
 
 struct dpm_interface {
@@ -276,6 +283,9 @@ void typec_set_pu_pd(struct typec_phy *phy, bool pu_pd);
 /* methods to register/unregister device manager policy notifier */
 extern int devpolicy_mgr_reg_notifier(struct notifier_block *nb);
 extern void devpolicy_mgr_unreg_notifier(struct notifier_block *nb);
+
+/* power_delivery class reference */
+extern struct class *power_delivery_class;
 
 #if defined(CONFIG_USBC_PD) && defined(CONFIG_USBC_PD_POLICY)
 extern struct devpolicy_mgr *dpm_register_syspolicy(struct typec_phy *phy,

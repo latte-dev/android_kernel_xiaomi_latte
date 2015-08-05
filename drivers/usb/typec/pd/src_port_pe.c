@@ -270,10 +270,12 @@ static int src_pe_rcv_request(struct policy *srcp, enum pe_event evt)
 	struct src_port_pe *src_pe = container_of(srcp,
 					struct src_port_pe, p);
 
+	log_dbg("%s evt %d\n", __func__, evt);
 	switch (evt) {
 	case PE_EVT_SEND_PR_SWAP:
 		mutex_lock(&src_pe->pe_lock);
 		src_pe->state = PE_PRS_SRC_SNK_SEND_PR_SWAP;
+		src_pe->p.status = POLICY_STATUS_RUNNING;
 		mutex_unlock(&src_pe->pe_lock);
 		policy_send_packet(&src_pe->p, NULL, 0,
 					PD_CTRL_MSG_PR_SWAP, evt);
