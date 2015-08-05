@@ -2167,6 +2167,43 @@ static inline int register_cooling_device(struct bq24192_chip *chip)
 	return 0;
 }
 
+static int bq24194_get_max_temp(struct em_config_oem0_data *oem0)
+{
+	int tz;
+	int max_tz;
+	int max_temp = 0;
+
+	if (!oem0)
+		return 0;
+
+	max_tz = oem0->temp_mon_ranges;
+	for (tz = 0; tz < max_tz; tz++) {
+		/* considering the temp zone only if the cc and cv is valid */
+		if (oem0->temp_mon_range[tz].full_chrg_vol &&
+			oem0->temp_mon_range[tz].full_chrg_cur)
+			max_temp = max_t(int, max_temp,
+					oem0->temp_mon_range[tz].temp_up_lim);
+	}
+
+	return max_temp;
+}
+
+static void bq24192_update_safety_charger_params(struct bq24192_chip *chip)
+{
+	int ret;
+	struct em_config_oem0_data oem0_data;
+
+	ret = em_config_get_oem0_data(&oem0_data);
+	if (!ret)
+		dev_warn(&chip->client->dev,
+			"Failed to fetch OEM0 table\n");
+	else {
+		/* update only OEM0 table is pressent */
+		chip->pdata->min_temp = oem0_data.temp_low_lim;
+		chip->pdata->max_temp = bq24194_get_max_temp(&oem0_data);
+	}
+}
+
 static int bq24192_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
@@ -2233,6 +2270,9 @@ static int bq24192_probe(struct i2c_client *client,
 		/* 0 - usb compliance, 1 - no usb compliance */
 		chip->chrg_usb_compliance =
 			!(em_config.fpo_0 & FPO0_USB_COMP_OFFSET);
+
+	/* update battery charging safety parameters from OEM0 table */
+	bq24192_update_safety_charger_params(chip);
 #endif
 	/*assigning default value for min and max temp*/
 	chip->max_temp = chip->pdata->max_temp;
