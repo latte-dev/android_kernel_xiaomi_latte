@@ -73,6 +73,7 @@
 #define SILEAD_Y_MAX		600
 #define SILEAD_MAX_FINGERS	5
 #define SILEAD_PRESSURE		50
+#define SILEAD_FW_NAME_LEN	30
 
 #define GSL1688_CHIP_ID		0xB4820000
 
@@ -90,7 +91,7 @@ struct silead_ts_data {
 	u16 y_max;
 	u8 max_fingers;
 	u8 pressure;
-	const char *fw_name;
+	char fw_name[SILEAD_FW_NAME_LEN];
 	u32 chip_id;
 };
 
@@ -406,6 +407,58 @@ static irqreturn_t silead_ts_irq_handler(int irq, void *id)
 	return IRQ_HANDLED;
 }
 
+static int silead_get_acpi_propdata(struct i2c_client *client)
+{
+	struct silead_ts_data *data = i2c_get_clientdata(client);
+	struct acpi_device *adev = ACPI_COMPANION(&client->dev);
+	struct acpi_buffer buffer = {ACPI_ALLOCATE_BUFFER, NULL};
+	acpi_status status;
+	union acpi_object *obj, *elem;
+
+	if (!adev)
+		return -ENODEV;
+
+	status = acpi_evaluate_object(adev->handle, "PRP0", NULL, &buffer);
+	if (ACPI_FAILURE(status))
+		return -ENODEV;
+
+	obj = buffer.pointer;
+
+	if (!obj || obj->type != ACPI_TYPE_PACKAGE || !obj->package.count)
+		goto prop_err;
+
+	/* first element is firmware name */
+	elem = &obj->package.elements[0];
+	if (elem->type != ACPI_TYPE_STRING)
+		goto prop_err;
+
+	strlcpy(data->fw_name, elem->string.pointer, SILEAD_FW_NAME_LEN);
+
+	/* second element is x max */
+	elem = &obj->package.elements[1];
+	if (elem->type != ACPI_TYPE_INTEGER)
+		goto prop_err;
+
+	data->x_max = elem->integer.value;
+
+	/* third element is y max */
+	elem = &obj->package.elements[2];
+	if (elem->type != ACPI_TYPE_INTEGER)
+		goto prop_err;
+
+	data->y_max = elem->integer.value;
+
+	dev_dbg(&client->dev, "acpi fw_name:%s x_max:%d y_max:%d\n",
+		data->fw_name, data->x_max, data->y_max);
+
+	kfree(buffer.pointer);
+	return 0;
+
+prop_err:
+	kfree(buffer.pointer);
+	return -EINVAL;
+}
+
 static int silead_ts_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
 {
@@ -425,12 +478,16 @@ static int silead_ts_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, data);
 	data->client = client;
 
-	data->fw_name = SILEAD_FW_NAME;
+	strncpy(data->fw_name, SILEAD_FW_NAME, SILEAD_FW_NAME_LEN);
 	data->x_max = SILEAD_X_MAX;
 	data->y_max = SILEAD_Y_MAX;
 	data->max_fingers = SILEAD_MAX_FINGERS;
 	data->pressure = SILEAD_PRESSURE;
 
+	/* get acpi porperties if available */
+	ret = silead_get_acpi_propdata(client);
+	if (ret < 0)
+		dev_warn(dev, "acpi getting properties failed\n");
 
 	/* If the IRQ is not filled by DT or ACPI subsytem
 	 * try using the named GPIO */
