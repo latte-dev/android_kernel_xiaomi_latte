@@ -468,6 +468,14 @@ static int silead_ts_probe(struct i2c_client *client,
 		data->gpio_power = gpio_to_desc(ret);
 		if (!data->gpio_power)
 			return -ENODEV;
+	} else {
+		data->gpio_power = devm_gpiod_get_index(dev,
+							SILEAD_PWR_GPIO_NAME,
+							1);
+		if (IS_ERR(data->gpio_power)) {
+			dev_err(dev, ">>>>> POWER GPIO request failed\n");
+			return -ENODEV;
+		}
 	}
 
 	ret = gpiod_direction_output(data->gpio_power, 0);
