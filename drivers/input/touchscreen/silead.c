@@ -93,6 +93,9 @@ struct silead_ts_data {
 	u8 pressure;
 	char fw_name[SILEAD_FW_NAME_LEN];
 	u32 chip_id;
+	u8 xy_swap;
+	u8 x_invert;
+	u8 y_invert;
 };
 
 struct silead_fw_data {
@@ -117,9 +120,9 @@ static int silead_ts_request_input_dev(struct silead_ts_data *data)
 				    BIT_MASK(EV_ABS);
 
 	input_set_abs_params(data->input_dev, ABS_MT_POSITION_X, 0,
-			     data->x_max, 0, 0);
+			     data->xy_swap ? data->y_max : data->x_max, 0, 0);
 	input_set_abs_params(data->input_dev, ABS_MT_POSITION_Y, 0,
-			     data->y_max, 0, 0);
+			     data->xy_swap ? data->x_max : data->y_max, 0, 0);
 	input_set_abs_params(data->input_dev, ABS_MT_TOUCH_MAJOR, 0,
 			     255, 0, 0);
 	input_set_abs_params(data->input_dev, ABS_MT_WIDTH_MAJOR, 0,
@@ -200,11 +203,26 @@ static void silead_ts_read_data(struct i2c_client *client)
 		y = le16_to_cpup((__le16 *)(buf + offset + SILEAD_POINT_Y_OFF));
 
 		dev_dbg(dev, "x=%d y=%d id=%d\n", x, y, id);
+
 		if (data->chip_id == GSL1688_CHIP_ID)
 			silead_ts_report_touch(data, (id * 256 + x),
 					       data->y_max - y, id);
-		else
-			silead_ts_report_touch(data, x, y, id);
+		else {
+			if (data->xy_swap)
+				silead_ts_report_touch(data,
+						       data->y_invert ?
+						       data->y_max - y : y,
+						       data->x_invert ?
+						       data->x_max - x : x,
+						       id);
+			else
+				silead_ts_report_touch(data,
+						       data->x_invert ?
+						       data->x_max - x : x,
+						       data->y_invert ?
+						       data->y_max - y : y,
+						       id);
+		}
 	}
 
 	input_mt_sync_frame(data->input_dev);
@@ -448,8 +466,36 @@ static int silead_get_acpi_propdata(struct i2c_client *client)
 
 	data->y_max = elem->integer.value;
 
-	dev_dbg(&client->dev, "acpi fw_name:%s x_max:%d y_max:%d\n",
-		data->fw_name, data->x_max, data->y_max);
+	/* fourth element is swap axis */
+	if (obj->package.count > 3) {
+		elem = &obj->package.elements[3];
+		if (elem->type != ACPI_TYPE_INTEGER)
+			goto prop_err;
+		data->xy_swap = elem->integer.value;
+	}
+
+	/* fifth element is invert x */
+	if (obj->package.count > 4) {
+		elem = &obj->package.elements[4];
+		if (elem->type != ACPI_TYPE_INTEGER)
+			goto prop_err;
+		data->x_invert = elem->integer.value;
+	}
+
+	/* sixith element is invert y */
+	if (obj->package.count > 5) {
+		elem = &obj->package.elements[5];
+		if (elem->type != ACPI_TYPE_INTEGER)
+			goto prop_err;
+		data->y_invert = elem->integer.value;
+	}
+
+	dev_dbg(&client->dev,
+		"acpi fw_name:%s x_max:%d y_max:%d "
+		"swap:%d xinvert:%d yinvert:%d\n",
+		data->fw_name, data->x_max,
+		data->y_max, data->xy_swap,
+		data->x_invert, data->y_invert);
 
 	kfree(buffer.pointer);
 	return 0;
