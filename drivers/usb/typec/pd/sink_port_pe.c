@@ -42,6 +42,15 @@ static inline void snkpe_update_state(struct sink_port_pe *sink,
 	mutex_unlock(&sink->snkpe_state_lock);
 }
 
+static void snkpe_reset_params(struct sink_port_pe *sink)
+{
+	/* By default dual power role supported*/
+	sink->pp_is_dual_prole = 1;
+	/* By default dual data role supported*/
+	sink->pp_is_dual_drole = 1;
+	sink->pp_is_ext_pwrd = 0;
+}
+
 static int snkpe_timeout_transition_check(struct sink_port_pe *sink)
 {
 	int ret = 0;
@@ -242,29 +251,41 @@ static int snkpe_handle_pr_swap(struct sink_port_pe *sink)
 	enum pwr_role prole;
 	int ret = 0;
 
+	snkpe_update_state(sink, PE_PRS_SNK_SRC_EVALUATE_PR_SWAP);
+	/* If port partner is externally powered, power role swap from
+	 * sink to source can be rejected.
+	 */
+	if (sink->pp_is_ext_pwrd || (!sink->pp_is_dual_prole)) {
+		pr_info("SNKPE:%s: Not processing PR_SWAP Req\n",
+				__func__);
+		goto pr_swap_reject;
+	}
 	prole = policy_get_power_role(&sink->p);
 	if (prole <= 0) {
 		pr_err("SINKPE: Error in getting power role\n");
-		return -EINVAL;
+		goto pr_swap_reject;
 	}
-	snkpe_update_state(sink, PE_PRS_SNK_SRC_EVALUATE_PR_SWAP);
 
-	if (prole == POWER_ROLE_SINK) {
-		/* As the request to transition to provider mode, It
-		 * will be accepted only if VBAT >= 50% else reject.
-		 * returns: 1 - accepted, 0 - rejected or error code.
-		 */
-		ret = policy_is_pr_swap_support(&sink->p, prole);
-		if (ret > 0)
-			return snkpe_send_pr_swap_accept(sink);
-		else
-			return snkpe_send_pr_swap_reject(sink);
-	} else {
+	if (prole != POWER_ROLE_SINK) {
 		pr_warn("SNKPE: Current Power Role - %d\n", prole);
-		ret = -ENOTSUPP;
+		goto pr_swap_reject;
+	}
+	/* As the request to transition to provider mode, It
+	 * will be accepted only if VBAT >= 50% else reject.
+	 * returns: 1 - accepted, 0 - rejected or error code.
+	 */
+	ret = policy_is_pr_swap_support(&sink->p, prole);
+	if (ret == 0) {
+		pr_warn("SNKPE: Batt cap < 50\n");
+		goto pr_swap_reject;
 	}
 
-	return ret;
+	pr_debug("SNKPE:%s: Accepting pr_swap\n", __func__);
+	return snkpe_send_pr_swap_accept(sink);
+
+pr_swap_reject:
+	pr_debug("SNKPE:%s: Rejecting pr_swap\n", __func__);
+	return snkpe_send_pr_swap_reject(sink);
 }
 
 static inline int snkpe_do_prot_reset(struct sink_port_pe *sink)
@@ -297,6 +318,7 @@ static int snkpe_start(struct sink_port_pe *sink)
 	}
 
 	/*---------- Start of Sink Port PE --------------*/
+	snkpe_reset_params(sink);
 	/* get the sink_cable_state, in case of boot with cable */
 	sink_cable_state = policy_get_cable_state(&sink->p,
 					CABLE_TYPE_CONSUMER);
@@ -485,6 +507,11 @@ static int sink_port_policy_rcv_request(struct policy *p, enum pe_event evt)
 
 	switch (evt) {
 	case PE_EVT_SEND_PR_SWAP:
+		if (sink->pp_is_ext_pwrd || (!sink->pp_is_dual_prole)) {
+			pr_info("SNKPE:%s: Not processing PR_SWAP Req\n",
+					__func__);
+			break;
+		}
 		snkpe_update_state(sink, PE_PRS_SNK_SRC_SEND_PR_SWAP);
 		sink->pevt = evt;
 		policy_send_packet(&sink->p, NULL, 0,
@@ -680,6 +707,29 @@ error:
 	return ret;
 }
 
+/* This function will read the port partner capabilities and
+ * save it for further use.
+ */
+static void snkpe_read_src_caps(struct sink_port_pe *sink,
+					struct pd_packet *pkt)
+{
+	struct pd_fixed_supply_pdo *pdo =
+			(struct pd_fixed_supply_pdo *) &pkt->data_obj[0];
+
+	if (pdo->fixed_supply != SUPPLY_TYPE_FIXED) {
+		pr_debug("SNKPE:%s: source is not fixed supply\n",
+					__func__);
+		return;
+	}
+	sink->pp_is_dual_prole = pdo->dual_role_pwr;
+	sink->pp_is_dual_drole = pdo->data_role_swap;
+	sink->pp_is_ext_pwrd = pdo->ext_powered;
+
+	pr_debug("SNKPE:%s:dual_prole=%d, dual_drole=%d, ext_pwrd=%d",
+			__func__, sink->pp_is_dual_prole,
+			sink->pp_is_dual_drole,	sink->pp_is_ext_pwrd);
+}
+
 static int snkpe_handle_select_capability_state(struct sink_port_pe *sink,
 							struct pd_packet *pkt)
 {
@@ -689,6 +739,8 @@ static int snkpe_handle_select_capability_state(struct sink_port_pe *sink,
 
 	/* move the next state PE_SNK_Select_Capability */
 	snkpe_update_state(sink, PE_SNK_SELECT_CAPABILITY);
+
+	snkpe_read_src_caps(sink, pkt);
 
 	evt = PE_EVT_SEND_REQUEST;
 	/* make request message and send to PE -> protocol */

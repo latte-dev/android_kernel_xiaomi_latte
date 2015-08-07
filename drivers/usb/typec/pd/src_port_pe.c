@@ -53,6 +53,10 @@ struct src_port_pe {
 	struct delayed_work start_comm;
 	struct work_struct msg_work;
 	int cmd_retry;
+	/* port partner caps */
+	unsigned pp_is_dual_drole:1;
+	unsigned pp_is_dual_prole:1;
+	unsigned pp_is_ext_pwrd:1;
 };
 
 /* Source policy engine states */
@@ -90,6 +94,12 @@ static void src_pe_reset_policy_engine(struct src_port_pe *src_pe)
 	src_pe->state = SRC_PE_STATE_NONE;
 	src_pe->pcap.mv = 0;
 	src_pe->pcap.ma = 0;
+
+	/* By default dual data role is enabled*/
+	src_pe->pp_is_dual_drole = 1;
+	/* By default dual power role is enabled*/
+	src_pe->pp_is_dual_prole = 1;
+	src_pe->pp_is_ext_pwrd = 0;
 }
 
 static int src_pe_send_srccap_cmd(struct src_port_pe *src_pe)
@@ -112,6 +122,8 @@ static int src_pe_send_srccap_cmd(struct src_port_pe *src_pe)
 	pdo.volt = VOLT_TO_SRC_CAP_DATA_OBJ(pcap.mv); /* In 50mV units */
 	pdo.peak_cur = 0; /* No peek current supported */
 	pdo.dual_role_pwr = 1; /* Dual pwr role supported */
+	pdo.data_role_swap = 1; /*Dual data role*/
+	pdo.usb_comm = 1; /* USB communication supported */
 
 	ret = policy_send_packet(&src_pe->p, &pdo, 4,
 				PD_DATA_MSG_SRC_CAP, PE_EVT_SEND_SRC_CAP);
@@ -130,6 +142,13 @@ static inline int src_pe_send_psrdy_cmd(struct src_port_pe *src_pe)
 
 	return policy_send_packet(&src_pe->p, NULL, 0,
 				PD_CTRL_MSG_PS_RDY, PE_EVT_SEND_PS_RDY);
+}
+
+static inline int src_pe_send_get_snk_cap_cmd(struct src_port_pe *src_pe)
+{
+
+	return policy_send_packet(&src_pe->p, NULL, 0,
+			PD_CTRL_MSG_GET_SINK_CAP, PE_EVT_SEND_GET_SINK_CAP);
 }
 
 static int src_pe_handle_snk_source_off(struct src_port_pe *src_pe)
@@ -187,6 +206,8 @@ src_pe_handle_gcrc(struct src_port_pe *src_pe, struct pd_packet *pkt)
 		log_info("SRC_PE_STATE_PS_RDY_SENT -> SRC_PE_STATE_PD_CONFIGURED");
 		pe_notify_policy_status_changed(&src_pe->p,
 				POLICY_TYPE_SOURCE, src_pe->p.status);
+		/* Get sink caps */
+		src_pe_send_get_snk_cap_cmd(src_pe);
 		break;
 	case PE_PRS_SRC_SNK_ACCEPT_PR_SWAP:
 		log_dbg("SRC_SNK_ACCEPT_PR_SWAP -> SRC_SNK_TRANSITION_TO_OFF");
@@ -273,6 +294,10 @@ static int src_pe_rcv_request(struct policy *srcp, enum pe_event evt)
 	log_dbg("%s evt %d\n", __func__, evt);
 	switch (evt) {
 	case PE_EVT_SEND_PR_SWAP:
+		if (!src_pe->pp_is_dual_prole) {
+			log_info("Port partner doesnt support pr_swap");
+			break;
+		}
 		mutex_lock(&src_pe->pe_lock);
 		src_pe->state = PE_PRS_SRC_SNK_SEND_PR_SWAP;
 		src_pe->p.status = POLICY_STATUS_RUNNING;
@@ -286,6 +311,32 @@ static int src_pe_rcv_request(struct policy *srcp, enum pe_event evt)
 	}
 
 	return 0;
+}
+
+static void src_pe_handle_snk_cap_rcv(struct src_port_pe *src_pe,
+				struct pd_packet *pkt)
+{
+	struct pd_sink_fixed_pdo *snk_cap;
+
+	snk_cap = (struct pd_sink_fixed_pdo *) &pkt->data_obj[0];
+
+	if (snk_cap->supply_type != SUPPLY_TYPE_FIXED) {
+		log_dbg("Port partner is not a fixed sypply");
+		return;
+	}
+	/* Save sink port caps */
+	mutex_lock(&src_pe->pe_lock);
+	src_pe->pp_is_dual_drole = snk_cap->data_role_swap;
+	src_pe->pp_is_dual_prole = snk_cap->dual_role_pwr;
+	src_pe->pp_is_ext_pwrd = snk_cap->ext_powered;
+	mutex_unlock(&src_pe->pe_lock);
+
+	log_dbg("is_dual_prole=%d, is_dual_drole=%d, is_ext_pwrd=%d",
+			snk_cap->dual_role_pwr, snk_cap->data_role_swap,
+			snk_cap->ext_powered);
+	/* Trigger power role swap if extenally powered */
+	if (snk_cap->ext_powered)
+		src_pe_rcv_request(&src_pe->p, PE_EVT_SEND_PR_SWAP);
 }
 
 static int
@@ -318,6 +369,10 @@ src_pe_rcv_pkt(struct policy *srcp, struct pd_packet *pkt, enum pe_event evt)
 	case PE_EVT_RCVD_PS_RDY:
 		if (src_pe->state == PE_PRS_SRC_SNK_SOURCE_OFF)
 			complete(&src_pe->psso_complete);
+		break;
+	case PE_EVT_RCVD_SNK_CAP:
+		if (src_pe->state == SRC_PE_STATE_PD_CONFIGURED)
+			src_pe_handle_snk_cap_rcv(src_pe, pkt);
 		break;
 	default:
 		ret = -EINVAL;
@@ -462,6 +517,7 @@ static int src_pe_start_policy_engine(struct policy *p)
 	p->state = POLICY_STATE_ONLINE;
 	p->status = POLICY_STATUS_RUNNING;
 	policy_set_pd_state(p, true);
+	src_pe_reset_policy_engine(src_pe);
 	schedule_delayed_work(&src_pe->start_comm, 0);
 	mutex_unlock(&src_pe->pe_lock);
 	return 0;
@@ -482,6 +538,9 @@ static int src_pe_stop_policy_engine(struct policy *p)
 	reinit_completion(&src_pe->psso_complete);
 	policy_set_pd_state(p, false);
 	src_pe->cmd_retry = 0;
+	src_pe->pp_is_dual_drole = 0;
+	src_pe->pp_is_dual_prole = 0;
+	src_pe->pp_is_ext_pwrd = 0;
 	mutex_unlock(&src_pe->pe_lock);
 	return 0;
 }

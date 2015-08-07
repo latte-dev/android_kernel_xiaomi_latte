@@ -107,6 +107,11 @@ struct sink_port_pe {
 	struct work_struct timer_work;
 	bool is_sink_cable_connected;
 	u8 hard_reset_count;
+
+	/* Port partner caps */
+	unsigned pp_is_dual_prole:1;
+	unsigned pp_is_dual_drole:1;
+	unsigned pp_is_ext_pwrd:1;
 };
 
 static int snkpe_start(struct sink_port_pe *sink);

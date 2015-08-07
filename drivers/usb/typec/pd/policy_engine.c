@@ -466,6 +466,7 @@ static int pe_send_packet(struct policy_engine *pe, void *data, int len,
 	int ret = 0;
 
 	if (!pe_get_pd_state(pe)) {
+		pr_debug("PE:%s: Not sending pkt, evt=%d\n", __func__, evt);
 		ret = -EINVAL;
 		goto snd_pkt_err;
 	}
@@ -498,6 +499,7 @@ static int pe_send_packet(struct policy_engine *pe, void *data, int len,
 
 	/* Send the pd_packet to protocol directly to request
 	 * sink power cap */
+	pr_debug("PE:%s: Sending pkt, evt=%d\n", __func__, evt);
 	if (pe && pe->prot && pe->prot->policy_fwd_pkt)
 		pe->prot->policy_fwd_pkt(pe->prot, msg_type, data, len);
 
