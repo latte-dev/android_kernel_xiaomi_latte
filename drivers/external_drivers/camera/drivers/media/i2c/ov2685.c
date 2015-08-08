@@ -1919,7 +1919,7 @@ out_free:
 MODULE_DEVICE_TABLE(i2c, ov2685_id);
 #ifdef CONFIG_GMIN_INTEL_MID
 static struct acpi_device_id ov2685_acpi_match[] = {
-	{ "INT33BE" },
+	{ "XXOV2685" },
 	{},
 };
 MODULE_DEVICE_TABLE(acpi, ov2685_acpi_match);
