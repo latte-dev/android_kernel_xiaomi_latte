@@ -28,6 +28,7 @@ struct iio_hrtimer_info {
 	struct hrtimer timer;
 	unsigned long sampling_frequency;
 	ktime_t period;
+	ktime_t last_event;
 };
 
 static struct config_item_type iio_hrtimer_type = {
@@ -92,10 +93,10 @@ static enum hrtimer_restart iio_hrtimer_trig_handler(struct hrtimer *timer)
 
 	info = container_of(timer, struct iio_hrtimer_info, timer);
 
-	hrtimer_forward_now(timer, info->period);
+	info->last_event = hrtimer_cb_get_time(timer);
 	iio_trigger_poll(info->swt.trigger, 0);
 
-	return HRTIMER_RESTART;
+	return HRTIMER_NORESTART;
 }
 
 static int iio_trig_hrtimer_set_state(struct iio_trigger *trig, bool state)
@@ -113,9 +114,23 @@ static int iio_trig_hrtimer_set_state(struct iio_trigger *trig, bool state)
 	return 0;
 }
 
+static int iio_trig_hrtimer_try_reenable(struct iio_trigger *trig)
+{
+
+	struct iio_hrtimer_info *trig_info;
+
+	trig_info = iio_trigger_get_drvdata(trig);
+	hrtimer_start(&trig_info->timer,
+			ktime_add(trig_info->last_event, trig_info->period),
+			HRTIMER_MODE_ABS);
+
+	return 0;
+}
+
 static const struct iio_trigger_ops iio_hrtimer_trigger_ops = {
 	.owner = THIS_MODULE,
 	.set_trigger_state = iio_trig_hrtimer_set_state,
+	.try_reenable = iio_trig_hrtimer_try_reenable,
 };
 
 static struct iio_sw_trigger *iio_trig_hrtimer_probe(const char *name)
