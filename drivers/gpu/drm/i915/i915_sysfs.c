@@ -611,9 +611,146 @@ static ssize_t thaw_show(struct device *kdev, struct device_attribute *attr,
 }
 static DEVICE_ATTR(thaw, S_IRUGO, thaw_show, NULL);
 
-static ssize_t gamma_adjust_store(struct device *kdev,
+static ssize_t chv_gamma_adjust_store(struct device *kdev,
 				     struct device_attribute *attr,
 				     const char *ubuf, size_t count)
+{
+	int ret = 0;
+	int bytes_count = 0;
+	char *buf = NULL;
+	int crtc_id = -1;
+	int bytes_read = 0;
+	struct drm_minor *minor = dev_to_drm_minor(kdev);
+	struct drm_device *dev = minor->dev;
+	struct drm_crtc *crtc = NULL;
+	struct drm_mode_object *obj;
+	static int pipe;
+	static bool first_pass;
+	uint *dest = NULL;
+
+	/* Validate input */
+	if (!count) {
+		DRM_ERROR("Gamma adjust: insufficient data\n");
+		return -EINVAL;
+	}
+
+	buf = kzalloc(count, GFP_KERNEL);
+	if (!buf) {
+		DRM_ERROR("Gamma adjust: insufficient memory\n");
+		return -ENOMEM;
+	}
+
+	/* Allocate memory for gamma holder array */
+	dest = kzalloc(CHV_GAMMA_MAX_VALS * sizeof(uint), GFP_KERNEL);
+	if (!dest) {
+		DRM_ERROR("Gamma adjust: insufficient memory\n");
+		kfree(buf);
+		return -ENOMEM;
+	}
+
+	/* Get the data */
+	if (!strncpy(buf, ubuf, count)) {
+		DRM_ERROR("Gamma adjust: copy failed\n");
+		ret = -EINVAL;
+		goto EXIT;
+	}
+	bytes_count = count;
+
+	/*
+	 * Combined Red/Green/Blue gamma, input size is greater than PAGE_SIZE,
+	 * but SYSFS can handle only PAGE_SIZE data in one callback, here I'm
+	 * parsing Red/Green gamma correction curve in first call and return
+	 * bytes_read so that next call will come with remaining Blue gamma
+	 * correction curve, parse & store it in second pass.
+	 */
+	if (!first_pass) {
+
+		first_pass = true;
+
+		/* Parse data and read the crtc_id */
+		ret = parse_clrmgr_input(&crtc_id, buf,
+				CRTC_ID_TOKEN_COUNT, &bytes_count);
+		if (ret < CRTC_ID_TOKEN_COUNT) {
+			DRM_ERROR("CRTC_ID loading failed\n");
+			ret = -EINVAL;
+			goto EXIT;
+		}
+		bytes_read += bytes_count;
+		bytes_count = count - bytes_read;
+
+		obj = drm_mode_object_find(dev, crtc_id, DRM_MODE_OBJECT_CRTC);
+		if (!obj) {
+			DRM_DEBUG_KMS("Unknown CRTC ID %d\n", crtc_id);
+			ret = -EINVAL;
+			goto EXIT;
+		}
+		crtc = obj_to_crtc(obj);
+		DRM_DEBUG_KMS("[CRTC:%d]\n", crtc->base.id);
+
+		pipe = to_intel_crtc(crtc)->pipe;
+		if (bytes_count > 0) {
+
+			/* Parse and load the gamma table for Red Component */
+			ret = parse_clrmgr_input(dest, buf+bytes_read,
+					CHV_GAMMA_MAX_VALS, &bytes_count);
+			if (ret < CHV_GAMMA_MAX_VALS) {
+				DRM_ERROR("Gamma table loading Red failed\n");
+				ret = -EINVAL;
+				goto EXIT;
+			} else
+				DRM_DEBUG("Gamma table loading Red done\n");
+			chv_save_gamma_lut(dest, pipe, RED_OFFSET);
+		}
+		bytes_read += bytes_count;
+		bytes_count = count - bytes_read;
+		if (bytes_count > 0) {
+
+			/* Parse and load the gamma table for Green Component */
+			ret = parse_clrmgr_input(dest, buf+bytes_read,
+					CHV_GAMMA_MAX_VALS, &bytes_count);
+			if (ret < CHV_GAMMA_MAX_VALS) {
+				DRM_ERROR("Gamma table loading Green failed\n");
+				ret = -EINVAL;
+				goto EXIT;
+			} else
+				DRM_DEBUG("Gamma table loading Green done\n");
+			chv_save_gamma_lut(dest, pipe, GREEN_OFFSET);
+		}
+		bytes_read += bytes_count;
+		bytes_count = count - bytes_read;
+	} else {
+		first_pass = false;
+		if (bytes_count > 0) {
+
+			/* Parse and load the gamma table for Blue Component */
+			ret = parse_clrmgr_input(dest, buf, CHV_GAMMA_MAX_VALS,
+					&bytes_count);
+			if (ret < CHV_GAMMA_MAX_VALS) {
+				DRM_ERROR("Gamma table loading Blue failed\n");
+				ret = -EINVAL;
+				goto EXIT;
+			} else
+				DRM_DEBUG("Gamma table loading Blue done\n");
+			chv_save_gamma_lut(dest, pipe, BLUE_OFFSET);
+		}
+		bytes_read = count;
+	}
+
+EXIT:
+	kfree(dest);
+	kfree(buf);
+	if (ret < 0) {
+		first_pass = false;
+		return ret;
+	}
+
+	return bytes_read;
+}
+
+
+static ssize_t gamma_adjust_store(struct device *kdev,
+		struct device_attribute *attr,
+		const char *ubuf, size_t count)
 {
 	int ret = 0;
 	int bytes_count = 0;
@@ -699,7 +836,6 @@ EXIT:
 
 	return count;
 }
-
 
 static ssize_t csc_enable_show(struct device *kdev,
 		struct device_attribute *attr, char *ubuf)
@@ -828,6 +964,7 @@ static ssize_t csc_adjust_store(struct device *kdev,
 	struct drm_minor *minor = dev_to_drm_minor(kdev);
 	struct drm_device *dev = minor->dev;
 	struct drm_mode_object *obj = NULL;
+	int max_coeff_count = 0;
 
 	if (!count) {
 		DRM_ERROR("CSC adjust: insufficient data\n");
@@ -851,10 +988,11 @@ static ssize_t csc_adjust_store(struct device *kdev,
 	ret = parse_clrmgr_input(&crtc_id, buf,
 		CRTC_ID_TOKEN_COUNT, &bytes_count);
 	if (ret < CRTC_ID_TOKEN_COUNT) {
-		DRM_ERROR("CONNECTOR_TYPE_TOKEN loading failed\n");
+		DRM_ERROR("CRTC_ID loading failed\n");
 		goto EXIT;
-	} else
-		DRM_DEBUG("CONNECTOR_TYPE_TOKEN loading done\n");
+	}
+	bytes_read += bytes_count;
+	bytes_count = count - bytes_read;
 
 	obj = drm_mode_object_find(dev, crtc_id, DRM_MODE_OBJECT_CRTC);
 	if (!obj) {
@@ -866,18 +1004,133 @@ static ssize_t csc_adjust_store(struct device *kdev,
 	DRM_DEBUG_KMS("[CRTC:%d]\n", crtc->base.id);
 
 	pipe = to_intel_crtc(crtc)->pipe;
-	bytes_read += bytes_count;
-	bytes_count = count - bytes_read;
+
+	if (IS_CHERRYVIEW(dev))
+		max_coeff_count = CSC_MAX_COEFF_COUNT_CHV;
+	else
+		max_coeff_count = CSC_MAX_COEFF_COUNT;
 	if (bytes_count > 0) {
 
 		/* Parse data and load the csc  table */
 		ret = parse_clrmgr_input(csc_softlut[pipe], buf+bytes_read,
-			CSC_MAX_COEFF_COUNT, &bytes_count);
-		if (ret < CSC_MAX_COEFF_COUNT)
+			max_coeff_count, &bytes_count);
+		if (ret < max_coeff_count)
 			DRM_ERROR("CSC table loading failed\n");
 		else
 			DRM_DEBUG("CSC table loading done\n");
 	}
+EXIT:
+	kfree(buf);
+	if (ret < 0)
+		return ret;
+
+	return count;
+}
+
+
+static ssize_t degamma_enable_show(struct device *kdev,
+		struct device_attribute *attr,  char *ubuf)
+{
+	struct drm_minor *minor = dev_to_drm_minor(kdev);
+	struct drm_device *dev = minor->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	int len = 0;
+
+	len = scnprintf(ubuf, PAGE_SIZE, "Pipe 0: %s\nPipe 1: %s\nPipe 2: %s\n",
+		dev_priv->degamma_enabled[0] ? "Enabled" : "Disabled",
+		dev_priv->degamma_enabled[1] ? "Enabled" : "Disabled",
+		dev_priv->degamma_enabled[1] ? "Enabled" : "Disabled");
+
+	return len;
+}
+
+static ssize_t degamma_enable_store(struct device *kdev,
+				     struct device_attribute *attr,
+				     const char *ubuf, size_t count)
+{
+	struct drm_minor *minor = dev_to_drm_minor(kdev);
+	struct drm_device *dev = minor->dev;
+	int ret = 0;
+	struct drm_crtc *crtc = NULL;
+	char *buf = NULL;
+	int bytes_read = 0;
+	int bytes_count = 0;
+	int crtc_id = -1;
+	int req_state = 0;
+	int pipe;
+	struct drm_mode_object *obj;
+
+	/* Validate input */
+	if (!count) {
+		DRM_ERROR("Gamma adjust: insufficient data\n");
+		return -EINVAL;
+	}
+
+	buf = kzalloc(count, GFP_KERNEL);
+	if (!buf) {
+		DRM_ERROR("Gamma adjust: insufficient memory\n");
+		return -ENOMEM;
+	}
+
+	/* Get the data */
+	if (!strncpy(buf, ubuf, count)) {
+		DRM_ERROR("DeGamma enable: copy failed\n");
+		ret = -EINVAL;
+		goto EXIT;
+	}
+
+	bytes_count = count;
+
+	/* Parse data and load the crtc_id */
+	ret = parse_clrmgr_input(&crtc_id, buf,
+		CRTC_ID_TOKEN_COUNT, &bytes_count);
+	if (ret < CRTC_ID_TOKEN_COUNT) {
+		DRM_ERROR("CRTC_ID loading failed\n");
+		goto EXIT;
+	}
+	bytes_read += bytes_count;
+	bytes_count = count - bytes_read;
+
+	obj = drm_mode_object_find(dev, crtc_id, DRM_MODE_OBJECT_CRTC);
+	if (!obj) {
+		DRM_DEBUG_KMS("Unknown CRTC ID %d\n", crtc_id);
+		ret = -EINVAL;
+		goto EXIT;
+	}
+
+	crtc = obj_to_crtc(obj);
+	pipe = to_intel_crtc(crtc)->pipe;
+	DRM_DEBUG_KMS("[CRTC:%d]\n", crtc->base.id);
+
+	if (bytes_count > 0) {
+
+		/* Parse data and load the degamma  table */
+		ret = parse_clrmgr_input(&req_state, buf+bytes_read,
+			ENABLE_TOKEN_MAX_COUNT, &bytes_count);
+		if (ret < ENABLE_TOKEN_MAX_COUNT) {
+			DRM_ERROR("Enable-token loading failed\n");
+			goto EXIT;
+		} else
+			DRM_DEBUG("Enable-token loading done\n");
+	} else {
+		DRM_ERROR("Enable-token loading failed\n");
+		ret = -EINVAL;
+		goto EXIT;
+	}
+
+	/* if gamma enabled, apply degamma correction on PIPE */
+	if (req_state) {
+		if (chv_set_pipe_degamma(crtc, true, false)) {
+			DRM_ERROR("Apply degamma correction failed\n");
+			ret = -EINVAL;
+		} else
+			ret = count;
+	} else {
+		/* Disable gamma on this plane */
+		chv_set_pipe_degamma(crtc, false, false);
+		ret = count;
+	}
+
 EXIT:
 	kfree(buf);
 	if (ret < 0)
@@ -900,7 +1153,6 @@ static ssize_t gamma_enable_show(struct device *kdev,
 	if (IS_CHERRYVIEW(dev))
 		len += scnprintf(ubuf+len, PAGE_SIZE, "Pipe 2: %s\n",
 			dev_priv->gamma_enabled[2] ? "Enabled" : "Disabled");
-
 	return len;
 }
 
@@ -1168,6 +1420,8 @@ static DEVICE_ATTR(csc_enable, S_IRUGO | S_IWUSR, csc_enable_show,
 static DEVICE_ATTR(csc_adjust, S_IWUSR, NULL, csc_adjust_store);
 static DEVICE_ATTR(cb_adjust, S_IWUSR, NULL, cb_adjust_store);
 static DEVICE_ATTR(hs_adjust, S_IWUSR, NULL, hs_adjust_store);
+static DEVICE_ATTR(degamma_enable, S_IRUGO | S_IWUSR, degamma_enable_show,
+						degamma_enable_store);
 
 static const struct attribute *gen6_attrs[] = {
 	&dev_attr_gt_cur_freq_mhz.attr,
@@ -1196,6 +1450,11 @@ static const struct attribute *vlv_attrs[] = {
 	&dev_attr_cb_adjust.attr,
 	&dev_attr_hs_adjust.attr,
 	NULL,
+};
+
+static const struct attribute *chv_attrs[] = {
+		&dev_attr_degamma_enable.attr,
+		NULL,
 };
 
 static ssize_t error_state_read(struct file *filp, struct kobject *kobj,
@@ -1579,6 +1838,11 @@ void i915_setup_sysfs(struct drm_device *dev)
 				&i915_videostatus_attr_group);
 		if (ret)
 			DRM_ERROR("video status sysfs setup failed\n");
+		if (IS_CHERRYVIEW(dev)) {
+			ret = sysfs_create_files(&dev->primary->kdev->kobj,
+					chv_attrs);
+			dev_attr_gamma_adjust.store = chv_gamma_adjust_store;
+		}
 		ret = sysfs_create_files(&dev->primary->kdev->kobj, vlv_attrs);
 	} else if (INTEL_INFO(dev)->gen >= 6)
 		ret = sysfs_create_files(&dev->primary->kdev->kobj, gen6_attrs);
@@ -1622,6 +1886,9 @@ void i915_teardown_sysfs(struct drm_device *dev)
 		sysfs_remove_files(&dev->primary->kdev->kobj, vlv_attrs);
 		sysfs_unmerge_group(&dev->primary->kdev->kobj,
 				&i915_videostatus_attr_group);
+		if (IS_CHERRYVIEW(dev))
+			sysfs_remove_files(&dev->primary->kdev->kobj,
+				chv_attrs);
 	} else
 		sysfs_remove_files(&dev->primary->kdev->kobj, gen6_attrs);
 	device_remove_bin_file(dev->primary->kdev,  &dpf_attrs_1);

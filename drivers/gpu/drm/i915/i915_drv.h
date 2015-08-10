@@ -1741,6 +1741,7 @@ struct drm_i915_private {
 	bool quick_modeset;
 	bool maxfifo_enabled;
 	bool gamma_enabled[I915_MAX_PIPES];
+	bool degamma_enabled[I915_MAX_PIPES];
 	bool csc_enabled[I915_MAX_PIPES];
 	bool is_resuming;
 	bool is_video_playing;  /* Indicates enabling only in videomode */
