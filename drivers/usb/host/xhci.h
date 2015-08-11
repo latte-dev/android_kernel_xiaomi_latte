@@ -1562,6 +1562,7 @@ struct xhci_hcd {
 #define XHCI_SLOW_SUSPEND	(1 << 17)
 #define XHCI_SPURIOUS_WAKEUP	(1 << 18)
 #define XHCI_SPURIOUS_PME	(1 << 19)
+#define XHCI_SSIC_DISABLE_STALL	(1 << 20)
 	unsigned int		num_active_eps;
 	unsigned int		limit_active_eps;
 	/* There are two roothubs to keep track of bus suspend info for */
@@ -1588,6 +1589,8 @@ struct xhci_hcd {
 	u32			port_status_u0;
 /* Compliance Mode Timer Triggered every 2 seconds */
 #define COMP_MODE_RCVRY_MSECS 2000
+	/* SSIC port number */
+	int ssic_port_number;
 };
 
 /* convert between an HCD pointer and the corresponding EHCI_HCD */

@@ -31,6 +31,7 @@
 
 #include "xhci.h"
 #include "xhci-trace.h"
+#include "xhci-intel-cap.h"
 
 #define DRIVER_AUTHOR "Sarah Sharp"
 #define DRIVER_DESC "'eXtensible' Host Controller (xHC) Driver"
@@ -548,6 +549,10 @@ int xhci_init(struct usb_hcd *hcd)
 		xhci->quirks |= XHCI_COMP_MODE_QUIRK;
 		compliance_mode_recovery_timer_init(xhci);
 	}
+
+	/* Disable the Retrain Timeout (on init) */
+	if (xhci->quirks & XHCI_SSIC_DISABLE_STALL)
+		xhci_change_ssic_regs(xhci, false);
 
 	return retval;
 }

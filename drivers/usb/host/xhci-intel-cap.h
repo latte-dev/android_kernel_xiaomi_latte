@@ -33,6 +33,18 @@
 
 #define SSIC_PORT_NUM		2
 
+/* SSIC_CONFIG2 register
+ * Retrain Timeout Offset: 0x880c
+ */
+#define SSIC_CONFIG2	0x880c
+#define RETRAIN	(0xf << 21)
+
+/* SSIC modem types
+ * 0x0 - 7360, 0xFF - 7260
+ */
+ #define SSIC_MODEM_7360	0x0
+ #define SSIC_MODEM_7260	0xff
+
 /* SSIC Configuration Register 2
  * Address Offset: 0Ch-0Fh
  * Port 1 ... N : 0Ch, 3Ch, ... ,(0Ch + (NumSSICPorts-1)*30h)
@@ -58,3 +70,5 @@ extern int xhci_intel_phy_vbus_valid(struct xhci_hcd *xhci, int vbus_valid);
 extern int xhci_intel_phy_mux_switch(struct xhci_hcd *xhci, int is_device_on);
 extern void xhci_intel_clr_internal_pme_flag(struct xhci_hcd *xhci);
 extern void xhci_intel_ssic_port_unused(struct xhci_hcd *xhci, bool unused);
+extern void xhci_change_ssic_regs(struct xhci_hcd *xhci, bool enable);
+extern int xhci_intel_need_disable_stall(struct xhci_hcd *xhci);

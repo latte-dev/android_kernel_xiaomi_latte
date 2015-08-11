@@ -68,6 +68,7 @@
 #include <linux/slab.h>
 #include "xhci.h"
 #include "xhci-trace.h"
+#include "xhci-intel-cap.h"
 
 static int handle_cmd_in_cmd_wait_list(struct xhci_hcd *xhci,
 		struct xhci_virt_device *virt_dev,
@@ -1738,6 +1739,23 @@ static void handle_port_status(struct xhci_hcd *xhci,
 	if (hcd->state == HC_STATE_SUSPENDED) {
 		xhci_dbg(xhci, "resume root hub\n");
 		usb_hcd_resume_root_hub(hcd);
+	}
+
+	/* Check for CCS and CSC bits */
+	if (xhci->quirks & XHCI_SSIC_DISABLE_STALL &&
+		port_id == xhci->ssic_port_number) {
+		/* Check the bit 17 in PORTSC */
+		if (temp & PORT_CSC) {
+			/*
+			 * Check the bit 0 in PORTSC.
+			 * Disable/Enable Retrain
+			 * Timeout accordingly.
+			 */
+			if (temp & PORT_CONNECT)
+				xhci_change_ssic_regs(xhci, true);
+			else
+				xhci_change_ssic_regs(xhci, false);
+		}
 	}
 
 	if (hcd->speed == HCD_USB3 && (temp & PORT_PLS_MASK) == XDEV_INACTIVE) {

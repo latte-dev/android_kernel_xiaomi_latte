@@ -253,6 +253,10 @@ static void xhci_pci_quirks(struct device *dev, struct xhci_hcd *xhci)
 	if (pdev->vendor == PCI_VENDOR_ID_INTEL &&
 			pdev->device == PCI_DEVICE_ID_INTEL_CHT_XHCI) {
 		xhci->quirks |= XHCI_SPURIOUS_PME;
+
+		/* Initialize the Disable Stall quirk if necessary */
+		if (xhci_intel_need_disable_stall(xhci))
+			xhci->quirks |= XHCI_SSIC_DISABLE_STALL;
 	}
 
 	if (pdev->vendor == PCI_VENDOR_ID_ETRON &&

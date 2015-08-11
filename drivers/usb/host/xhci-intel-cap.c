@@ -20,14 +20,76 @@
 
 #include <linux/usb/phy.h>
 #include <linux/usb/otg.h>
+#include <linux/acpi.h>
+#include <linux/pci.h>
 
 #include "xhci.h"
 #include "xhci-intel-cap.h"
+
+void xhci_change_ssic_regs(struct xhci_hcd *xhci, bool enable)
+{
+
+	struct usb_hcd *hcd = xhci_to_hcd(xhci);
+	u32 data;
+
+	data = readl(hcd->regs + SSIC_CONFIG2);
+	xhci_dbg(xhci, "%s(read): 0x%p = 0x%08x\n", __func__,
+			(hcd->regs + SSIC_CONFIG2), data);
+
+	if (enable)
+		data |= RETRAIN;
+	else
+		data &= ~RETRAIN;
+
+	writel(data, hcd->regs + SSIC_CONFIG2);
+	xhci_dbg(xhci, "%s(write): 0x%p = 0x%08x\n", __func__,
+			(hcd->regs + SSIC_CONFIG2),
+			readl(hcd->regs + SSIC_CONFIG2));
+}
+
+int xhci_intel_need_disable_stall(struct xhci_hcd *xhci)
+{
+	struct acpi_device *acpi_dev;
+	acpi_status modem_status;
+	union acpi_object *modem_data;
+	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
+	struct pci_dev  *pdev = to_pci_dev(xhci_to_hcd(xhci)->self.controller);
+	int modem_present, modem_type;
+
+	/* Get ACPI device */
+	acpi_dev = ACPI_COMPANION(&pdev->dev);
+	if (!acpi_dev) {
+		dev_dbg(&pdev->dev, "No ACPI device!\n");
+		return 0;
+	}
+
+	/* Get modem status from MINF function */
+	modem_status = acpi_evaluate_object(acpi_dev->handle, "MINF",
+			NULL, &buffer);
+	if (ACPI_FAILURE(modem_status) || modem_status != AE_NOT_FOUND) {
+		dev_dbg(&pdev->dev, "No MINF method!\n");
+		return 0;
+	}
+
+	/* Get the data from the buffer */
+	modem_data = buffer.pointer;
+
+	/* Assign the values */
+	modem_present = modem_data->package.elements[0].integer.value;
+	xhci->ssic_port_number = modem_data->package.elements[1].integer.value;
+	modem_type = modem_data->package.elements[2].integer.value;
+
+	/* Evaluate the values from ACPI */
+	return modem_present && modem_type == SSIC_MODEM_7260;
+}
 
 int xhci_intel_vendor_cap_init(struct xhci_hcd *xhci)
 {
 	struct usb_hcd *hcd;
 	int ext_offset, retval;
+
+	if (xhci->quirks & XHCI_SSIC_DISABLE_STALL)
+		xhci_change_ssic_regs(xhci, false);
 
 	ext_offset = XHCI_HCC_EXT_CAPS(readl(&xhci->cap_regs->hcc_params));
 	ext_offset = xhci_find_ext_cap_by_id(&xhci->cap_regs->hc_capbase,
