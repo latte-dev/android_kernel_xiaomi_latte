@@ -29,6 +29,7 @@ struct iio_hrtimer_info {
 	unsigned long sampling_frequency;
 	ktime_t period;
 	ktime_t last_event;
+	bool state;
 };
 
 static struct config_item_type iio_hrtimer_type = {
@@ -104,6 +105,7 @@ static int iio_trig_hrtimer_set_state(struct iio_trigger *trig, bool state)
 	struct iio_hrtimer_info *trig_info;
 
 	trig_info = iio_trigger_get_drvdata(trig);
+	trig_info->state = state;
 
 	if (state)
 		hrtimer_start(&trig_info->timer, trig_info->period,
@@ -120,10 +122,11 @@ static int iio_trig_hrtimer_try_reenable(struct iio_trigger *trig)
 	struct iio_hrtimer_info *trig_info;
 
 	trig_info = iio_trigger_get_drvdata(trig);
-	hrtimer_start(&trig_info->timer,
+
+	if (trig_info->state)
+		hrtimer_start(&trig_info->timer,
 			ktime_add(trig_info->last_event, trig_info->period),
 			HRTIMER_MODE_ABS);
-
 	return 0;
 }
 
