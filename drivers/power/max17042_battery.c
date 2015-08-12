@@ -92,6 +92,14 @@
 #define MAXIM_FGCONFIG_ACPI_TABLE_NAME	"BCFG"
 #define ACPI_FG_NAME_LEN	8
 
+/* Vmax threshold value */
+#define SOC_DEF_MAX_THRLD	0xFF
+
+/* low battery notification warning level */
+#define SOC_WARNING_LEVEL1	15
+#define SOC_WARNING_LEVEL2	5
+#define SOC_SHUTDOWN_LEVEL	1
+
 struct max17042_chip {
 	struct i2c_client *client;
 	struct regmap *regmap;
@@ -128,7 +136,6 @@ static enum power_supply_property max17042_battery_props[] = {
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CURRENT_AVG,
 };
-
 
 static int max17042_get_temperature(struct max17042_chip *chip, int *temp)
 {
@@ -915,7 +922,6 @@ static void max17042_set_default_volt_threshold(struct max17042_chip *chip)
 	reg_val = ((vmax / VALERT_VOLT_LSB) << 8) |
 			(vmin / VALERT_VOLT_LSB);
 	regmap_write(chip->regmap, MAX17042_VALRT_Th, reg_val);
-
 }
 
 static irqreturn_t max17042_thread_handler(int id, void *dev)
@@ -937,7 +943,6 @@ static irqreturn_t max17042_thread_handler(int id, void *dev)
 				(vmin / VALERT_VOLT_LSB);
 
 		regmap_write(chip->regmap, MAX17042_VALRT_Th, reg_val);
-
 	} else if (stat & STATUS_VMN_BIT) {
 		max17042_set_default_volt_threshold(chip);
 	}
@@ -973,7 +978,6 @@ static void max17042_init_worker(struct work_struct *work)
 
 	chip->init_complete = 1;
 }
-
 
 
 #ifdef CONFIG_ACPI
@@ -1147,6 +1151,44 @@ max17042_get_pdata(struct device *dev)
 }
 #endif
 
+static void max17042_update_soc_thresholds(struct max17042_chip *chip)
+{
+	struct regmap *map = chip->regmap;
+	u32 val, soc;
+	int ret;
+
+	if (chip->pdata->enable_current_sense)
+		ret = regmap_read(map, MAX17042_RepSOC, &val);
+	else
+		ret = regmap_read(map, MAX17042_VFSOC, &val);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"maxim RepSOC read failed:%d\n", val);
+		return;
+	}
+	soc = val >> 8;
+	/* Check if MSB of lower byte is set
+	 * then round off the SOC to higher digit
+	 */
+	if (val & SOC_ROUNDOFF_MASK)
+		soc += 1;
+
+	/* If soc > 14% set the alert threshold to 14%
+	 * else if soc > 4% set the threshold to 4%
+	 * else set it to 1%
+	 */
+	if (soc > SOC_WARNING_LEVEL1)
+		val = (SOC_DEF_MAX_THRLD << 8) | SOC_WARNING_LEVEL1;
+	else if (soc > SOC_WARNING_LEVEL2)
+		val = (SOC_DEF_MAX_THRLD << 8) | SOC_WARNING_LEVEL2;
+	else
+		val = (SOC_DEF_MAX_THRLD << 8) | SOC_SHUTDOWN_LEVEL;
+
+	regmap_write(map, MAX17042_SALRT_Th, val);
+	dev_dbg(&chip->client->dev, "%s soc %d updated threshold 0x%x\n",
+			__func__, soc, val);
+}
+
 static int max17042_get_irq(struct i2c_client *client)
 {
 	struct gpio_desc *gpio_desc;
@@ -1301,11 +1343,15 @@ static int max17042_suspend(struct device *dev)
 {
 	struct max17042_chip *chip = dev_get_drvdata(dev);
 
+	dev_dbg(&chip->client->dev, "%s\n", __func__);
 	/*
 	 * disable the irq and enable irq_wake
 	 * capability to the interrupt line.
 	 */
 	if (chip->client->irq) {
+		/* set SOC alert thresholds */
+		max17042_update_soc_thresholds(chip);
+		max17042_set_default_volt_threshold(chip);
 		disable_irq(chip->client->irq);
 		enable_irq_wake(chip->client->irq);
 	}
@@ -1317,6 +1363,7 @@ static int max17042_resume(struct device *dev)
 {
 	struct max17042_chip *chip = dev_get_drvdata(dev);
 
+	dev_dbg(&chip->client->dev, "%s\n", __func__);
 	if (chip->client->irq) {
 		disable_irq_wake(chip->client->irq);
 		enable_irq(chip->client->irq);
