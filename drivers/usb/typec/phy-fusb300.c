@@ -881,6 +881,7 @@ static void fusb300_handle_vbus_int(struct fusb300_chip *chip, int vbus_on)
 	state = phy->state;
 	chip->i_vbus = (bool)vbus_on;
 	mutex_unlock(&chip->lock);
+	dev_dbg(chip->dev, "%s: state=%d, vbus=%d\n", __func__, state, vbus_on);
 	if (vbus_on) {
 		if (state == TYPEC_STATE_PU_PD_SWAP) {
 			mutex_lock(&chip->lock);
@@ -1089,6 +1090,18 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 	pm_runtime_put_sync(chip->dev);
 
 	return IRQ_HANDLED;
+}
+
+static bool fusb300_is_vbus_on(struct typec_phy *phy)
+{
+	struct fusb300_chip *chip = dev_get_drvdata(phy->dev);
+	bool vbus;
+
+	mutex_lock(&chip->lock);
+	vbus = chip->i_vbus;
+	mutex_unlock(&chip->lock);
+
+	return vbus;
 }
 
 static int fusb300_reset_pd(struct typec_phy *phy)
@@ -1691,6 +1704,7 @@ static int fusb300_probe(struct i2c_client *client,
 	chip->phy.flush_fifo = fusb300_flush_fifo;
 	chip->phy.send_packet = fusb300_send_pkt;
 	chip->phy.recv_packet = fusb300_recv_pkt;
+	chip->phy.is_vbus_on = fusb300_is_vbus_on;
 	chip->phy.set_pu_pd = fusb300_set_pu_pd;
 	if (!chip->is_fusb300) {
 		chip->phy.setup_role = fusb300_setup_role;

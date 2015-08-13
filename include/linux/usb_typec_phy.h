@@ -210,6 +210,7 @@ struct typec_phy {
 	int (*enable_autocrc)(struct typec_phy *phy, bool en);
 	int (*set_pu_pd)(struct typec_phy *phy, bool pu_pd);
 	int (*enable_detection)(struct typec_phy *phy, bool en);
+	bool (*is_vbus_on)(struct typec_phy *phy);
 };
 
 extern struct typec_phy *typec_get_phy(int type);
