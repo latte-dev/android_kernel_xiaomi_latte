@@ -208,7 +208,6 @@ struct typec_phy {
 	void (*notify_protocol)(struct typec_phy *phy, unsigned long event);
 	bool (*is_pd_capable)(struct typec_phy *phy);
 	int (*enable_autocrc)(struct typec_phy *phy, bool en);
-	int (*reset_pd)(struct typec_phy *phy);
 	int (*set_pu_pd)(struct typec_phy *phy, bool pu_pd);
 	int (*enable_detection)(struct typec_phy *phy, bool en);
 };

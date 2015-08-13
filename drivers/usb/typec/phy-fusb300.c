@@ -319,6 +319,7 @@ static inline int fusb300_recv_pkt(struct typec_phy *phy, u8 *buf);
 static int fusb300_flush_fifo(struct typec_phy *phy, enum typec_fifo fifo_type);
 static inline int fusb300_pd_send_hard_rst(struct typec_phy *phy);
 static inline int fusb302_pd_send_hard_rst(struct typec_phy *phy);
+static int fusb300_reset_pd(struct typec_phy *phy);
 
 static int fusb300_get_negotiated_cur(int val)
 {
@@ -1080,6 +1081,8 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 			if (phy->notify_protocol)
 				phy->notify_protocol(phy,
 						PROT_PHY_EVENT_TX_HARD_RST);
+			/* Reset the fusb tranceiver */
+			fusb300_reset_pd(phy);
 		}
 	}
 
@@ -1116,6 +1119,7 @@ static int fusb300_phy_reset(struct typec_phy *phy)
 	else
 		fusb302_pd_send_hard_rst(phy);
 	mutex_unlock(&chip->lock);
+	/* Reset the fusb tranceiver */
 	fusb300_reset_pd(phy);
 	return 0;
 }
@@ -1687,7 +1691,6 @@ static int fusb300_probe(struct i2c_client *client,
 	chip->phy.flush_fifo = fusb300_flush_fifo;
 	chip->phy.send_packet = fusb300_send_pkt;
 	chip->phy.recv_packet = fusb300_recv_pkt;
-	chip->phy.reset_pd = fusb300_reset_pd;
 	chip->phy.set_pu_pd = fusb300_set_pu_pd;
 	if (!chip->is_fusb300) {
 		chip->phy.setup_role = fusb300_setup_role;

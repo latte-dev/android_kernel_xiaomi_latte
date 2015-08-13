@@ -112,8 +112,6 @@ static int pd_prot_handle_reset(struct pd_prot *pd, enum typec_phy_evts evt)
 	pd->event = PROT_PHY_EVENT_RESET;
 	complete(&pd->tx_complete);
 	pd_reset_counters(pd);
-	if (pd->phy->reset_pd)
-		pd->phy->reset_pd(pd->phy);
 	prot_clear_rx_msg_list(pd);
 	/*TODO: check if the the work is completed */
 	pd->event = PROT_PHY_EVENT_NONE;
