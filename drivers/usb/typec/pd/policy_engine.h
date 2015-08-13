@@ -550,6 +550,14 @@ static inline int policy_set_dp_state(struct policy *p,
 	return -ENODEV;
 }
 
+static inline bool policy_get_vbus_state(struct policy *p)
+{
+	if (p && p->pe && p->pe->dpm && p->pe->dpm->interface
+		&& p->pe->dpm->interface->get_vbus_state)
+		return p->pe->dpm->interface->get_vbus_state(p->pe->dpm);
+	return false;
+}
+
 #if defined(CONFIG_USBC_PD) && defined(CONFIG_USBC_PD_POLICY)
 extern int policy_engine_bind_dpm(struct devpolicy_mgr *dpm);
 extern void policy_engine_unbind_dpm(struct devpolicy_mgr *dpm);

@@ -23,6 +23,7 @@
 
 #include <linux/slab.h>
 #include <linux/export.h>
+#include <linux/delay.h>
 #include "message.h"
 #include "policy_engine.h"
 
@@ -35,13 +36,15 @@
 	pr_err(LOG_TAG":%s:"format"\n", __func__, ##__VA_ARGS__)
 
 #define MAX_CMD_RETRY	50
-#define CMD_NORESPONCE_TIME	1 /* 4 Sec */
+#define TYPEC_SEND_SRC_CAP_TIME	200 /* 200 mSec */
+#define TYPEC_SRC_ACTIVITY_TIME	40 /* 40 mSec */
 
 #define VOLT_TO_SRC_CAP_DATA_OBJ(x)	(x / 50)
 #define CURRENT_TO_SRC_CAP_DATA_OBJ(x)	(x / 10)
 
 #define TYPEC_SENDER_RESPONSE_TIMER     30 /* min: 24mSec; max: 30mSec */
 #define TYPEC_PS_SRC_ON_TIMER		480 /* min: 390mSec; max: 480mSec */
+#define TYPEC_PS_SRC_OFF_TIMER		750 /*750mSec*/
 
 struct src_port_pe {
 	struct mutex pe_lock;
@@ -53,6 +56,7 @@ struct src_port_pe {
 	struct delayed_work start_comm;
 	struct work_struct msg_work;
 	int cmd_retry;
+	int vbus_retry_cnt;
 	/* port partner caps */
 	unsigned pp_is_dual_drole:1;
 	unsigned pp_is_dual_prole:1;
@@ -96,9 +100,6 @@ static int src_pe_send_srccap_cmd(struct src_port_pe *src_pe)
 	struct pd_fixed_supply_pdo pdo;
 	struct power_cap pcap;
 
-	log_dbg("Sending PD_CMD_HARD_RESET");
-	policy_send_packet(&src_pe->p, NULL, 0, PD_CMD_HARD_RESET,
-				PE_EVT_SEND_HARD_RESET);
 	log_dbg("Sending SrcCap");
 	ret = src_pe_get_power_cap(src_pe, &pcap);
 	if (ret) {
@@ -148,6 +149,30 @@ static int src_pe_handle_snk_source_off(struct src_port_pe *src_pe)
 	return src_pe_send_psrdy_cmd(src_pe);
 }
 
+/* This function will wait for TYPEC_PS_SRC_OFF_TIMER to disbale vbus.
+ * return 0 on success and -ETIME on timeout.
+ */
+static int src_pe_sink_transition_wait_for_vbus_off(struct src_port_pe *src_pe)
+{
+	int max_cnt = TYPEC_PS_SRC_OFF_TIMER / TYPEC_SRC_ACTIVITY_TIME;
+	int cnt;
+	int ret = -ETIME;
+
+	if (!policy_get_vbus_state(&src_pe->p))
+		return 0;
+
+	for (cnt = 0; cnt < max_cnt; cnt++) {
+		log_dbg("Waiting for vbus to off, cnt=%d\n", cnt);
+		msleep(TYPEC_SRC_ACTIVITY_TIME);
+		if (!policy_get_vbus_state(&src_pe->p)) {
+			ret = 0;
+			break;
+		}
+	}
+
+	return ret;
+}
+
 static int src_pe_handle_sink_transition_to_off(struct src_port_pe *src_pe)
 {
 	int ret = 0;
@@ -159,11 +184,42 @@ static int src_pe_handle_sink_transition_to_off(struct src_port_pe *src_pe)
 	/* Pull-down CC (enable Rd) and Vbus 5V disable */
 	ret = policy_set_power_role(&src_pe->p, POWER_ROLE_SWAP);
 	if (ret < 0) {
-		log_err("Error in enabling sink %d\n", ret);
-		return ret;
+		log_err("Error in set pwr role swap %d\n", ret);
+		goto trans_to_swap_fail;
 	}
 
-	return src_pe_handle_snk_source_off(src_pe);
+	ret = src_pe_sink_transition_wait_for_vbus_off(src_pe);
+	if (ret < 0) {
+		log_err("Failed to disable the VBUS, HARD_RESET\n");
+		goto trans_to_off_fail;
+	}
+
+	ret = src_pe_handle_snk_source_off(src_pe);
+	if (ret < 0) {
+		log_err("Failed to send PD_RDY\n");
+		goto trans_to_off_fail;
+	}
+
+	return 0;
+
+trans_to_off_fail:
+	/* Change the role back to source */
+	policy_set_power_role(&src_pe->p, POWER_ROLE_SOURCE);
+
+trans_to_swap_fail:
+	/* As role swap accepted, reset state & send hard reset */
+	mutex_lock(&src_pe->pe_lock);
+	src_pe->state = SRC_PE_STATE_NONE;
+	mutex_unlock(&src_pe->pe_lock);
+
+	/* Issue hard reset */
+	policy_send_packet(&src_pe->p, NULL, 0, PD_CMD_HARD_RESET,
+						PE_EVT_SEND_HARD_RESET);
+
+	/* Schedule worker to send src_cap*/
+	schedule_delayed_work(&src_pe->start_comm, 0);
+
+	return ret;
 }
 
 static int
@@ -191,7 +247,9 @@ src_pe_handle_gcrc(struct src_port_pe *src_pe, struct pd_packet *pkt)
 		src_pe->state = SRC_PE_STATE_PD_CONFIGURED;
 		src_pe->p.status = POLICY_STATUS_SUCCESS;
 		mutex_unlock(&src_pe->pe_lock);
+		cancel_delayed_work_sync(&src_pe->start_comm);
 		log_info("SRC_PE_STATE_PS_RDY_SENT -> SRC_PE_STATE_PD_CONFIGURED");
+
 		pe_notify_policy_status_changed(&src_pe->p,
 				POLICY_TYPE_SOURCE, src_pe->p.status);
 		/* Get sink caps */
@@ -473,6 +531,18 @@ static void src_pe_start_comm(struct work_struct *work)
 		return;
 	}
 
+	if (!policy_get_vbus_state(&src_pe->p)) {
+		mutex_lock(&src_pe->pe_lock);
+		if (src_pe->vbus_retry_cnt < MAX_CMD_RETRY) {
+			log_dbg("VBUS not present, delay SrcCap\n");
+			schedule_delayed_work(&src_pe->start_comm,
+				msecs_to_jiffies(TYPEC_SRC_ACTIVITY_TIME));
+			src_pe->vbus_retry_cnt++;
+		}
+		mutex_unlock(&src_pe->pe_lock);
+		return;
+	}
+
 	src_pe_send_srccap_cmd(src_pe);
 	mutex_lock(&src_pe->pe_lock);
 	src_pe->state = SRC_PE_STATE_SRCCAP_SENT;
@@ -480,10 +550,10 @@ static void src_pe_start_comm(struct work_struct *work)
 	mutex_unlock(&src_pe->pe_lock);
 
 	if (src_pe->cmd_retry < MAX_CMD_RETRY) {
-		log_dbg("Re-scheduling the start_comm after %dSec\n",
-				CMD_NORESPONCE_TIME);
+		log_dbg("Re-scheduling the start_comm after %lu mSec\n",
+				msecs_to_jiffies(TYPEC_SEND_SRC_CAP_TIME));
 		schedule_delayed_work(&src_pe->start_comm,
-					HZ * CMD_NORESPONCE_TIME);
+				msecs_to_jiffies(TYPEC_SEND_SRC_CAP_TIME));
 	} else {
 		mutex_lock(&src_pe->pe_lock);
 		src_pe->state = SRC_PE_STATE_PD_FAILED;
@@ -521,11 +591,12 @@ static int src_pe_stop_policy_engine(struct policy *p)
 	p->state = POLICY_STATE_OFFLINE;
 	p->status = POLICY_STATUS_UNKNOWN;
 	src_pe_reset_policy_engine(src_pe);
-	cancel_delayed_work(&src_pe->start_comm);
+	cancel_delayed_work_sync(&src_pe->start_comm);
 	reinit_completion(&src_pe->srt_complete);
 	reinit_completion(&src_pe->psso_complete);
 	policy_set_pd_state(p, false);
 	src_pe->cmd_retry = 0;
+	src_pe->vbus_retry_cnt = 0;
 	src_pe->pp_is_dual_drole = 0;
 	src_pe->pp_is_dual_prole = 0;
 	src_pe->pp_is_ext_pwrd = 0;

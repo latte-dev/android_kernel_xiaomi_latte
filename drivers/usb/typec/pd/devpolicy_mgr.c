@@ -367,6 +367,13 @@ static void dpm_set_pu_pd(struct devpolicy_mgr *dpm, bool pu_pd)
 		dpm->phy->set_pu_pd(dpm->phy, pu_pd);
 }
 
+static bool dpm_get_vbus_state(struct devpolicy_mgr *dpm)
+{
+	if (dpm && dpm->phy && dpm->phy->is_vbus_on)
+		return dpm->phy->is_vbus_on(dpm->phy);
+	return false;
+}
+
 static void dpm_update_data_role(struct devpolicy_mgr *dpm,
 				enum data_role drole)
 {
@@ -1010,6 +1017,7 @@ static struct dpm_interface interface = {
 	.update_power_role = dpm_update_power_role,
 	.is_pr_swapped = dpm_is_pr_swapped,
 	.set_display_port_state = dpm_set_display_port_state,
+	.get_vbus_state = dpm_get_vbus_state,
 };
 
 struct devpolicy_mgr *dpm_register_syspolicy(struct typec_phy *phy,

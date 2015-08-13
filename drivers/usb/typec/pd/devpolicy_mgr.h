@@ -196,6 +196,7 @@ struct dpm_interface {
 	int (*set_display_port_state)(struct devpolicy_mgr *dpm,
 					enum cable_state state,
 					enum typec_dp_cable_type type);
+	bool (*get_vbus_state)(struct devpolicy_mgr *dpm);
 };
 
 static inline int devpolicy_get_max_srcpwr_cap(struct devpolicy_mgr *dpm,
