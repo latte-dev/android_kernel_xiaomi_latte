@@ -189,7 +189,7 @@ static void silead_ts_read_data(struct i2c_client *client)
 
 		/* Bits 4-7 are the touch id */
 		id = (buf[offset + SILEAD_POINT_X_MSB_OFF] &
-		      SILEAD_TOUCH_ID_MASK) >> 4;
+		      SILEAD_TOUCH_ID_MASK);
 
 		/* Bits 0-3 are MSB of X */
 		buf[offset + SILEAD_POINT_X_MSB_OFF] = buf[offset +
