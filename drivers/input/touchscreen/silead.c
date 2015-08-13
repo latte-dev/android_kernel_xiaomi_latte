@@ -28,6 +28,9 @@
 #include <linux/input/mt.h>
 #include <linux/pm.h>
 #include <linux/of_gpio.h>
+#ifdef CONFIG_PM
+#include <linux/power_hal_sysfs.h>
+#endif
 
 #define SILEAD_TS_NAME "silead_ts"
 
@@ -505,6 +508,61 @@ prop_err:
 	return -EINVAL;
 }
 
+#ifdef CONFIG_PM
+static int silead_ts_suspend(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+
+	silead_ts_set_power(client, SILEAD_POWER_OFF);
+	msleep(20);
+	return 0;
+}
+
+static int silead_ts_resume(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	int ret, status;
+
+	silead_ts_set_power(client, SILEAD_POWER_ON);
+	msleep(20);
+
+	ret = silead_ts_reset(client);
+	if (ret)
+		return ret;
+
+	ret = silead_ts_startup(client);
+	if (ret)
+		return ret;
+
+	msleep(20);
+
+	status = silead_ts_get_status(client);
+	if (status != SILEAD_STATUS_OK) {
+		dev_err(dev, "Resume error, status: 0x%X\n", status);
+		return -ENODEV;
+	}
+
+	return 0;
+}
+
+static ssize_t silead_power_hal_suspend_store(struct device *dev,
+					     struct device_attribute *attr,
+					     const char *buf, size_t count)
+{
+	static DEFINE_MUTEX(mutex);
+
+	mutex_lock(&mutex);
+	if (!strncmp(buf, POWER_HAL_SUSPEND_ON, POWER_HAL_SUSPEND_STATUS_LEN))
+		silead_ts_suspend(dev);
+	else
+		silead_ts_resume(dev);
+	mutex_unlock(&mutex);
+
+	return count;
+}
+
+static DEVICE_POWER_HAL_SUSPEND_ATTR(silead_power_hal_suspend_store);
+#endif
 static int silead_ts_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
 {
@@ -603,44 +661,20 @@ static int silead_ts_probe(struct i2c_client *client,
 		dev_err(dev, "IRQ request failed %d\n", ret);
 		return ret;
 	}
-
-	dev_dbg(dev, "Probing succeded\n");
-	return 0;
-}
-
-static int silead_ts_suspend(struct device *dev)
-{
-	struct i2c_client *client = to_i2c_client(dev);
-
-	silead_ts_set_power(client, SILEAD_POWER_OFF);
-	msleep(20);
-	return 0;
-}
-
-static int silead_ts_resume(struct device *dev)
-{
-	struct i2c_client *client = to_i2c_client(dev);
-	int ret, status;
-
-	silead_ts_set_power(client, SILEAD_POWER_ON);
-	msleep(20);
-
-	ret = silead_ts_reset(client);
-	if (ret)
-		return ret;
-
-	ret = silead_ts_startup(client);
-	if (ret)
-		return ret;
-
-	msleep(20);
-
-	status = silead_ts_get_status(client);
-	if (status != SILEAD_STATUS_OK) {
-		dev_err(dev, "Resume error, status: 0x%X\n", status);
-		return -ENODEV;
+#ifdef CONFIG_PM
+	ret = device_create_file(dev, &dev_attr_power_HAL_suspend);
+	if (ret < 0) {
+		dev_err(dev, "unable to create suspend entry");
+		goto out;
 	}
 
+	ret = register_power_hal_suspend_device(dev);
+	if (ret < 0)
+		dev_err(dev, "unable to register for power hal");
+out:
+#endif
+
+	dev_dbg(dev, "Probing succeded\n");
 	return 0;
 }
 
@@ -654,6 +688,10 @@ static int silead_ts_remove(struct i2c_client *client)
 	if (data->gpio_irq)
 		client->irq = -1;
 
+#ifdef CONFIG_PM
+	device_remove_file(&client->dev, &dev_attr_power_HAL_suspend);
+	unregister_power_hal_suspend_device(&client->dev);
+#endif
 	return 0;
 }
 
