@@ -3229,8 +3229,20 @@ i915_gem_retire_work_handler(struct work_struct *work)
 	struct drm_i915_private *dev_priv =
 		container_of(work, typeof(*dev_priv), mm.retire_work.work);
 	struct drm_device *dev = dev_priv->dev;
+	struct intel_engine_cs *ring;
+	unsigned i;
 	bool idle;
 	unsigned long ts = dev_priv->mm.retire_work_timestamp;
+
+	/*
+	 * It is possible for i915_gem_retire_requests to get stuck
+	 * in the case of a gpu hang, so need to queue the hangcheck
+	 * work first.
+	 */
+	for_each_ring(ring, dev_priv, i) {
+		if (!list_empty(&ring->request_list))
+			i915_queue_hangcheck(dev, i, ts);
+	}
 
 	/* Come back later if the device is busy... */
 	idle = false;
@@ -3239,17 +3251,8 @@ i915_gem_retire_work_handler(struct work_struct *work)
 		mutex_unlock(&dev->struct_mutex);
 	}
 
-	if (!idle) {
-		struct intel_engine_cs *ring;
-		unsigned i;
-
+	if (!idle)
 		queue_retire_work(dev_priv, round_jiffies_up_relative(HZ));
-
-		for_each_ring(ring, dev_priv, i) {
-			if (!list_empty(&ring->request_list))
-				i915_queue_hangcheck(dev, i, ts);
-		}
-	}
 }
 
 static void
