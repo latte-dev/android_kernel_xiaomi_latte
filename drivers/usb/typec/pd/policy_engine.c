@@ -474,7 +474,7 @@ static int pe_send_packet(struct policy_engine *pe, void *data, int len,
 {
 	int ret = 0;
 
-	if (!pe_get_pd_state(pe)) {
+	if (!pe_get_pd_state(pe) && evt != PE_EVT_SEND_HARD_RESET) {
 		pr_debug("PE:%s: Not sending pkt, evt=%d\n", __func__, evt);
 		ret = -EINVAL;
 		goto snd_pkt_err;

@@ -252,7 +252,7 @@ static int prot_fwd_ctrlmsg_to_pe(struct pd_prot *pd, struct prot_msg *msg)
 		event = PE_EVT_RCVD_WAIT;
 		break;
 	case PD_CTRL_MSG_SOFT_RESET:
-		/*This should be already handled, dont not forward to pe*/
+		event = PE_EVT_RCVD_SOFT_RESET;
 		break;
 	default:
 		dev_warn(pd->phy->dev, "%s:Unknown msg received, msg_type=%d\n",

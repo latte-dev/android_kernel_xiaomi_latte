@@ -80,9 +80,9 @@ enum snkpe_timeout {
 
 struct req_cap {
 	u8 obj_pos;
-	bool cap_mismatch;
 	u32 ma;
 	u32 mv;
+	bool cap_mismatch;
 };
 
 struct sink_port_pe {
@@ -90,58 +90,31 @@ struct sink_port_pe {
 	struct pd_packet prev_pkt;
 	struct completion wct_complete; /* wait cap timer */
 	struct completion srt_complete; /* sender response timer */
-	struct completion nrt_complete; /* no response timer */
 	struct completion pstt_complete; /* PS Transition timer */
 	struct completion sat_complete; /* Sink Activity timer */
-	struct completion srqt_complete; /* Sink Request timer */
 	struct completion pssoff_complete; /* PS Source Off timer */
-	struct completion pktwt_complete; /* fifo write complete */
-	struct kfifo pkt_fifo;
-	struct req_cap rcap;
-	int ilim;
-	enum pe_event pevt;
-	enum pe_states cur_state;
-	enum pe_states prev_state;
 	struct mutex snkpe_state_lock;
+	struct timer_list no_response_timer;
+	struct timer_list snk_request_timer;
+	struct work_struct timer_work; /* sink pe worker thread */
+	struct work_struct request_timer; /* snk request timer on ready state */
+	struct req_cap rcap;
+	wait_queue_head_t wq;
+	wait_queue_head_t wq_req;
+	enum pe_event last_pkt;
+	enum pe_states cur_state;
 	enum snkpe_timeout timeout;
-	struct work_struct timer_work;
-	bool is_sink_cable_connected;
 	u8 hard_reset_count;
+	unsigned resend_cap:1;
+	unsigned hard_reset_complete:1;
+	unsigned is_sink_cable_connected:1;
+	unsigned request_timer_expired:1;
+	unsigned no_response_timer_expired:1;
 
 	/* Port partner caps */
 	unsigned pp_is_dual_prole:1;
 	unsigned pp_is_dual_drole:1;
 	unsigned pp_is_ext_pwrd:1;
 };
-
-static int snkpe_start(struct sink_port_pe *sink);
-static int snkpe_handle_snk_ready_state(struct sink_port_pe *sink,
-						enum pe_event evt);
-static int snkpe_handle_select_capability_state(struct sink_port_pe *sink,
-							struct pd_packet *pkt);
-static int snkpe_handle_transition_sink_state(struct sink_port_pe *sink);
-static int snkpe_handle_give_snk_cap_state(struct sink_port_pe *sink);
-static int snkpe_handle_evaluate_capability(struct sink_port_pe *sink);
-static int snkpe_handle_transition_to_default(struct sink_port_pe *sink);
-static int snkpe_vbus_attached(struct sink_port_pe *sink);
-static void sink_port_policy_exit(struct policy *p);
-
-static inline bool snkpe_is_cur_state(struct sink_port_pe *sink,
-					enum pe_states state)
-{
-	return sink->cur_state == state;
-}
-
-static inline bool snkpe_is_prev_state(struct sink_port_pe *sink,
-					enum pe_states state)
-{
-	return sink->prev_state == state;
-}
-
-static inline bool snkpe_is_prev_evt(struct sink_port_pe *sink,
-					enum pe_event evt)
-{
-	return sink->pevt == evt;
-}
 
 #endif /* __SINK_PORT_PE__H__ */
