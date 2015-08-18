@@ -4348,7 +4348,8 @@ static uint8_t intel_dp_autotest_phy_pattern(struct intel_dp *intel_dp)
 	return test_result;
 }
 
-static void intel_dp_handle_test_request(struct intel_dp *intel_dp)
+static void intel_dp_handle_test_request(struct intel_dp *intel_dp,
+	bool short_pulse)
 {
 	uint8_t response = DP_TEST_NAK;
 	uint8_t rxdata = 0;
@@ -4364,6 +4365,11 @@ static void intel_dp_handle_test_request(struct intel_dp *intel_dp)
 	status = drm_dp_dpcd_read(&intel_dp->aux, DP_TEST_REQUEST, &rxdata, 1);
 	if (status <= 0) {
 		DRM_DEBUG_KMS("Could not read test request from sink\n");
+		goto update_status;
+	}
+
+	if (short_pulse && rxdata != DP_TEST_LINK_TRAINING) {
+		DRM_ERROR("Invalid test request in short pulse\n");
 		goto update_status;
 	}
 
@@ -4457,7 +4463,7 @@ intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 				   sink_irq_vector);
 
 		if (sink_irq_vector & DP_AUTOMATED_TEST_REQUEST)
-			DRM_DEBUG_DRIVER("Test request in short pulse not handled\n");
+			intel_dp_handle_test_request(intel_dp, true);
 		if (sink_irq_vector & (DP_CP_IRQ | DP_SINK_SPECIFIC_IRQ))
 			DRM_DEBUG_DRIVER("CP or sink specific irq unhandled\n");
 	}
@@ -4735,7 +4741,7 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 				   sink_irq_vector);
 
 		if (sink_irq_vector & DP_AUTOMATED_TEST_REQUEST)
-			intel_dp_handle_test_request(intel_dp);
+			intel_dp_handle_test_request(intel_dp, false);
 		if (sink_irq_vector & (DP_CP_IRQ | DP_SINK_SPECIFIC_IRQ))
 			DRM_DEBUG_DRIVER("CP or sink specific irq unhandled\n");
 	}
