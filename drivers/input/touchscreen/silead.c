@@ -78,8 +78,6 @@
 #define SILEAD_PRESSURE		50
 #define SILEAD_FW_NAME_LEN	30
 
-#define GSL1688_CHIP_ID		0xB4820000
-
 enum silead_ts_power {
 	SILEAD_POWER_ON  = 1,
 	SILEAD_POWER_OFF = 0
@@ -207,25 +205,20 @@ static void silead_ts_read_data(struct i2c_client *client)
 
 		dev_dbg(dev, "x=%d y=%d id=%d\n", x, y, id);
 
-		if (data->chip_id == GSL1688_CHIP_ID)
-			silead_ts_report_touch(data, (id * 256 + x),
-					       data->y_max - y, id);
-		else {
-			if (data->xy_swap)
-				silead_ts_report_touch(data,
-						       data->y_invert ?
-						       data->y_max - y : y,
-						       data->x_invert ?
-						       data->x_max - x : x,
-						       id);
-			else
-				silead_ts_report_touch(data,
-						       data->x_invert ?
-						       data->x_max - x : x,
-						       data->y_invert ?
-						       data->y_max - y : y,
-						       id);
-		}
+		if (data->xy_swap)
+			silead_ts_report_touch(data,
+					       data->y_invert ?
+					       data->y_max - y : y,
+					       data->x_invert ?
+					       data->x_max - x : x,
+					       id);
+		else
+			silead_ts_report_touch(data,
+					       data->x_invert ?
+					       data->x_max - x : x,
+					       data->y_invert ?
+					       data->y_max - y : y,
+					       id);
 	}
 
 	input_mt_sync_frame(data->input_dev);
