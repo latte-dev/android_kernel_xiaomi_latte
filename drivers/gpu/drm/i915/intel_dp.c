@@ -4463,14 +4463,13 @@ intel_dp_detect_dpcd(struct intel_dp *intel_dp)
 	/* If we're HPD-aware, SINK_COUNT changes dynamically */
 	if (intel_dp->dpcd[DP_DPCD_REV] >= 0x11 &&
 	    intel_dp->downstream_ports[0] & DP_DS_PORT_HPD) {
-		uint8_t reg;
 
 		if (intel_dp_dpcd_read_wake(&intel_dp->aux, DP_SINK_COUNT,
-					    &reg, 1) < 0)
+					    &intel_dp->sink_count, 1) < 0)
 			return connector_status_unknown;
 
-		return DP_GET_SINK_COUNT(reg) ? connector_status_connected
-					      : connector_status_disconnected;
+		return DP_GET_SINK_COUNT(intel_dp->sink_count) ?
+		connector_status_connected : connector_status_disconnected;
 	}
 
 	/* If no HPD, poke DDC gently */
