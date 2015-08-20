@@ -110,7 +110,7 @@ i915_gem_userdata(struct drm_device *dev,
 
 		userdata_blk->length = (u16)bytes;
 		userdata_blk->flags  = flags;
-		userdata_blk->lock = __RW_LOCK_UNLOCKED(userdata_blk->lock);
+		rwlock_init(&userdata_blk->lock);
 
 		if (data) {
 			ret = copy_from_user(userdata_blk->data, data, bytes);

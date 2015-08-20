@@ -1714,6 +1714,7 @@ int i915_gem_create_sysfs_file_entry(struct drm_device *dev,
 	}
 
 	snprintf(attr_priv->tgid_str, 16, "%d", task_tgid_nr(current));
+	sysfs_bin_attr_init(obj_attr);
 	obj_attr->attr.name = attr_priv->tgid_str;
 	obj_attr->attr.mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 	obj_attr->size = 0;
