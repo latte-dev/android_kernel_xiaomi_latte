@@ -4411,19 +4411,33 @@ update_status:
  */
 
 void
-intel_dp_check_link_status(struct intel_dp *intel_dp)
+intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 {
 	struct intel_encoder *intel_encoder = &dp_to_dig_port(intel_dp)->base;
 	u8 sink_irq_vector;
 	u8 link_status[DP_LINK_STATUS_SIZE];
+	u8 old_sink_count = intel_dp->sink_count;
+	bool ret;
+
+	*perform_full_detect = false;
 
 	/* Try to read receiver status if the link appears to be up */
 	if (!intel_dp_get_link_status(intel_dp, link_status)) {
+		*perform_full_detect = true;
 		return;
 	}
 
-	/* Now read the DPCD to see if it's actually running */
-	if (!intel_dp_get_dpcd(intel_dp)) {
+	/* Now read the DPCD to see if it's actually running
+	 * Don't return immediately if dpcd read failed,
+	 * if sink count was 1 and dpcd read failed we need
+	 * to do full detection
+	 */
+	ret = intel_dp_get_dpcd(intel_dp);
+
+	if ((old_sink_count != intel_dp->sink_count) || !ret) {
+		*perform_full_detect = true;
+
+		/* No need to proceed if we are going to do full detect */
 		return;
 	}
 
@@ -5022,6 +5036,7 @@ bool
 intel_dp_hpd_pulse(struct intel_digital_port *intel_dig_port, bool long_hpd)
 {
 	struct intel_dp *intel_dp = &intel_dig_port->dp;
+	bool full_detect;
 
 	if (long_hpd)
 		return true;
@@ -5030,7 +5045,13 @@ intel_dp_hpd_pulse(struct intel_digital_port *intel_dig_port, bool long_hpd)
 	 * we'll check the link status via the normal hot plug path later -
 	 * but for short hpds we should check it now
 	 */
-	intel_dp_check_link_status(intel_dp);
+	intel_dp_check_link_status(intel_dp, &full_detect);
+
+	if (full_detect) {
+		DRM_DEBUG_KMS("Forcing full detect for short pulse\n");
+		return true;
+	}
+
 	return false;
 }
 

@@ -1001,7 +1001,7 @@ void intel_dp_set_clock(struct intel_encoder *encoder,
 void intel_dp_sink_dpms(struct intel_dp *intel_dp, int mode);
 void intel_dp_set_m2_n2(struct intel_crtc *crtc, struct intel_link_m_n *m_n);
 void intel_dp_encoder_destroy(struct drm_encoder *encoder);
-void intel_dp_check_link_status(struct intel_dp *intel_dp);
+void intel_dp_check_link_status(struct intel_dp *intel_dp, bool *full_detect);
 int intel_dp_sink_crc(struct intel_dp *intel_dp, u8 *crc);
 bool intel_dp_compute_config(struct intel_encoder *encoder,
 			     struct intel_crtc_config *pipe_config);
