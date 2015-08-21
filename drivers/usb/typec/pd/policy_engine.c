@@ -534,23 +534,56 @@ static void pe_policy_status_changed(struct policy_engine *pe, int policy_type,
 				int status)
 {
 	struct policy *p;
+	int ret;
 
 	if (!pe)
 		return;
-	/* Handle the source policy status change */
-	if ((policy_type == POLICY_TYPE_SOURCE)
-		&& ((status == POLICY_STATUS_SUCCESS)
-		|| (status == POLICY_STATUS_FAIL))) {
-		p = pe_get_policy(pe, POLICY_TYPE_DISPLAY);
-		/* Start the display policy */
+	switch (policy_type) {
+	case POLICY_TYPE_SOURCE:
+		/* Handle the source policy status change */
+		if (status == POLICY_STATUS_SUCCESS
+			|| status == POLICY_STATUS_FAIL) {
+			p = pe_get_policy(pe, POLICY_TYPE_DISPLAY);
+			/* Start the display policy */
+			if (!p) {
+				pr_err("PE: %s No Display policy found\n",
+						__func__);
+				break;
+			}
+			if (p->start) {
+				pr_info("PE: %s Stating disp policy\n",
+						__func__);
+				p->start(p);
+			}
+		}
+		break;
+	case POLICY_TYPE_DISPLAY:
+		/* Handle the display policy status change */
+		p = pe_get_policy(pe, POLICY_TYPE_SOURCE);
 		if (!p) {
-			pr_err("PE: %s No Display policy found\n", __func__);
-			return;
+			pr_err("PE: %s No Source policy found\n", __func__);
+			break;
 		}
-		if (p->start) {
-			pr_info("PE: %s Stating disp policy\n", __func__);
-			p->start(p);
+
+		if (p->status != POLICY_STATUS_SUCCESS
+			&& p->status != POLICY_STATUS_RUNNING) {
+			pr_warn("PE:%s: Source PE not success!!\n", __func__);
+			break;
 		}
+		if (!p->get_port_caps)
+			break;
+
+		ret = p->get_port_caps(p, &pe->pp_caps);
+		if (ret) {
+			pr_warn("PE:%s: faied to get pp caps!!\n", __func__);
+			break;
+		}
+		/* Trigger PR_SWAP if pp is externally powered */
+		if (pe->pp_caps.pp_is_ext_pwrd && p->rcv_request)
+			p->rcv_request(p, PE_EVT_SEND_PR_SWAP);
+		break;
+	default:
+		pr_debug("PE:%s: Not processing state change\n", __func__);
 	}
 }
 

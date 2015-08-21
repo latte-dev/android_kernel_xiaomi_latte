@@ -254,8 +254,6 @@ src_pe_handle_gcrc(struct src_port_pe *src_pe, struct pd_packet *pkt)
 		cancel_delayed_work_sync(&src_pe->start_comm);
 		log_info("SRC_PE_STATE_PS_RDY_SENT -> SRC_PE_STATE_PD_CONFIGURED");
 
-		pe_notify_policy_status_changed(&src_pe->p,
-				POLICY_TYPE_SOURCE, src_pe->p.status);
 		/* Schedule worker to get sink caps */
 		schedule_work(&src_pe->msg_work);
 		break;
@@ -348,6 +346,11 @@ static int src_pe_rcv_request(struct policy *srcp, enum pe_event evt)
 			log_info("Port partner doesnt support pr_swap");
 			break;
 		}
+		if (src_pe->state != SRC_PE_STATE_PD_CONFIGURED) {
+			log_info("Cannot process PR_SWAP in state=%d\n",
+					src_pe->state);
+			break;
+		}
 		mutex_lock(&src_pe->pe_lock);
 		src_pe->state = PE_PRS_SRC_SNK_SEND_PR_SWAP;
 		src_pe->p.status = POLICY_STATUS_RUNNING;
@@ -384,9 +387,6 @@ static void src_pe_handle_snk_cap_rcv(struct src_port_pe *src_pe,
 	log_dbg("is_dual_prole=%d, is_dual_drole=%d, is_ext_pwrd=%d",
 			snk_cap->dual_role_pwr, snk_cap->data_role_swap,
 			snk_cap->ext_powered);
-	/* Trigger power role swap if extenally powered */
-	if (snk_cap->ext_powered)
-		src_pe_rcv_request(&src_pe->p, PE_EVT_SEND_PR_SWAP);
 }
 
 static int
@@ -466,9 +466,11 @@ static int src_pe_handle_after_prswap_sent(struct src_port_pe *src_pe)
 	 * cur_state */
 	ret = wait_for_completion_timeout(&src_pe->srt_complete, timeout);
 	if (ret == 0) {
-		log_err("SRT time expired Sending PD_CMD_HARD_RESET");
-		policy_send_packet(&src_pe->p, NULL, 0, PD_CMD_HARD_RESET,
-					PE_EVT_SEND_HARD_RESET);
+		log_err("SRT time expired, move to READY");
+		mutex_lock(&src_pe->pe_lock);
+		src_pe->state = SRC_PE_STATE_PD_CONFIGURED;
+		mutex_unlock(&src_pe->pe_lock);
+
 		goto error;
 	}
 	ret = src_pe_handle_sink_transition_to_off(src_pe);
@@ -672,6 +674,21 @@ static void src_pe_exit(struct policy *p)
 	kfree(src_pe);
 }
 
+static int src_pe_get_port_caps(struct policy *p,
+			struct pe_port_partner_caps *pp_caps)
+{
+	struct src_port_pe *src_pe = container_of(p,
+					struct src_port_pe, p);
+
+	mutex_lock(&src_pe->pe_lock);
+	pp_caps->pp_is_dual_drole = src_pe->pp_is_dual_drole;
+	pp_caps->pp_is_dual_prole = src_pe->pp_is_dual_prole;
+	pp_caps->pp_is_ext_pwrd = src_pe->pp_is_ext_pwrd;
+	mutex_unlock(&src_pe->pe_lock);
+
+	return 0;
+}
+
 /* Init function to initialize the source policy engine */
 struct policy *src_pe_init(struct policy_engine *pe)
 {
@@ -701,6 +718,7 @@ struct policy *src_pe_init(struct policy_engine *pe)
 	p->start = src_pe_start_policy_engine;
 	p->stop = src_pe_stop_policy_engine;
 	p->exit = src_pe_exit;
+	p->get_port_caps = src_pe_get_port_caps;
 	init_completion(&src_pe->srt_complete);
 	init_completion(&src_pe->psso_complete);
 

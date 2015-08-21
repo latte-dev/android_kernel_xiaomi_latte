@@ -509,6 +509,9 @@ static int disp_pe_handle_display_configure(struct disp_port_pe *disp_pe,
 		disp_pe->hpd_state = true;
 		policy_set_dp_state(&disp_pe->p, CABLE_ATTACHED,
 					disp_pe->dp_mode);
+		/* Update the DP state to policy engine */
+		pe_notify_policy_status_changed(&disp_pe->p,
+				POLICY_TYPE_DISPLAY, POLICY_STATUS_SUCCESS);
 		break;
 	case REP_NACK:
 		log_warn("NAK for display config cmd %d\n", disp_pe->dp_mode);
@@ -669,6 +672,9 @@ static void disp_pe_start_comm(struct work_struct *work)
 		disp_pe->p.status = POLICY_STATUS_FAIL;
 		mutex_unlock(&disp_pe->pe_lock);
 		log_warn("Not scheduling srccap as max re-try reached\n");
+		/* Update the DP state to policy engine */
+		pe_notify_policy_status_changed(&disp_pe->p,
+				POLICY_TYPE_DISPLAY, POLICY_STATUS_FAIL);
 	}
 }
 

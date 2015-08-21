@@ -293,6 +293,12 @@ enum policy_status {
 	POLICY_STATUS_SUCCESS,
 };
 
+struct pe_port_partner_caps {
+	unsigned pp_is_dual_drole:1;
+	unsigned pp_is_dual_prole:1;
+	unsigned pp_is_ext_pwrd:1;
+};
+
 struct policy {
 	enum policy_type type;
 	struct policy_engine *pe;
@@ -305,6 +311,8 @@ struct policy {
 				enum pe_event evt);
 	int (*rcv_cmd)(struct policy *p, enum pe_event evt);
 	int (*rcv_request)(struct policy *p, enum pe_event evt);
+	int (*get_port_caps)(struct policy *p,
+				struct pe_port_partner_caps *pp_caps);
 	void (*exit)(struct policy *p);
 };
 
@@ -323,6 +331,7 @@ struct policy_engine {
 	enum data_role	cur_drole;
 	enum pwr_role cur_prole;
 	bool is_pd_connected;
+	struct pe_port_partner_caps pp_caps;
 };
 
 struct pe_operations {
