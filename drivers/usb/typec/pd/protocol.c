@@ -49,6 +49,9 @@ static void pd_policy_update_data_role(struct pd_prot *prot,
 static void pd_policy_update_power_role(struct pd_prot *prot,
 					enum pwr_role prole)
 {
+	/* Reset the mag id on power role change*/
+	if (prot->pwr_role != prole)
+		prot->rx_msg_id = -1;
 	if (prole == POWER_ROLE_NONE || prole == POWER_ROLE_SINK)
 		prot->pwr_role = PD_POWER_ROLE_CONSUMER;
 	else if (prole == POWER_ROLE_SOURCE)
