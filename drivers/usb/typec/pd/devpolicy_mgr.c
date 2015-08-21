@@ -614,23 +614,11 @@ static int dpm_set_display_port_state(struct devpolicy_mgr *dpm,
 	return 0;
 }
 
-static void dpm_cable_worker(struct work_struct *work)
+static void dpm_handle_ext_cable_event(struct devpolicy_mgr *dpm,
+					struct cable_event *evt)
 {
-	struct devpolicy_mgr *dpm =
-		container_of(work, struct devpolicy_mgr, cable_event_work);
-	struct cable_event *evt, *tmp;
-	unsigned long flags;
-	struct list_head new_list;
+	enum devpolicy_mgr_events dpm_evt = DEVMGR_EVENT_NONE;
 
-	if (list_empty(&dpm->cable_event_queue))
-		return;
-
-	INIT_LIST_HEAD(&new_list);
-	spin_lock_irqsave(&dpm->cable_event_queue_lock, flags);
-	list_replace_init(&dpm->cable_event_queue, &new_list);
-	spin_unlock_irqrestore(&dpm->cable_event_queue_lock, flags);
-
-	list_for_each_entry_safe(evt, tmp, &new_list, node) {
 		pr_debug("DPM:%s: Cable type=%s - %s\n", __func__,
 			((evt->cbl_type == CABLE_TYPE_CONSUMER) ? "Consumer" :
 			((evt->cbl_type == CABLE_TYPE_PROVIDER) ? "Provider" :
@@ -641,31 +629,57 @@ static void dpm_cable_worker(struct work_struct *work)
 		if (evt->cbl_type == CABLE_TYPE_CONSUMER
 			&& evt->cbl_state != dpm->consumer_state) {
 			dpm->consumer_state = evt->cbl_state;
-			if (evt->cbl_state == CABLE_ATTACHED) {
-				dpm_notify_policy_evt(dpm,
-					DEVMGR_EVENT_UFP_CONNECTED);
-			} else if (evt->cbl_state == CABLE_DETACHED) {
-				dpm_notify_policy_evt(dpm,
-					DEVMGR_EVENT_UFP_DISCONNECTED);
-			}
+			if (evt->cbl_state == CABLE_ATTACHED)
+				dpm_evt = DEVMGR_EVENT_UFP_CONNECTED;
+			else if (evt->cbl_state == CABLE_DETACHED)
+				dpm_evt = DEVMGR_EVENT_UFP_DISCONNECTED;
+			else
+				pr_warn("DPM:%s: Unknown consumer state=%d\n",
+					__func__, evt->cbl_state);
 
 		} else if (evt->cbl_type == CABLE_TYPE_PROVIDER
 			&& evt->cbl_state != dpm->provider_state) {
 			dpm->provider_state = evt->cbl_state;
-			if (evt->cbl_state == CABLE_ATTACHED) {
-				dpm_notify_policy_evt(dpm,
-					DEVMGR_EVENT_DFP_CONNECTED);
-			} else if (evt->cbl_state == CABLE_DETACHED) {
-				dpm_notify_policy_evt(dpm,
-					DEVMGR_EVENT_DFP_DISCONNECTED);
-			}
+			if (evt->cbl_state == CABLE_ATTACHED)
+				dpm_evt = DEVMGR_EVENT_DFP_CONNECTED;
+			else if (evt->cbl_state == CABLE_DETACHED)
+				dpm_evt = DEVMGR_EVENT_DFP_DISCONNECTED;
+			else
+				pr_warn("DPM:%s: Unknown consumer state=%d\n",
+					__func__, evt->cbl_state);
 		} else
 			pr_debug("DPM: consumer/provider state not changed\n");
 
 		mutex_unlock(&dpm->role_lock);
+
+		/* Notify policy engine on valid event*/
+		if (dpm_evt != DEVMGR_EVENT_NONE)
+			dpm_notify_policy_evt(dpm, dpm_evt);
+
+}
+
+static void dpm_cable_worker(struct work_struct *work)
+{
+	struct devpolicy_mgr *dpm =
+		container_of(work, struct devpolicy_mgr, cable_event_work);
+	struct cable_event *evt;
+	unsigned long flags;
+
+	spin_lock_irqsave(&dpm->cable_event_queue_lock, flags);
+	while (!list_empty(&dpm->cable_event_queue)) {
+		evt = list_first_entry(&dpm->cable_event_queue,
+				struct cable_event, node);
 		list_del(&evt->node);
+		spin_unlock_irqrestore(&dpm->cable_event_queue_lock, flags);
+		/* Handle the event */
+		pr_debug("DPM:%s: Processing event\n", __func__);
+		dpm_handle_ext_cable_event(dpm, evt);
 		kfree(evt);
+
+		spin_lock_irqsave(&dpm->cable_event_queue_lock, flags);
 	}
+	spin_unlock_irqrestore(&dpm->cable_event_queue_lock, flags);
+
 }
 
 static int dpm_consumer_cable_event(struct notifier_block *nblock,
@@ -676,7 +690,8 @@ static int dpm_consumer_cable_event(struct notifier_block *nblock,
 						struct devpolicy_mgr,
 						consumer_nb);
 	struct extcon_dev *edev = param;
-	struct cable_event *evt;
+	struct cable_event *evt, *tmp;
+	struct list_head new_list;
 
 	if (!edev)
 		return NOTIFY_DONE;
@@ -693,10 +708,26 @@ static int dpm_consumer_cable_event(struct notifier_block *nblock,
 			evt->cbl_state ? "Connected" : "Disconnected");
 
 	spin_lock(&dpm->cable_event_queue_lock);
+
+	/* If event disconnect flush the previous
+	 * events as cable is disconnected */
+	if (evt->cbl_state == CABLE_DETACHED)
+		list_replace_init(&dpm->cable_event_queue, &new_list);
+	else
+		INIT_LIST_HEAD(&new_list);
+
 	list_add_tail(&evt->node, &dpm->cable_event_queue);
 	spin_unlock(&dpm->cable_event_queue_lock);
 
-	queue_work(system_nrt_wq, &dpm->cable_event_work);
+	/* Free all the previous events*/
+	if (!list_empty(&new_list)) {
+		list_for_each_entry_safe(evt, tmp, &new_list, node) {
+			/* Free the event*/
+			kfree(evt);
+		}
+	}
+
+	schedule_work(&dpm->cable_event_work);
 	return NOTIFY_OK;
 }
 
@@ -708,7 +739,8 @@ static int dpm_provider_cable_event(struct notifier_block *nblock,
 						struct devpolicy_mgr,
 						provider_nb);
 	struct extcon_dev *edev = param;
-	struct cable_event *evt;
+	struct cable_event *evt, *tmp;
+	struct list_head new_list;
 
 	if (!edev)
 		return NOTIFY_DONE;
@@ -725,10 +757,26 @@ static int dpm_provider_cable_event(struct notifier_block *nblock,
 			evt->cbl_state ? "Connected" : "Disconnected");
 
 	spin_lock(&dpm->cable_event_queue_lock);
+
+	/* If event disconnect flush the previous
+	 * events as cable is disconnected */
+	if (evt->cbl_state == CABLE_DETACHED)
+		list_replace_init(&dpm->cable_event_queue, &new_list);
+	else
+		INIT_LIST_HEAD(&new_list);
+
 	list_add_tail(&evt->node, &dpm->cable_event_queue);
 	spin_unlock(&dpm->cable_event_queue_lock);
 
-	queue_work(system_nrt_wq, &dpm->cable_event_work);
+	/* Free all the previous events*/
+	if (!list_empty(&new_list)) {
+		list_for_each_entry_safe(evt, tmp, &new_list, node) {
+			/* Free the event*/
+			kfree(evt);
+		}
+	}
+
+	schedule_work(&dpm->cable_event_work);
 	return NOTIFY_OK;
 }
 
