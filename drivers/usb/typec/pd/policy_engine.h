@@ -312,8 +312,6 @@ struct policy_engine {
 	struct pd_prot *prot;
 	struct mutex pe_lock;
 
-	struct list_head dpm_evt_queue;
-	struct work_struct dpm_evt_work;
 	struct devpolicy_mgr *dpm;
 	struct mutex dpm_evt_lock;
 
@@ -366,10 +364,6 @@ struct pe_operations {
 					enum devpolicy_mgr_events evt);
 };
 
-struct pe_dpm_evt {
-	struct list_head node;
-	enum devpolicy_mgr_events evt;
-};
 
 #define pe_get_phy(x)	((x) ?  x->dpm->phy : NULL)
 

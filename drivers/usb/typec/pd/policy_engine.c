@@ -722,44 +722,11 @@ static void pe_handle_dpm_event(struct policy_engine *pe,
 		pe_send_role_swap_request(pe, pevt);
 }
 
-static void pe_dpm_evt_worker(struct work_struct *work)
-{
-	struct policy_engine *pe =
-		container_of(work, struct policy_engine, dpm_evt_work);
-	struct pe_dpm_evt *evt, *tmp;
-	struct list_head new_list;
-
-	if (list_empty(&pe->dpm_evt_queue))
-		return;
-
-	mutex_lock(&pe->dpm_evt_lock);
-	list_replace_init(&pe->dpm_evt_queue, &new_list);
-	mutex_unlock(&pe->dpm_evt_lock);
-
-	list_for_each_entry_safe(evt, tmp, &new_list, node) {
-		pe_handle_dpm_event(pe, evt->evt);
-		kfree(evt);
-	}
-}
 
 static int pe_dpm_notification(struct policy_engine *pe,
 				enum devpolicy_mgr_events evt)
 {
-	struct pe_dpm_evt *dpm_evt;
-
-	dpm_evt = kzalloc(sizeof(*dpm_evt), GFP_KERNEL);
-	if (!dpm_evt) {
-		pr_err("PE: failed to allocate memory for dpm event\n");
-		return -ENOMEM;
-	}
-
-	dpm_evt->evt = evt;
-
-	mutex_lock(&pe->dpm_evt_lock);
-	list_add_tail(&dpm_evt->node, &pe->dpm_evt_queue);
-	mutex_unlock(&pe->dpm_evt_lock);
-	queue_work(system_nrt_wq, &pe->dpm_evt_work);
-
+	pe_handle_dpm_event(pe, evt);
 	return 0;
 }
 
@@ -818,10 +785,6 @@ int policy_engine_bind_dpm(struct devpolicy_mgr *dpm)
 	pe->cur_prole = POWER_ROLE_NONE;
 	INIT_WORK(&pe->policy_init_work, pe_init_policy);
 
-	INIT_WORK(&pe->dpm_evt_work, pe_dpm_evt_worker);
-	INIT_LIST_HEAD(&pe->dpm_evt_queue);
-	mutex_init(&pe->dpm_evt_lock);
-
 	mutex_init(&pe->pe_lock);
 	INIT_LIST_HEAD(&pe->policy_list);
 	dpm->pe = pe;
@@ -840,9 +803,7 @@ void policy_engine_unbind_dpm(struct devpolicy_mgr *dpm)
 {
 	struct policy_engine *pe = dpm->pe;
 	struct policy *p;
-	struct pe_dpm_evt *evt, *tmp;
 	struct pd_policy *supported_policy;
-	struct list_head tmp_list;
 	int i;
 
 	mutex_lock(&pe->pe_lock);
@@ -862,22 +823,6 @@ void policy_engine_unbind_dpm(struct devpolicy_mgr *dpm)
 	protocol_unbind_pe(pe);
 	mutex_unlock(&pe->pe_lock);
 
-	/* Clear dpm event list */
-	mutex_lock(&pe->dpm_evt_lock);
-	if (list_empty(&pe->dpm_evt_queue)) {
-		mutex_unlock(&pe->dpm_evt_lock);
-		goto unbind_dpm_out;
-	}
-
-	list_replace_init(&pe->dpm_evt_queue, &tmp_list);
-	mutex_unlock(&pe->dpm_evt_lock);
-
-	list_for_each_entry_safe(evt, tmp, &tmp_list, node) {
-		/* Free the event */
-		kfree(evt);
-	}
-
-unbind_dpm_out:
 	kfree(pe);
 }
 EXPORT_SYMBOL_GPL(policy_engine_unbind_dpm);
