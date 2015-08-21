@@ -57,6 +57,8 @@ struct src_port_pe {
 	struct work_struct msg_work;
 	int cmd_retry;
 	int vbus_retry_cnt;
+	unsigned got_snk_caps:1;
+	unsigned is_pd_configured:1;
 	/* port partner caps */
 	unsigned pp_is_dual_drole:1;
 	unsigned pp_is_dual_prole:1;
@@ -246,14 +248,16 @@ src_pe_handle_gcrc(struct src_port_pe *src_pe, struct pd_packet *pkt)
 		mutex_lock(&src_pe->pe_lock);
 		src_pe->state = SRC_PE_STATE_PD_CONFIGURED;
 		src_pe->p.status = POLICY_STATUS_SUCCESS;
+		src_pe->cmd_retry = 0;
+		src_pe->is_pd_configured = 1;
 		mutex_unlock(&src_pe->pe_lock);
 		cancel_delayed_work_sync(&src_pe->start_comm);
 		log_info("SRC_PE_STATE_PS_RDY_SENT -> SRC_PE_STATE_PD_CONFIGURED");
 
 		pe_notify_policy_status_changed(&src_pe->p,
 				POLICY_TYPE_SOURCE, src_pe->p.status);
-		/* Get sink caps */
-		src_pe_send_get_snk_cap_cmd(src_pe);
+		/* Schedule worker to get sink caps */
+		schedule_work(&src_pe->msg_work);
 		break;
 	case PE_PRS_SRC_SNK_ACCEPT_PR_SWAP:
 		log_dbg("SRC_SNK_ACCEPT_PR_SWAP -> SRC_SNK_TRANSITION_TO_OFF");
@@ -417,8 +421,14 @@ src_pe_rcv_pkt(struct policy *srcp, struct pd_packet *pkt, enum pe_event evt)
 			complete(&src_pe->psso_complete);
 		break;
 	case PE_EVT_RCVD_SNK_CAP:
-		if (src_pe->state == SRC_PE_STATE_PD_CONFIGURED)
+		if (src_pe->state == PE_SRC_GET_SINK_CAP) {
+			mutex_lock(&src_pe->pe_lock);
+			src_pe->state = SRC_PE_STATE_PD_CONFIGURED;
+			src_pe->got_snk_caps = 1;
+			mutex_unlock(&src_pe->pe_lock);
+			complete(&src_pe->srt_complete);
 			src_pe_handle_snk_cap_rcv(src_pe, pkt);
+		}
 		break;
 	default:
 		ret = -EINVAL;
@@ -495,6 +505,50 @@ error:
 	return ret;
 }
 
+/* This function will send get_snk_cap and wait for responce.
+ * If time out, then re-schedule the msg_worker to resend the get_snk_cap.
+ */
+static void src_pe_get_sink_cap(struct src_port_pe *src_pe)
+{
+	unsigned long timeout;
+	int ret;
+
+	/* Get sink caps */
+	src_pe_send_get_snk_cap_cmd(src_pe);
+	mutex_lock(&src_pe->pe_lock);
+	src_pe->cmd_retry++;
+	src_pe->state = PE_SRC_GET_SINK_CAP;
+	mutex_unlock(&src_pe->pe_lock);
+
+	/* Initialize and run sender responce timer */
+	timeout = msecs_to_jiffies(TYPEC_SENDER_RESPONSE_TIMER);
+	ret = wait_for_completion_timeout(&src_pe->srt_complete, timeout);
+	if (ret == 0 || !src_pe->got_snk_caps) {
+		mutex_lock(&src_pe->pe_lock);
+		src_pe->state = SRC_PE_STATE_PD_CONFIGURED;
+		if (src_pe->cmd_retry < MAX_CMD_RETRY) {
+			log_dbg("SnkCap not received, resend get_snk_cap\n");
+			mutex_unlock(&src_pe->pe_lock);
+			schedule_work(&src_pe->msg_work);
+			goto get_snk_cap_timeout;
+		} else{
+			log_err("SnkCap not received, even after max retry\n");
+			src_pe->cmd_retry = 0;
+			mutex_unlock(&src_pe->pe_lock);
+			goto get_sink_cap_error;
+		}
+	}
+	log_dbg("Successfuly got sink caps\n");
+get_sink_cap_error:
+	/* Irrespective of get_sink_cap status, update the
+	 * policy engine as success as PD negotiation is success.
+	 */
+	pe_notify_policy_status_changed(&src_pe->p,
+				POLICY_TYPE_SOURCE, POLICY_STATUS_SUCCESS);
+get_snk_cap_timeout:
+	reinit_completion(&src_pe->srt_complete);
+}
+
 static void src_pe_msg_worker(struct work_struct *work)
 {
 	struct src_port_pe *src_pe = container_of(work,
@@ -511,6 +565,10 @@ static void src_pe_msg_worker(struct work_struct *work)
 	case PE_PRS_SRC_SNK_SOURCE_OFF:
 		src_pe_snk_source_off_waitfor_psrdy(src_pe);
 		break;
+	case SRC_PE_STATE_PD_CONFIGURED:
+		if (!src_pe->got_snk_caps)
+			src_pe_get_sink_cap(src_pe);
+		break;
 	default:
 		log_err("Unknown state %d\n", src_pe->state);
 		break;
@@ -524,7 +582,7 @@ static void src_pe_start_comm(struct work_struct *work)
 					start_comm.work);
 
 	if ((src_pe->state == SRC_PE_STATE_PD_FAILED)
-		|| (src_pe->state == SRC_PE_STATE_PD_CONFIGURED)
+		|| (src_pe->is_pd_configured)
 		|| (src_pe->p.state == POLICY_STATE_OFFLINE)) {
 		log_info("Not required to send srccap in this state=%d\n",
 				src_pe->state);
@@ -596,6 +654,8 @@ static int src_pe_stop_policy_engine(struct policy *p)
 	reinit_completion(&src_pe->psso_complete);
 	policy_set_pd_state(p, false);
 	src_pe->cmd_retry = 0;
+	src_pe->got_snk_caps = 0;
+	src_pe->is_pd_configured = 0;
 	src_pe->vbus_retry_cnt = 0;
 	src_pe->pp_is_dual_drole = 0;
 	src_pe->pp_is_dual_prole = 0;
