@@ -69,6 +69,12 @@ static struct power_cap spcaps[] = {
 ATOMIC_NOTIFIER_HEAD(devpolicy_mgr_notifier);
 EXPORT_SYMBOL_GPL(devpolicy_mgr_notifier);
 
+struct dpm_cable_state {
+	struct list_head node;
+	char *cbl_type;
+	bool cbl_state;
+};
+
 static inline struct power_supply *dpm_get_psy(enum psy_type type)
 {
 	struct class_dev_iter iter;
@@ -374,6 +380,54 @@ static bool dpm_get_vbus_state(struct devpolicy_mgr *dpm)
 	return false;
 }
 
+static void dpm_notify_cable_state_worker(struct work_struct *work)
+{
+	struct devpolicy_mgr *dpm =
+		container_of(work, struct devpolicy_mgr, cable_notify_work);
+
+	struct dpm_cable_state *cbl, *tmp;
+	struct list_head new_list;
+
+	mutex_lock(&dpm->cable_notify_lock);
+	if (list_empty(&dpm->cable_notify_list)) {
+		mutex_unlock(&dpm->cable_notify_lock);
+		return;
+	}
+
+	list_replace_init(&dpm->cable_notify_list, &new_list);
+	mutex_unlock(&dpm->cable_notify_lock);
+
+	list_for_each_entry_safe(cbl, tmp, &new_list, node) {
+
+		typec_notify_cable_state(dpm->phy,
+					cbl->cbl_type, cbl->cbl_state);
+		kfree(cbl);
+	}
+}
+
+static int dpm_notify_cable_state(struct devpolicy_mgr *dpm,
+					char *cbl_type, bool cbl_state)
+{
+	struct dpm_cable_state *cbl;
+
+	cbl = kzalloc(sizeof(struct dpm_cable_state), GFP_KERNEL);
+	if (!cbl) {
+		pr_err("DPM:%s: Failed to allocate memory for cbl\n",
+					__func__);
+		return -ENOMEM;
+	}
+
+	cbl->cbl_type = cbl_type;
+	cbl->cbl_state = cbl_state;
+
+	mutex_lock(&dpm->cable_notify_lock);
+	list_add_tail(&cbl->node, &dpm->cable_notify_list);
+	mutex_unlock(&dpm->cable_notify_lock);
+
+	schedule_work(&dpm->cable_notify_work);
+	return 0;
+}
+
 static void dpm_update_data_role(struct devpolicy_mgr *dpm,
 				enum data_role drole)
 {
@@ -431,7 +485,7 @@ static void dpm_update_data_role(struct devpolicy_mgr *dpm,
 	}
 	dpm->prev_drole = dpm->cur_drole;
 	dpm->cur_drole = drole;
-	typec_notify_cable_state(dpm->phy, cbl_type, cbl_state);
+	dpm_notify_cable_state(dpm, cbl_type, cbl_state);
 
 drole_err:
 	mutex_unlock(&dpm->role_lock);
@@ -497,7 +551,7 @@ static void dpm_update_power_role(struct devpolicy_mgr *dpm,
 			set_pu_pd = true;
 			pu_pd = false;
 			dpm->provider_state = CABLE_DETACHED;
-			typec_notify_cable_state(dpm->phy, "USB_TYPEC_SRC",
+			dpm_notify_cable_state(dpm, "USB_TYPEC_SRC",
 						CABLE_DETACHED);
 		}
 		dpm->consumer_state = CABLE_ATTACHED;
@@ -537,7 +591,7 @@ static void dpm_update_power_role(struct devpolicy_mgr *dpm,
 	}
 	dpm->prev_prole = cur_prole;
 	dpm->cur_prole = prole;
-	typec_notify_cable_state(dpm->phy, cbl_type, cbl_state);
+	dpm_notify_cable_state(dpm, cbl_type, cbl_state);
 	if (set_pu_pd)
 		dpm_set_pu_pd(dpm, pu_pd);
 update_prole_err:
@@ -553,7 +607,7 @@ static int dpm_set_display_port_state(struct devpolicy_mgr *dpm,
 	dpm->phy->dp_type = type;
 	if (dpm->dp_state != state) {
 		dpm->dp_state = state;
-		typec_notify_cable_state(dpm->phy,
+		dpm_notify_cable_state(dpm,
 			"USB_TYPEC_DP_SOURCE", state);
 	}
 	mutex_unlock(&dpm->role_lock);
@@ -1003,6 +1057,25 @@ static void dpm_unregister_pd_class_dev(struct devpolicy_mgr *dpm)
 	put_device(dev);
 }
 
+static void dpm_clear_notify_list(struct devpolicy_mgr *dpm)
+{
+	struct dpm_cable_state *cbl, *tmp;
+
+	mutex_lock(&dpm->cable_notify_lock);
+	if (list_empty(&dpm->cable_notify_list)) {
+		mutex_unlock(&dpm->cable_notify_lock);
+		return;
+	}
+
+	/* As this clearing list is on exit, temp list not required */
+	list_for_each_entry_safe(cbl, tmp, &dpm->cable_notify_list, node) {
+		/*Free the event*/
+		kfree(cbl);
+	}
+	INIT_LIST_HEAD(&dpm->cable_notify_list);
+	mutex_unlock(&dpm->cable_notify_lock);
+}
+
 static struct dpm_interface interface = {
 	.get_max_srcpwr_cap = dpm_get_max_srcpwr_cap,
 	.get_max_snkpwr_cap = dpm_get_max_snkpwr_cap,
@@ -1045,6 +1118,10 @@ struct devpolicy_mgr *dpm_register_syspolicy(struct typec_phy *phy,
 	spin_lock_init(&dpm->cable_event_queue_lock);
 	mutex_init(&dpm->role_lock);
 	mutex_init(&dpm->charger_lock);
+
+	INIT_WORK(&dpm->cable_notify_work, dpm_notify_cable_state_worker);
+	mutex_init(&dpm->cable_notify_lock);
+	INIT_LIST_HEAD(&dpm->cable_notify_list);
 
 	/* register for extcon notifier */
 	dpm->consumer_nb.notifier_call = dpm_consumer_cable_event;
@@ -1105,6 +1182,7 @@ EXPORT_SYMBOL(dpm_register_syspolicy);
 void dpm_unregister_syspolicy(struct devpolicy_mgr *dpm)
 {
 	if (dpm) {
+		dpm_clear_notify_list(dpm);
 		dpm_unregister_pd_class_dev(dpm);
 		policy_engine_unbind_dpm(dpm);
 		protocol_unbind_dpm(dpm->phy);

@@ -163,6 +163,9 @@ struct devpolicy_mgr {
 	struct policy_engine *pe;
 	/* power delivery class device*/
 	struct device *pd_dev;
+	struct work_struct cable_notify_work;
+	struct mutex cable_notify_lock;
+	struct list_head cable_notify_list;
 };
 
 struct dpm_interface {
