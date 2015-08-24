@@ -267,7 +267,7 @@ static int gc2235_get_intg_factor(struct i2c_client *client,
 		return -EINVAL;
 
 	/* pixel clock calculattion */
-	buf->vt_pix_clk_freq_mhz = dev->vt_pix_clk_freq_mhz = 43750000;
+	buf->vt_pix_clk_freq_mhz = dev->vt_pix_clk_freq_mhz = 30000000;
 
 	/* get integration time */
 	buf->coarse_integration_time_min = GC2235_COARSE_INTG_TIME_MIN;
@@ -337,8 +337,10 @@ static int gc2235_get_intg_factor(struct i2c_client *client,
 	ret = gc2235_read_reg(client, GC2235_8BIT,
 					GC2235_SH_DELAY_L, &reg_val);
 
+#if 0
 	buf->line_length_pck = buf->output_width + 16 + dummy +
 				(((u16)reg_val_h << 8) | (u16)reg_val) + 4;
+#endif
 	ret = gc2235_read_reg(client, GC2235_8BIT,
 					GC2235_VB_H, &reg_val_h);
 	ret = gc2235_read_reg(client, GC2235_8BIT,
@@ -346,8 +348,10 @@ static int gc2235_get_intg_factor(struct i2c_client *client,
 	if (ret)
 		return ret;
 
+#if 0
 	buf->frame_length_lines = buf->output_height + 32 +
 				(((u16)reg_val_h << 8) | (u16)reg_val);
+#endif
 	buf->binning_factor_x = res->bin_factor_x ?
 					res->bin_factor_x : 1;
 	buf->binning_factor_y = res->bin_factor_y ?
