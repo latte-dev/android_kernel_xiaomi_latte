@@ -35,10 +35,14 @@
 #include <linux/acpi.h>
 #include <linux/power_supply.h>
 #include "../power/power_supply_charger.h"
+#include <linux/power/bq24192_charger.h>
 
 #define WCOVE_GPIO_VCHGIN	"vchgin_desc"
 #define WCOVE_GPIO_OTG		"otg_desc"
 #define WCOVE_GPIO_VCONN	"vconn_desc"
+
+#define MAX_UPDATE_VBUS_RETRY_COUNT	3
+#define VBUS_UPDATE_DIFFERED_DELAY	100
 
 struct wcove_gpio_info {
 	struct platform_device *pdev;
@@ -49,7 +53,10 @@ struct wcove_gpio_info {
 	struct gpio_desc *gpio_vconn;
 	struct list_head gpio_queue;
 	struct work_struct gpio_work;
+	struct delayed_work vbus_work;
 	struct mutex lock;
+	int retry_count;
+	bool is_vbus_connected;
 	spinlock_t gpio_queue_lock;
 };
 
@@ -76,7 +83,7 @@ static inline struct power_supply *wcove_gpio_get_psy_charger(void)
 	return NULL;
 }
 
-static void wcove_gpio_set_charger_state(struct wcove_gpio_info *info,
+static int wcgpio_set_charger_state(struct wcove_gpio_info *info,
 						bool state)
 {
 	struct power_supply *psy;
@@ -84,30 +91,74 @@ static void wcove_gpio_set_charger_state(struct wcove_gpio_info *info,
 	psy = wcove_gpio_get_psy_charger();
 	if (psy == NULL) {
 		dev_err(&info->pdev->dev, "Unable to get psy for charger\n");
-		return;
+		return -ENODEV;
 	}
-	set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGER, state);
+	return set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGER, state);
 }
 
-static void wcove_gpio_ctrl_worker(struct work_struct *work)
+static void wcgpio_update_vbus_state(struct wcove_gpio_info *info, bool state)
+{
+	int ret;
+
+	if (state) {
+		/* put charger into HiZ mode */
+		ret = wcgpio_set_charger_state(info, false);
+		if (ret == 0) {
+			ret = bq24192_vbus_enable();
+			if (ret)
+				dev_warn(&info->pdev->dev,
+					"Error in VBUS enable %d", ret);
+		} else
+			ret = -EAGAIN;
+	} else {
+		ret = bq24192_vbus_disable();
+		if (ret)
+			dev_warn(&info->pdev->dev,
+				"Error in VBUS disable %d", ret);
+	}
+
+	if ((ret == -EAGAIN) &&
+		(info->retry_count <= MAX_UPDATE_VBUS_RETRY_COUNT)) {
+		info->retry_count++;
+		schedule_delayed_work(&info->vbus_work, VBUS_UPDATE_DIFFERED_DELAY);
+	} else
+		info->retry_count = 0;
+}
+
+static void wcgpio_vbus_worker(struct work_struct *work)
+{
+	struct wcove_gpio_info *info =
+		container_of(work, struct wcove_gpio_info, vbus_work.work);
+
+	wcgpio_update_vbus_state(info, info->is_vbus_connected);
+}
+
+static void wcgpio_ctrl_worker(struct work_struct *work)
 {
 	struct wcove_gpio_info *info =
 		container_of(work, struct wcove_gpio_info, gpio_work);
 	struct wcove_gpio_event *evt, *tmp;
 	unsigned long flags;
+	struct list_head new_list;
+
+        if (list_empty(&info->gpio_queue))
+                return;
 
 	spin_lock_irqsave(&info->gpio_queue_lock, flags);
-	list_for_each_entry_safe(evt, tmp, &info->gpio_queue, node) {
-		list_del(&evt->node);
-		spin_unlock_irqrestore(&info->gpio_queue_lock, flags);
+        list_replace_init(&info->gpio_queue, &new_list);
+	spin_unlock_irqrestore(&info->gpio_queue_lock, flags);
 
+	list_for_each_entry_safe(evt, tmp, &new_list, node) {
 		dev_info(&info->pdev->dev,
 				"%s:%d state=%d\n", __FILE__, __LINE__,
 				evt->is_src_connected);
+		info->is_vbus_connected = evt->is_src_connected;
+		info->retry_count = 0;
 
-		mutex_lock(&info->lock);
-		if (evt->is_src_connected) /* put charging into HiZ mode */
-			wcove_gpio_set_charger_state(info, false);
+		/* cancelling the previous event handling scheduled, since a new
+		 * event has happened for connect/disconnect */
+		cancel_delayed_work(&info->vbus_work);
+		wcgpio_update_vbus_state(info, info->is_vbus_connected);
 
 		/* enable/disable vbus based on the provider(source) event */
 		gpiod_set_value_cansleep(info->gpio_otg,
@@ -115,14 +166,9 @@ static void wcove_gpio_ctrl_worker(struct work_struct *work)
 
 		/* FIXME: vchrgin GPIO is not setting here to select
 		 * Wireless Charging */
-		mutex_unlock(&info->lock);
-		spin_lock_irqsave(&info->gpio_queue_lock, flags);
+		list_del(&evt->node);
 		kfree(evt);
-
 	}
-	spin_unlock_irqrestore(&info->gpio_queue_lock, flags);
-
-	return;
 }
 
 static int wcgpio_check_events(struct wcove_gpio_info *info,
@@ -164,7 +210,7 @@ static int wcgpio_event_handler(struct notifier_block *nblock,
 
 	ret = wcgpio_check_events(info, edev);
 
-	if (IS_ERR(ret))
+	if (ret < 0)
 		return NOTIFY_DONE;
 
 	return NOTIFY_OK;
@@ -196,7 +242,8 @@ static int wcove_gpio_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, info);
 	mutex_init(&info->lock);
 	INIT_LIST_HEAD(&info->gpio_queue);
-	INIT_WORK(&info->gpio_work, wcove_gpio_ctrl_worker);
+	INIT_WORK(&info->gpio_work, wcgpio_ctrl_worker);
+	INIT_DELAYED_WORK(&info->vbus_work, wcgpio_vbus_worker);
 	spin_lock_init(&info->gpio_queue_lock);
 
 	info->nb.notifier_call = wcgpio_event_handler;
