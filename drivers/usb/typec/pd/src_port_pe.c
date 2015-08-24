@@ -57,6 +57,7 @@ struct src_port_pe {
 	struct work_struct msg_work;
 	int cmd_retry;
 	int vbus_retry_cnt;
+	enum pe_event last_rcv_evt;
 	unsigned got_snk_caps:1;
 	unsigned is_pd_configured:1;
 	/* port partner caps */
@@ -94,6 +95,16 @@ static void src_pe_reset_policy_engine(struct src_port_pe *src_pe)
 	/* By default dual power role is enabled*/
 	src_pe->pp_is_dual_prole = 1;
 	src_pe->pp_is_ext_pwrd = 0;
+}
+
+static void src_pe_do_pe_reset_on_error(struct src_port_pe *src_pe)
+{
+	src_pe_reset_policy_engine(src_pe);
+	policy_send_packet(&src_pe->p, NULL, 0, PD_CMD_HARD_RESET,
+						PE_EVT_SEND_HARD_RESET);
+
+	/* Schedule worker to send src_cap*/
+	schedule_delayed_work(&src_pe->start_comm, 0);
 }
 
 static int src_pe_send_srccap_cmd(struct src_port_pe *src_pe)
@@ -224,6 +235,163 @@ trans_to_swap_fail:
 	return ret;
 }
 
+static void src_pe_handle_dr_swap_transition(struct src_port_pe *src_pe,
+			enum data_role to_role)
+{
+	int ret;
+
+	mutex_lock(&src_pe->pe_lock);
+	if (to_role == DATA_ROLE_UFP)
+		src_pe->state = PE_DRS_DFP_UFP_CHANGE_TO_UFP;
+	else
+		src_pe->state = PE_DRS_UFP_DFP_CHANGE_TO_DFP;
+	mutex_unlock(&src_pe->pe_lock);
+
+	log_dbg("Changing data role to %d", to_role);
+	ret = policy_set_data_role(&src_pe->p, to_role);
+	if (ret) {
+		log_err("Failed to change the data role");
+		/*Reset pe as role swap failed*/
+		src_pe_do_pe_reset_on_error(src_pe);
+		return;
+	}
+	log_dbg("Data role changed to %d", to_role);
+	mutex_lock(&src_pe->pe_lock);
+	src_pe->state = SRC_PE_STATE_PD_CONFIGURED;
+	mutex_unlock(&src_pe->pe_lock);
+}
+
+static void src_pe_handle_after_dr_swap_sent(struct src_port_pe *src_pe)
+{
+	unsigned long timeout;
+	int ret, state;
+
+	/* Initialize and run SenderResponseTimer */
+	timeout = msecs_to_jiffies(TYPEC_SENDER_RESPONSE_TIMER);
+	/* unblock this once Accept msg received by checking the
+	 * cur_state */
+	ret = wait_for_completion_timeout(&src_pe->srt_complete, timeout);
+	mutex_lock(&src_pe->pe_lock);
+	if (ret == 0) {
+		log_err("SRT time expired, move to READY");
+		goto dr_sent_error;
+	}
+
+	if (src_pe->last_rcv_evt != PE_EVT_RCVD_ACCEPT) {
+		log_info("DR swap not accepted!!");
+		goto dr_sent_error;
+	}
+	state = src_pe->state;
+	mutex_unlock(&src_pe->pe_lock);
+	log_dbg("DR swap accepted by port partner");
+	if (state == PE_DRS_DFP_UFP_SEND_DR_SWAP)
+		src_pe_handle_dr_swap_transition(src_pe, DATA_ROLE_UFP);
+	else if (state == PE_DRS_UFP_DFP_SEND_DR_SWAP)
+		src_pe_handle_dr_swap_transition(src_pe, DATA_ROLE_DFP);
+	else
+		log_err("Unexpected state=%d !!!\n", state);
+	goto dr_sent_end;
+
+dr_sent_error:
+	src_pe->state = SRC_PE_STATE_PD_CONFIGURED;
+	mutex_unlock(&src_pe->pe_lock);
+dr_sent_end:
+	reinit_completion(&src_pe->srt_complete);
+	return;
+}
+
+static int src_pe_handle_trigger_dr_swap(struct src_port_pe *src_pe)
+{
+	enum data_role drole;
+
+	drole = policy_get_data_role(&src_pe->p);
+
+	if ((src_pe->state != SRC_PE_STATE_PD_CONFIGURED)
+		|| ((drole != DATA_ROLE_UFP)
+		&& (drole != DATA_ROLE_DFP))) {
+		log_dbg("Not processing DR_SWAP request in state=%d",
+				src_pe->state);
+		return -EINVAL;
+	}
+
+	mutex_lock(&src_pe->pe_lock);
+	if (drole == DATA_ROLE_DFP)
+		src_pe->state = PE_DRS_DFP_UFP_SEND_DR_SWAP;
+	else
+		src_pe->state = PE_DRS_UFP_DFP_SEND_DR_SWAP;
+	src_pe->p.status = POLICY_STATUS_RUNNING;
+	mutex_unlock(&src_pe->pe_lock);
+	schedule_work(&src_pe->msg_work);
+
+	policy_send_packet(&src_pe->p, NULL, 0,
+			PD_CTRL_MSG_DR_SWAP, PE_EVT_SEND_DR_SWAP);
+
+	return 0;
+}
+
+static void src_pe_handle_after_dr_swap_accept(struct src_port_pe *src_pe)
+{
+	unsigned long timeout;
+	int ret, state;
+
+	/* Initialize and run SenderResponseTimer */
+	timeout = msecs_to_jiffies(TYPEC_SENDER_RESPONSE_TIMER);
+	/* unblock this once Accept msg received by checking the
+	 * cur_state */
+	ret = wait_for_completion_timeout(&src_pe->srt_complete, timeout);
+	if (ret == 0) {
+		log_err("SRT time expired, move to RESET");
+		/*Reset pe as role swap failed*/
+		src_pe_do_pe_reset_on_error(src_pe);
+		goto swap_accept_error;
+	}
+
+
+	mutex_lock(&src_pe->pe_lock);
+	state = src_pe->state;
+	mutex_unlock(&src_pe->pe_lock);
+	log_dbg("GCRC for DR swap accepted");
+	if (state == PE_DRS_DFP_UFP_ACCEPT_DR_SWAP)
+		src_pe_handle_dr_swap_transition(src_pe, DATA_ROLE_UFP);
+	else if (state == PE_DRS_UFP_DFP_ACCEPT_DR_SWAP)
+		src_pe_handle_dr_swap_transition(src_pe, DATA_ROLE_DFP);
+	else
+		log_err("Unexpected state=%d !!!\n", state);
+
+swap_accept_error:
+	reinit_completion(&src_pe->srt_complete);
+}
+
+static void src_pe_handle_rcv_dr_swap(struct src_port_pe *src_pe)
+{
+	enum data_role drole;
+
+	drole = policy_get_data_role(&src_pe->p);
+
+	if ((src_pe->state != SRC_PE_STATE_PD_CONFIGURED)
+		|| ((drole != DATA_ROLE_UFP)
+		&& (drole != DATA_ROLE_DFP))) {
+		log_dbg("Not processing DR_SWAP request in state=%d",
+				src_pe->state);
+		policy_send_packet(&src_pe->p, NULL, 0,
+			PD_CTRL_MSG_REJECT, PE_EVT_SEND_REJECT);
+		return;
+	}
+
+	mutex_lock(&src_pe->pe_lock);
+	if (drole == DATA_ROLE_DFP)
+		src_pe->state = PE_DRS_DFP_UFP_ACCEPT_DR_SWAP;
+	else
+		src_pe->state = PE_DRS_UFP_DFP_ACCEPT_DR_SWAP;
+	src_pe->p.status = POLICY_STATUS_RUNNING;
+	mutex_unlock(&src_pe->pe_lock);
+	schedule_work(&src_pe->msg_work);
+
+	policy_send_packet(&src_pe->p, NULL, 0,
+			PD_CTRL_MSG_ACCEPT, PE_EVT_SEND_ACCEPT);
+
+}
+
 static int
 src_pe_handle_gcrc(struct src_port_pe *src_pe, struct pd_packet *pkt)
 {
@@ -269,6 +437,10 @@ src_pe_handle_gcrc(struct src_port_pe *src_pe, struct pd_packet *pkt)
 	case PE_PRS_SRC_SNK_SOURCE_OFF:
 		log_dbg("PE_PRS_SRC_SNK_SOURCE_OFF -> PE_SNK_STARTUP");
 		schedule_work(&src_pe->msg_work);
+		break;
+	case PE_DRS_DFP_UFP_ACCEPT_DR_SWAP:
+	case PE_DRS_UFP_DFP_ACCEPT_DR_SWAP:
+		complete(&src_pe->srt_complete);
 		break;
 	default:
 		ret = -EINVAL;
@@ -338,6 +510,7 @@ static int src_pe_rcv_request(struct policy *srcp, enum pe_event evt)
 {
 	struct src_port_pe *src_pe = container_of(srcp,
 					struct src_port_pe, p);
+	int ret = 0;
 
 	log_dbg("%s evt %d\n", __func__, evt);
 	switch (evt) {
@@ -359,11 +532,13 @@ static int src_pe_rcv_request(struct policy *srcp, enum pe_event evt)
 					PD_CTRL_MSG_PR_SWAP, evt);
 		break;
 	case PE_EVT_SEND_DR_SWAP:
+		ret = src_pe_handle_trigger_dr_swap(src_pe);
+		break;
 	default:
 		break;
 	}
 
-	return 0;
+	return ret;
 }
 
 static void src_pe_handle_snk_cap_rcv(struct src_port_pe *src_pe,
@@ -413,9 +588,15 @@ src_pe_rcv_pkt(struct policy *srcp, struct pd_packet *pkt, enum pe_event evt)
 		}
 		break;
 	case PE_EVT_RCVD_ACCEPT:
-		if (src_pe->state == PE_PRS_SRC_SNK_SEND_PR_SWAP)
+	case PE_EVT_RCVD_REJECT:
+		if ((src_pe->state == PE_PRS_SRC_SNK_SEND_PR_SWAP)
+			|| (src_pe->state == PE_DRS_UFP_DFP_SEND_DR_SWAP)
+			|| (src_pe->state == PE_DRS_DFP_UFP_SEND_DR_SWAP)) {
+			src_pe->last_rcv_evt = evt;
 			complete(&src_pe->srt_complete);
+		}
 		break;
+
 	case PE_EVT_RCVD_PS_RDY:
 		if (src_pe->state == PE_PRS_SRC_SNK_SOURCE_OFF)
 			complete(&src_pe->psso_complete);
@@ -429,6 +610,9 @@ src_pe_rcv_pkt(struct policy *srcp, struct pd_packet *pkt, enum pe_event evt)
 			complete(&src_pe->srt_complete);
 			src_pe_handle_snk_cap_rcv(src_pe, pkt);
 		}
+		break;
+	case PE_EVT_RCVD_DR_SWAP:
+		src_pe_handle_rcv_dr_swap(src_pe);
 		break;
 	default:
 		ret = -EINVAL;
@@ -465,17 +649,22 @@ static int src_pe_handle_after_prswap_sent(struct src_port_pe *src_pe)
 	/* unblock this once Accept msg received by checking the
 	 * cur_state */
 	ret = wait_for_completion_timeout(&src_pe->srt_complete, timeout);
+	mutex_lock(&src_pe->pe_lock);
 	if (ret == 0) {
 		log_err("SRT time expired, move to READY");
-		mutex_lock(&src_pe->pe_lock);
-		src_pe->state = SRC_PE_STATE_PD_CONFIGURED;
-		mutex_unlock(&src_pe->pe_lock);
-
 		goto error;
 	}
+	if (src_pe->last_rcv_evt != PE_EVT_RCVD_ACCEPT)
+		goto error;
+
+	mutex_unlock(&src_pe->pe_lock);
 	ret = src_pe_handle_sink_transition_to_off(src_pe);
+	reinit_completion(&src_pe->srt_complete);
+	return ret;
 
 error:
+	src_pe->state = SRC_PE_STATE_PD_CONFIGURED;
+	mutex_unlock(&src_pe->pe_lock);
 	reinit_completion(&src_pe->srt_complete);
 	return ret;
 }
@@ -570,6 +759,14 @@ static void src_pe_msg_worker(struct work_struct *work)
 	case SRC_PE_STATE_PD_CONFIGURED:
 		if (!src_pe->got_snk_caps)
 			src_pe_get_sink_cap(src_pe);
+		break;
+	case PE_DRS_DFP_UFP_SEND_DR_SWAP:
+	case PE_DRS_UFP_DFP_SEND_DR_SWAP:
+		src_pe_handle_after_dr_swap_sent(src_pe);
+		break;
+	case PE_DRS_DFP_UFP_ACCEPT_DR_SWAP:
+	case PE_DRS_UFP_DFP_ACCEPT_DR_SWAP:
+		src_pe_handle_after_dr_swap_accept(src_pe);
 		break;
 	default:
 		log_err("Unknown state %d\n", src_pe->state);
