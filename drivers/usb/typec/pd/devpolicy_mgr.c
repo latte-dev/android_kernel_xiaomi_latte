@@ -439,29 +439,25 @@ static void dpm_update_data_role(struct devpolicy_mgr *dpm,
 	cur_drole = dpm->cur_drole;
 	if (cur_drole == drole)
 		goto drole_err;
+
 	switch (drole) {
-	case DATA_ROLE_SWAP:
+	case DATA_ROLE_UFP:
 		if (cur_drole == DATA_ROLE_DFP) {
 			/* Role swap from DFP to UFP, Send DFP disconnect */
-			cbl_type = "USB-Host";
-			cbl_state = CABLE_DETACHED;
-		} else if (cur_drole == DATA_ROLE_UFP) {
-			/* Role swap from UFP to DFP, Send UFP disconnect */
-			cbl_type = "USB";
-			cbl_state = CABLE_DETACHED;
-		} else {
-			pr_warn("DPM:%s:DR_SWAP cann't be processed\n",
-					__func__);
-			goto drole_err;
+			dpm_notify_cable_state(dpm, "USB-Host",
+							CABLE_DETACHED);
 		}
-		break;
-	case DATA_ROLE_UFP:
 		/* Send UFP connect */
 		cbl_type = "USB";
 		cbl_state = CABLE_ATTACHED;
 		break;
 
 	case DATA_ROLE_DFP:
+		if (cur_drole == DATA_ROLE_UFP) {
+			/* Role swap from UFP to DFP, Send UFP disconnect */
+			dpm_notify_cable_state(dpm, "USB",
+						CABLE_DETACHED);
+		}
 		/* Send DFP connect */
 		cbl_type = "USB-Host";
 		cbl_state = CABLE_ATTACHED;
@@ -476,8 +472,11 @@ static void dpm_update_data_role(struct devpolicy_mgr *dpm,
 		} else if (cur_drole == DATA_ROLE_UFP) {
 			cbl_type = "USB";
 			cbl_state = CABLE_DETACHED;
-		} else
+		} else {
+			pr_err("DMP:%s: Unexpected cur_drole=%d\n", __func__,
+						cur_drole);
 			goto drole_err;
+		}
 		break;
 	default:
 		pr_debug("DPM:%s: unknown data role!!\n", __func__);
