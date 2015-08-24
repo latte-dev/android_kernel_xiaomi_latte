@@ -5512,7 +5512,9 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		if (encoder->pre_pll_enable) {
 			if (encoder->type == INTEL_OUTPUT_DSI) {
-				if (dev_priv->quick_modeset)
+				intel_dsi = enc_to_intel_dsi(&encoder->base);
+				if (dev_priv->quick_modeset &&
+							is_vid_mode(intel_dsi))
 					continue;
 			}
 			encoder->pre_pll_enable(encoder);
@@ -5528,7 +5530,9 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		if (encoder->pre_enable) {
-			if (encoder->type == INTEL_OUTPUT_DSI) {
+			intel_dsi = enc_to_intel_dsi(&encoder->base);
+			if ((encoder->type == INTEL_OUTPUT_DSI) &&
+						is_vid_mode(intel_dsi)) {
 				if (dev_priv->quick_modeset)
 					continue;
 			}
@@ -5572,7 +5576,8 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		if (encoder->type == INTEL_OUTPUT_DSI) {
-			if (dev_priv->quick_modeset)
+			intel_dsi = enc_to_intel_dsi(&encoder->base);
+			if (dev_priv->quick_modeset && is_vid_mode(intel_dsi))
 				continue;
 			encoder->enable(encoder);
 		}
@@ -5812,7 +5817,8 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		if (encoder->type == INTEL_OUTPUT_DSI) {
-			if (dev_priv->quick_modeset)
+			intel_dsi = enc_to_intel_dsi(&encoder->base);
+			if (dev_priv->quick_modeset && is_vid_mode(intel_dsi))
 				continue;
 		}
 		encoder->disable(encoder);
@@ -5837,7 +5843,9 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		if (encoder->post_disable) {
 			if (encoder->type == INTEL_OUTPUT_DSI) {
-				if (dev_priv->quick_modeset)
+				intel_dsi = enc_to_intel_dsi(&encoder->base);
+				if (dev_priv->quick_modeset &&
+							is_vid_mode(intel_dsi))
 					continue;
 			}
 			encoder->post_disable(encoder);
