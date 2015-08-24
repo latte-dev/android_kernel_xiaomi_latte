@@ -286,6 +286,147 @@ send_swap_out:
 	reinit_completion(&sink->srt_complete);
 }
 
+static void snkpe_handle_dr_swap_transition(struct sink_port_pe *sink,
+			enum data_role to_role)
+{
+	int ret;
+
+	if (to_role == DATA_ROLE_UFP)
+		snkpe_update_state(sink, PE_DRS_DFP_UFP_CHANGE_TO_UFP);
+	else
+		snkpe_update_state(sink, PE_DRS_UFP_DFP_CHANGE_TO_DFP);
+
+	pr_debug("SNKPE:%s:Changing data role to %d", __func__, to_role);
+	ret = policy_set_data_role(&sink->p, to_role);
+	if (ret) {
+		pr_err("SNKPE:%s:Failed to change the data role\n", __func__);
+		/*Reset pe as role swap failed*/
+		/* Move to PE_SNK_Hard_Reset state */
+		snkpe_update_state(sink, PE_SNK_HARD_RESET);
+		schedule_work(&sink->timer_work);
+		return;
+	}
+	pr_debug("SNKPE:%s:Data role changed to %d", __func__, to_role);
+	snkpe_update_state(sink, PE_SNK_READY);
+}
+
+static void snkpe_handle_after_dr_swap_sent(struct sink_port_pe *sink)
+{
+	unsigned long timeout;
+	int ret;
+
+	/* Initialize and run SenderResponseTimer */
+	timeout = msecs_to_jiffies(TYPEC_SENDER_RESPONSE_TIMER);
+	/* unblock this once Accept msg received by checking the
+	 * cur_state */
+	ret = wait_for_completion_timeout(&sink->srt_complete, timeout);
+	if (ret == 0) {
+		pr_err("SNKPE:%s:SRT time expired, Move to READY\n",
+					__func__);
+		snkpe_update_state(sink, PE_SNK_READY);
+		goto dr_sent_error;
+	}
+
+	if (sink->last_pkt != PE_EVT_RCVD_ACCEPT) {
+		pr_info("SNKPE:%s:DR swap not accepted!!\n", __func__);
+		snkpe_update_state(sink, PE_SNK_READY);
+		goto dr_sent_error;
+	}
+	pr_debug("SNKPE:%s:DR swap accepted by port partner\n", __func__);
+	if (sink->cur_state == PE_DRS_DFP_UFP_SEND_DR_SWAP)
+		snkpe_handle_dr_swap_transition(sink, DATA_ROLE_UFP);
+	else if (sink->cur_state == PE_DRS_UFP_DFP_SEND_DR_SWAP)
+		snkpe_handle_dr_swap_transition(sink, DATA_ROLE_DFP);
+	else
+		pr_err("SNKPE:%s:Unexpected state=%d !!!\n",
+					__func__, sink->cur_state);
+
+dr_sent_error:
+	reinit_completion(&sink->srt_complete);
+	return;
+}
+
+static int snkpe_handle_trigger_dr_swap(struct sink_port_pe *sink)
+{
+	enum data_role drole;
+
+	drole = policy_get_data_role(&sink->p);
+
+	if (sink->cur_state != PE_SNK_READY
+		|| (drole != DATA_ROLE_UFP && drole != DATA_ROLE_DFP)) {
+		pr_warn("SNKPE:%s:Not processing DR_SWAP request in state=%d",
+				__func__, sink->cur_state);
+		return -EINVAL;
+	}
+
+	if (drole == DATA_ROLE_DFP)
+		snkpe_update_state(sink, PE_DRS_DFP_UFP_SEND_DR_SWAP);
+	else
+		snkpe_update_state(sink, PE_DRS_UFP_DFP_SEND_DR_SWAP);
+	schedule_work(&sink->timer_work);
+
+	policy_send_packet(&sink->p, NULL, 0,
+			PD_CTRL_MSG_DR_SWAP, PE_EVT_SEND_DR_SWAP);
+
+	return 0;
+}
+
+static void snkpe_handle_after_dr_swap_accept(struct sink_port_pe *sink)
+{
+	unsigned long timeout;
+	int ret;
+
+	/* Initialize and run SenderResponseTimer */
+	timeout = msecs_to_jiffies(TYPEC_SENDER_RESPONSE_TIMER);
+	/* unblock this once Accept msg received by checking the
+	 * cur_state */
+	ret = wait_for_completion_timeout(&sink->srt_complete, timeout);
+	if (ret == 0) {
+		pr_err("SNKPE:%s:SRT time expired, move to RESET\n", __func__);
+		/*Reset pe as role swap failed*/
+		snkpe_update_state(sink, PE_SNK_HARD_RESET);
+		schedule_work(&sink->timer_work);
+		goto swap_accept_error;
+	}
+
+	if (sink->cur_state == PE_DRS_DFP_UFP_ACCEPT_DR_SWAP)
+		snkpe_handle_dr_swap_transition(sink, DATA_ROLE_UFP);
+	else if (sink->cur_state == PE_DRS_UFP_DFP_ACCEPT_DR_SWAP)
+		snkpe_handle_dr_swap_transition(sink, DATA_ROLE_DFP);
+	else
+		pr_err("SNKPE:%s:Unexpected state=%d !!!\n",
+				__func__, sink->cur_state);
+
+swap_accept_error:
+	reinit_completion(&sink->srt_complete);
+}
+
+static void snkpe_handle_rcv_dr_swap(struct sink_port_pe *sink)
+{
+	enum data_role drole;
+
+	drole = policy_get_data_role(&sink->p);
+
+	if (sink->cur_state != PE_SNK_READY
+		|| (drole != DATA_ROLE_UFP && drole != DATA_ROLE_DFP)) {
+		pr_debug("SNKPE:%s:Not processing DR_SWAP request in state=%d",
+				__func__, sink->cur_state);
+		policy_send_packet(&sink->p, NULL, 0,
+			PD_CTRL_MSG_REJECT, PE_EVT_SEND_REJECT);
+		return;
+	}
+
+	if (drole == DATA_ROLE_DFP)
+		snkpe_update_state(sink, PE_DRS_DFP_UFP_ACCEPT_DR_SWAP);
+	else
+		snkpe_update_state(sink, PE_DRS_UFP_DFP_ACCEPT_DR_SWAP);
+	schedule_work(&sink->timer_work);
+
+	policy_send_packet(&sink->p, NULL, 0,
+			PD_CTRL_MSG_ACCEPT, PE_EVT_SEND_ACCEPT);
+
+}
+
 static void snkpe_received_msg_good_crc(struct sink_port_pe *sink)
 {
 
@@ -308,6 +449,10 @@ static void snkpe_received_msg_good_crc(struct sink_port_pe *sink)
 	case PE_PRS_SNK_SRC_SOURCE_ON:
 		pr_debug("SNKPE:%s: Calling swith policy\n", __func__);
 		policy_switch_policy(&sink->p, POLICY_TYPE_SOURCE);
+		break;
+	case PE_DRS_DFP_UFP_ACCEPT_DR_SWAP:
+	case PE_DRS_UFP_DFP_ACCEPT_DR_SWAP:
+		complete(&sink->srt_complete);
 		break;
 	default:
 		pr_warn("SNKPE: Recved GOODCRC in %d state\n", sink->cur_state);
@@ -336,6 +481,8 @@ static int sink_port_policy_rcv_request(struct policy *p, enum pe_event evt)
 		schedule_work(&sink->timer_work);
 		break;
 	case PE_EVT_SEND_DR_SWAP:
+		snkpe_handle_trigger_dr_swap(sink);
+		break;
 	default:
 		break;
 	}
@@ -378,7 +525,6 @@ static void sink_handle_accept_reject_wait(struct sink_port_pe *sink,
 end:
 	return;
 }
-
 
 static int snkpe_setup_charging(struct sink_port_pe *sink)
 {
@@ -743,6 +889,14 @@ static void snkpe_task_worker(struct work_struct *work)
 	case PE_PRS_SNK_SRC_SEND_PR_SWAP:
 		snkpe_handle_send_swap(sink);
 		break;
+	case PE_DRS_DFP_UFP_SEND_DR_SWAP:
+	case PE_DRS_UFP_DFP_SEND_DR_SWAP:
+		snkpe_handle_after_dr_swap_sent(sink);
+		break;
+	case PE_DRS_DFP_UFP_ACCEPT_DR_SWAP:
+	case PE_DRS_UFP_DFP_ACCEPT_DR_SWAP:
+		snkpe_handle_after_dr_swap_accept(sink);
+		break;
 	default:
 		pr_warn("SNKPE: got state %d\n", sink->cur_state);
 		break;
@@ -861,7 +1015,9 @@ static int sink_port_policy_rcv_pkt(struct policy *p, struct pd_packet *pkt,
 			/* Move to start-up */
 			snkpe_update_state(sink, PE_SNK_STARTUP);
 
-		} else if (sink->cur_state == PE_PRS_SNK_SRC_SEND_PR_SWAP) {
+		} else if (sink->cur_state == PE_PRS_SNK_SRC_SEND_PR_SWAP
+			|| sink->cur_state == PE_DRS_UFP_DFP_SEND_DR_SWAP
+			|| sink->cur_state == PE_DRS_DFP_UFP_SEND_DR_SWAP) {
 			/* unblock the waiting thread */
 			complete(&sink->srt_complete);
 		}
@@ -892,6 +1048,9 @@ static int sink_port_policy_rcv_pkt(struct policy *p, struct pd_packet *pkt,
 		else
 			pr_debug("SNKPE:%s: PR_Swap rcvd in worng state=%d\n",
 					__func__, sink->cur_state);
+		break;
+	case PE_EVT_RCVD_DR_SWAP:
+		snkpe_handle_rcv_dr_swap(sink);
 		break;
 	default:
 		pr_warn("SNKPE: Not intersted in (%d) event\n", evt);
