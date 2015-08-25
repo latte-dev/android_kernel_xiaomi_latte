@@ -727,6 +727,9 @@ struct policy *disp_pe_init(struct policy_engine *pe)
 	struct disp_port_pe *disp_pe;
 	struct policy *p;
 
+	if (!pe)
+		return ERR_PTR(-EINVAL);
+
 	disp_pe = kzalloc(sizeof(struct disp_port_pe),
 						GFP_KERNEL);
 	if (!disp_pe) {

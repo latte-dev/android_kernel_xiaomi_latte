@@ -890,6 +890,9 @@ struct policy *src_pe_init(struct policy_engine *pe)
 	struct src_port_pe *src_pe;
 	struct policy *p;
 
+	if (!pe)
+		return ERR_PTR(-EINVAL);
+
 	src_pe = kzalloc(sizeof(struct src_port_pe),
 						GFP_KERNEL);
 	if (!src_pe) {

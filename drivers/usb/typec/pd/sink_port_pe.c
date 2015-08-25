@@ -1148,6 +1148,9 @@ struct policy *sink_port_policy_init(struct policy_engine *pe)
 	struct sink_port_pe *snkpe;
 	struct policy *p;
 
+	if (!pe)
+		return ERR_PTR(-EINVAL);
+
 	snkpe = kzalloc(sizeof(*snkpe), GFP_KERNEL);
 	if (!snkpe)
 		return ERR_PTR(-ENOMEM);

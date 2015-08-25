@@ -520,7 +520,7 @@ static struct policy *__pe_find_policy(struct list_head *list,
 		return p;
 	}
 
-	return ERR_PTR(-ENODEV);
+	return NULL;
 }
 
 static void pe_policy_status_changed(struct policy_engine *pe,
@@ -816,6 +816,9 @@ int policy_engine_bind_dpm(struct devpolicy_mgr *dpm)
 	if (!dpm)
 		return -EINVAL;
 
+	if (dpm->pe)
+		return -EEXIST;
+
 	pe = devm_kzalloc(dpm->phy->dev, sizeof(struct policy_engine),
 				GFP_KERNEL);
 	if (!pe)
@@ -851,11 +854,15 @@ EXPORT_SYMBOL_GPL(policy_engine_bind_dpm);
 
 void policy_engine_unbind_dpm(struct devpolicy_mgr *dpm)
 {
-	struct policy_engine *pe = dpm->pe;
+	struct policy_engine *pe;
 	struct policy *p;
 	struct pd_policy *supported_policy;
 	int i;
 
+	if (!dpm || !dpm->pe)
+		return;
+
+	pe = dpm->pe;
 	mutex_lock(&pe->pe_lock);
 	/* remove the pe ops to avoid further external
 	 * notifications and callbacks.
@@ -867,7 +874,8 @@ void policy_engine_unbind_dpm(struct devpolicy_mgr *dpm)
 	for (i = 0; i < supported_policy->num_policies; i++) {
 		p = __pe_find_policy(&pe->policy_list,
 					supported_policy->policies[i]);
-		p->exit(p);
+		if (p)
+			p->exit(p);
 	}
 	/* Unbind from protocol layer */
 	protocol_unbind_pe(pe);

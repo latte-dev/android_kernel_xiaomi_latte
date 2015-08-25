@@ -486,13 +486,23 @@ static void prot_role_chnage_worker(struct work_struct *work)
 
 int protocol_bind_pe(struct policy_engine *pe)
 {
-	struct typec_phy *phy = pe_get_phy(pe);
+	struct typec_phy *phy;
 	struct pd_prot *prot;
-	if (!phy)
+
+	if (!pe)
+		return -EINVAL;
+
+	if (pe->prot)
+		return -EEXIST;
+
+	phy = pe_get_phy(pe);
+	if (!phy || !phy->proto)
 		return -ENODEV;
+
 	prot = phy->proto;
 	if (!prot)
 		return -ENODEV;
+
 	pe->prot = prot;
 	prot->pe = pe;
 	return 0;
@@ -501,6 +511,9 @@ EXPORT_SYMBOL_GPL(protocol_bind_pe);
 
 void protocol_unbind_pe(struct policy_engine *pe)
 {
+	if (!pe)
+		return;
+
 	pe->prot->pe = NULL;
 	pe->prot = NULL;
 }
@@ -509,6 +522,14 @@ EXPORT_SYMBOL_GPL(protocol_unbind_pe);
 int protocol_bind_dpm(struct typec_phy *phy)
 {
 	struct pd_prot *prot;
+
+	if (!phy)
+		return -EINVAL;
+
+	if (phy->proto) {
+		dev_dbg(phy->dev, "Protocol alreay exist!\n");
+		return -EEXIST;
+	}
 
 	prot = devm_kzalloc(phy->dev, sizeof(struct pd_prot), GFP_KERNEL);
 	if (!prot)
@@ -552,8 +573,12 @@ EXPORT_SYMBOL_GPL(protocol_bind_dpm);
 
 void protocol_unbind_dpm(struct typec_phy *phy)
 {
-	struct pd_prot *prot = phy->proto;
+	struct pd_prot *prot;
 
+	if (!phy || !phy->proto)
+		return;
+
+	prot = phy->proto;
 	/* Clear the rx list and reset phy */
 	pd_reset_counters(prot);
 	prot_clear_rx_msg_list(prot);
