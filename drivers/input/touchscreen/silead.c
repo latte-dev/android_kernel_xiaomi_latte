@@ -97,6 +97,8 @@ struct silead_ts_data {
 	u8 xy_swap;
 	u8 x_invert;
 	u8 y_invert;
+	struct input_mt_pos pos[SILEAD_MAX_FINGERS];
+	int slots[SILEAD_MAX_FINGERS];
 };
 
 struct silead_fw_data {
@@ -130,7 +132,8 @@ static int silead_ts_request_input_dev(struct silead_ts_data *data)
 			     200, 0, 0);
 
 	input_mt_init_slots(data->input_dev, data->max_fingers,
-			    INPUT_MT_DIRECT | INPUT_MT_DROP_UNUSED);
+			    INPUT_MT_DIRECT | INPUT_MT_DROP_UNUSED |
+			    INPUT_MT_TRACK);
 
 	data->input_dev->name = SILEAD_TS_NAME;
 	data->input_dev->phys = "input/ts";
@@ -202,8 +205,18 @@ static void silead_ts_read_data(struct i2c_client *client)
 
 		x = le16_to_cpup((__le16 *)(buf + offset + SILEAD_POINT_X_OFF));
 		y = le16_to_cpup((__le16 *)(buf + offset + SILEAD_POINT_Y_OFF));
+		data->pos[i - 1].x = x;
+		data->pos[i - 1].y = y;
 
 		dev_dbg(dev, "x=%d y=%d id=%d\n", x, y, id);
+	}
+
+	input_mt_assign_slots(data->input_dev, data->slots, data->pos, touch_nr);
+
+	for (i = 0; i < touch_nr; i++) {
+		x = data->pos[i].x;
+		y = data->pos[i].y;
+		id = data->slots[i];
 
 		if (data->xy_swap)
 			silead_ts_report_touch(data,
@@ -211,14 +224,16 @@ static void silead_ts_read_data(struct i2c_client *client)
 					       data->y_max - y : y,
 					       data->x_invert ?
 					       data->x_max - x : x,
-					       i - 1);
+					       id);
 		else
 			silead_ts_report_touch(data,
 					       data->x_invert ?
 					       data->x_max - x : x,
 					       data->y_invert ?
 					       data->y_max - y : y,
-					       i - 1);
+					       id);
+
+		dev_dbg(dev, "x=%d y=%d sw_id=%d\n", x, y, id);
 	}
 
 	input_mt_sync_frame(data->input_dev);
