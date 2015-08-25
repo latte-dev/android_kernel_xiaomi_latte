@@ -70,7 +70,6 @@ struct typec_detect {
 	struct mutex lock;
 
 	/* One bit status variables. */
-	unsigned got_vbus:1;
 	unsigned is_pd_capable:1;
 	unsigned usb_state:1;
 	unsigned usb_host_state:1;

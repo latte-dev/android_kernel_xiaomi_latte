@@ -292,6 +292,7 @@ static int detect_kthread(void *data)
 {
 	struct typec_detect *detect = (struct typec_detect *)data;
 	struct typec_phy *phy;
+	int vbus_on;
 
 	if (!detect) {
 		pr_err("%s: no detect found", __func__);
@@ -326,8 +327,9 @@ static int detect_kthread(void *data)
 		}
 
 
+		vbus_on = phy->is_vbus_on(phy);
 		if (detect->state == DETECT_STATE_UNATTACHED_UFP) {
-			if (detect->got_vbus && detect_check_valid_ufp(detect))
+			if (vbus_on && detect_check_valid_ufp(detect))
 				continue;
 			else
 				mod_timer(&detect->drp_timer,
@@ -423,8 +425,10 @@ static void detect_valid_dfp_attach_work(struct work_struct *work)
 	struct typec_detect *detect =
 		container_of(work, struct typec_detect, valid_dfp_attach_work);
 	struct typec_phy *phy = detect->phy;
+	int vbus_on;
 
-	if (detect->state != DETECT_STATE_UNATTACHED_DFP || detect->got_vbus) {
+	vbus_on = phy->is_vbus_on(phy);
+	if (detect->state != DETECT_STATE_UNATTACHED_DFP || vbus_on) {
 		if (!phy->support_drp_toggle)
 			del_timer_sync(&detect->drp_timer);
 		return;
@@ -471,15 +475,16 @@ static void detect_dfp_work(struct work_struct *work)
 {
 	struct typec_detect *detect =
 		container_of(work, struct typec_detect, dfp_work);
-	int ret;
+	int ret, vbus_on;
 	enum typec_cc_pin use_cc = 0;
 	struct typec_phy *phy = detect->phy;
 
+	vbus_on = phy->is_vbus_on(phy);
 	dev_dbg(detect->phy->dev, "%s: %d vbus = %d", __func__,
-				detect->state, detect->got_vbus);
+				detect->state, vbus_on);
 
 	mutex_lock(&detect->lock);
-	if (detect->state != DETECT_STATE_UNATTACHED_DFP || detect->got_vbus) {
+	if (detect->state != DETECT_STATE_UNATTACHED_DFP || vbus_on) {
 		mutex_unlock(&detect->lock);
 		goto end;
 	}
@@ -739,7 +744,6 @@ static void update_phy_state(struct work_struct *work)
 	switch (detect->event) {
 	case TYPEC_EVENT_VBUS:
 		mutex_lock(&detect->lock);
-		detect->got_vbus = true;
 		detect->drp_counter = 0;
 		state = detect->state;
 		if (state == DETECT_STATE_LOCK_UFP)
@@ -749,7 +753,6 @@ static void update_phy_state(struct work_struct *work)
 	case TYPEC_EVENT_NONE:
 		dev_dbg(phy->dev, "EVENT NONE: state = %d", detect->state);
 		mutex_lock(&detect->lock);
-		detect->got_vbus = false;
 		/* setup Switches0 Setting */
 		detect->drp_counter = 0;
 		if (!phy->support_drp_toggle)
