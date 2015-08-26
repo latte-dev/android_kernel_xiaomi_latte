@@ -174,6 +174,22 @@ static int disp_pe_send_discover_identity(struct disp_port_pe *disp_pe)
 	return ret;
 }
 
+static int disp_pe_send_discover_identity_rnak(struct disp_port_pe *disp_pe)
+{
+	int ret;
+	struct vdm_header v_hdr = { 0 };
+
+	v_hdr.cmd = DISCOVER_IDENTITY;
+	v_hdr.cmd_type = REP_NACK;
+	v_hdr.vdm_type = STRUCTURED_VDM; /* Structured VDM */
+	v_hdr.svid = PD_SID;
+
+	ret = policy_send_packet(&disp_pe->p, &v_hdr, 4,
+				PD_DATA_MSG_VENDOR_DEF, PE_EVT_SEND_VDM);
+
+	return ret;
+}
+
 static int disp_pe_send_discover_svid(struct disp_port_pe *disp_pe)
 {
 	struct pd_packet pkt;
@@ -243,7 +259,8 @@ static int disp_pe_handle_discover_identity(struct disp_port_pe *disp_pe,
 
 	switch (vdm_hdr->cmd_type) {
 	case INITIATOR:
-		log_warn("UFP alternate mode not supported\n");
+		log_warn("UFP alternate mode not supported, Sending NAK\n");
+		disp_pe_send_discover_identity_rnak(disp_pe);
 		break;
 	case REP_ACK:
 		if ((disp_pe->state != DISP_PE_STATE_DI_SENT)
