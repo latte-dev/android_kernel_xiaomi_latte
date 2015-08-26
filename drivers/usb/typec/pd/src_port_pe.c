@@ -95,11 +95,15 @@ static void src_pe_reset_policy_engine(struct src_port_pe *src_pe)
 	/* By default dual power role is enabled*/
 	src_pe->pp_is_dual_prole = 1;
 	src_pe->pp_is_ext_pwrd = 0;
+	src_pe->is_pd_configured = 0;
 }
 
 static void src_pe_do_pe_reset_on_error(struct src_port_pe *src_pe)
 {
+	mutex_lock(&src_pe->pe_lock);
 	src_pe_reset_policy_engine(src_pe);
+	mutex_unlock(&src_pe->pe_lock);
+	log_info("Sending HARD_RESET");
 	policy_send_packet(&src_pe->p, NULL, 0, PD_CMD_HARD_RESET,
 						PE_EVT_SEND_HARD_RESET);
 
@@ -221,17 +225,7 @@ trans_to_off_fail:
 
 trans_to_swap_fail:
 	/* As role swap accepted, reset state & send hard reset */
-	mutex_lock(&src_pe->pe_lock);
-	src_pe->state = SRC_PE_STATE_NONE;
-	mutex_unlock(&src_pe->pe_lock);
-
-	/* Issue hard reset */
-	policy_send_packet(&src_pe->p, NULL, 0, PD_CMD_HARD_RESET,
-						PE_EVT_SEND_HARD_RESET);
-
-	/* Schedule worker to send src_cap*/
-	schedule_delayed_work(&src_pe->start_comm, 0);
-
+	src_pe_do_pe_reset_on_error(src_pe);
 	return ret;
 }
 
@@ -629,8 +623,11 @@ int src_pe_rcv_cmd(struct policy *srcp, enum pe_event evt)
 
 	switch (evt) {
 	case PE_EVT_RCVD_HARD_RESET:
-	case PE_EVT_RCVD_HARD_RESET_COMPLETE:
+		log_info("Receviced HARD_RESET in state=%d\n", src_pe->state);
 		src_pe_reset_policy_engine(src_pe);
+		schedule_delayed_work(&src_pe->start_comm, 0);
+		break;
+	case PE_EVT_RCVD_HARD_RESET_COMPLETE:
 	default:
 		ret = -EINVAL;
 		break;
@@ -674,7 +671,7 @@ static int src_pe_snk_source_off_waitfor_psrdy(struct src_port_pe *src_pe)
 	int ret;
 
 	/* Initialize and run PSSourceOnTimer */
-	timeout = msecs_to_jiffies(TYPEC_PS_SRC_ON_TIMER);
+	timeout = msecs_to_jiffies(TYPEC_PS_SRC_OFF_TIMER);
 	/* unblock this once PS_Ready msg received by checking the
 	 * cur_state */
 	ret = wait_for_completion_timeout(&src_pe->psso_complete, timeout);
@@ -683,7 +680,9 @@ static int src_pe_snk_source_off_waitfor_psrdy(struct src_port_pe *src_pe)
 		mutex_lock(&src_pe->pe_lock);
 		src_pe->cmd_retry = 0;
 		mutex_unlock(&src_pe->pe_lock);
-		schedule_delayed_work(&src_pe->start_comm, 0);
+		/* Change the role back to source */
+		policy_set_power_role(&src_pe->p, POWER_ROLE_SOURCE);
+		src_pe_do_pe_reset_on_error(src_pe);
 		goto error;
 	}
 
