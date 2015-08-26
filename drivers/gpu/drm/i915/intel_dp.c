@@ -4406,13 +4406,6 @@ intel_dp_check_link_status(struct intel_dp *intel_dp)
 	u8 sink_irq_vector;
 	u8 link_status[DP_LINK_STATUS_SIZE];
 
-	/* FIXME: This access isn't protected by any locks. */
-	if (!intel_encoder->connectors_active)
-		return;
-
-	if (WARN_ON(!intel_encoder->base.crtc))
-		return;
-
 	/* Try to read receiver status if the link appears to be up */
 	if (!intel_dp_get_link_status(intel_dp, link_status)) {
 		return;
@@ -4422,6 +4415,13 @@ intel_dp_check_link_status(struct intel_dp *intel_dp)
 	if (!intel_dp_get_dpcd(intel_dp)) {
 		return;
 	}
+
+	/* FIXME: This access isn't protected by any locks. */
+	if (!intel_encoder->connectors_active)
+		return;
+
+	if (WARN_ON(!intel_encoder->base.crtc))
+		return;
 
 	/* Try to read the source of the interrupt */
 	if (intel_dp->dpcd[DP_DPCD_REV] >= 0x11 &&
