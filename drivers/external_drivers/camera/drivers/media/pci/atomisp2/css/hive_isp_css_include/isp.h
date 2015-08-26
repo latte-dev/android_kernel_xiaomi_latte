@@ -1,4 +1,4 @@
-/*
+/**
 Support for Intel Camera Imaging ISP subsystem.
 Copyright (c) 2010 - 2015, Intel Corporation.
 
@@ -31,9 +31,7 @@ more details.
 
 #include "storage_class.h"
 
-#ifndef PIPE_GENERATION
 #include "system_local.h"
-#endif
 #include "isp_local.h"
 
 #ifndef __INLINE_ISP__

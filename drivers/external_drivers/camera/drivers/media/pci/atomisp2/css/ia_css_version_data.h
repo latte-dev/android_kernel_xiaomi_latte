@@ -1,4 +1,4 @@
-/*
+/**
 Support for Intel Camera Imaging ISP subsystem.
 Copyright (c) 2010 - 2015, Intel Corporation.
 
@@ -22,7 +22,7 @@ more details.
 #define __IA_CSS_VERSION_DATA_H
 
 
-#define CSS_VERSION_STRING "REL:20150805_32.3_2205; API:2.1.20.8; GIT:irci_20150803_1547__0169aa#0169aa346e5f1cebd1e0ef28e426d566b7f27af6; SDK:; USER:viedifw; "
+#define CSS_VERSION_STRING "REL:20150824_35.1_2111; API:2.1.20.8; GIT:irci_20150823_1500_#ab52ca99b8af02136dec0975eb133a61098c869b; SDK:; USER:viedifw; "
 
 
 #endif

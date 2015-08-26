@@ -1,4 +1,4 @@
-/*
+/**
 Support for Intel Camera Imaging ISP subsystem.
 Copyright (c) 2010 - 2015, Intel Corporation.
 
@@ -51,10 +51,10 @@ struct sh_css_queues {
 
 	/* SP2Host ISYS event queue */
 	ia_css_queue_t sp2host_isys_event_queue_handle;
-#endif
 
 	/* Tagger command queue */
 	ia_css_queue_t host2sp_tag_cmd_queue_handle;
+#endif
 };
 
 struct sh_css_queues  css_queues;
@@ -233,10 +233,10 @@ static ia_css_queue_t *bufq_get_qhandle(
 	case sh_css_sp2host_isys_event_queue:
 		q = &css_queues.sp2host_isys_event_queue_handle;
 		break;
-#endif
 	case sh_css_host2sp_tag_cmd_queue:
 		q = &css_queues.host2sp_tag_cmd_queue_handle;
 		break;
+#endif
 	default:
 		break;
 	}
@@ -313,12 +313,12 @@ void ia_css_bufq_init(void)
 	init_bufq((uint32_t)offsetof(struct host_sp_queues, sp2host_isys_event_queue_desc),
 		  (uint32_t)offsetof(struct host_sp_queues, sp2host_isys_event_queue_elems),
 		  &css_queues.sp2host_isys_event_queue_handle);
-#endif
 
 	/* Host2SP tagger command queue */
 	init_bufq((uint32_t)offsetof(struct host_sp_queues, host2sp_tag_cmd_queue_desc),
 		  (uint32_t)offsetof(struct host_sp_queues, host2sp_tag_cmd_queue_elems),
 		  &css_queues.host2sp_tag_cmd_queue_handle);
+#endif
 
 	IA_CSS_LEAVE_PRIVATE("");
 }
@@ -488,6 +488,7 @@ enum ia_css_err ia_css_bufq_enqueue_isys_event(uint8_t evt_id)
 enum ia_css_err ia_css_bufq_enqueue_tag_cmd(
 	uint32_t item)
 {
+#if !defined(HAS_NO_INPUT_SYSTEM)
 	enum ia_css_err return_err;
 	int error = 0;
 	ia_css_queue_t *q;
@@ -503,6 +504,10 @@ enum ia_css_err ia_css_bufq_enqueue_tag_cmd(
 	return_err = ia_css_convert_errno(error);
 	IA_CSS_LEAVE_ERR_PRIVATE(return_err);
 	return return_err;
+#else
+	(void)item;
+	return IA_CSS_ERR_RESOURCE_NOT_AVAILABLE;
+#endif
 }
 
 enum ia_css_err ia_css_bufq_deinit(void)
@@ -552,8 +557,8 @@ void ia_css_bufq_dump_queue_info(void)
 		&css_queues.host2sp_isys_event_queue_handle);
 	bufq_dump_queue_info("sp2host_isys_event",
 		&css_queues.sp2host_isys_event_queue_handle);
-#endif
 
 	bufq_dump_queue_info("host2sp_tag_cmd",
 		&css_queues.host2sp_tag_cmd_queue_handle);
+#endif
 }

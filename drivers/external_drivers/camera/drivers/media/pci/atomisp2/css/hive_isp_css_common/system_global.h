@@ -1,4 +1,4 @@
-/*
+/**
 Support for Intel Camera Imaging ISP subsystem.
 Copyright (c) 2010 - 2015, Intel Corporation.
 
@@ -320,5 +320,27 @@ enum ia_css_isp_memories {
 /* For driver compatability */
 #define N_IA_CSS_ISP_MEMORIES   IA_CSS_NUM_MEMORIES
 #define IA_CSS_NUM_ISP_MEMORIES IA_CSS_NUM_MEMORIES
+
+typedef enum {
+	dev_chn, /* device channels, external resource */
+	ext_mem, /* external memories */
+	int_mem, /* internal memories */
+	int_chn  /* internal channels, user defined */
+} resource_type_t;
+
+/* if this enum is extended with other memory resources, pls also extend the function resource_to_memptr() */
+typedef enum {
+	vied_nci_dev_chn_dma_ext0,
+	int_mem_vmem0,
+	int_mem_dmem0
+} resource_id_t;
+
+/* enum listing the different memories within a program group.
+   This enum is used in the mem_ptr_t type */
+typedef enum {
+	buf_mem_invalid = 0,
+	buf_mem_vmem_prog0,
+	buf_mem_dmem_prog0
+} buf_mem_t;
 
 #endif /* __SYSTEM_GLOBAL_H_INCLUDED__ */

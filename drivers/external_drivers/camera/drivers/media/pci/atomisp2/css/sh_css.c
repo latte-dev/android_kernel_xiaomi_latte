@@ -1,4 +1,4 @@
-/*
+/**
 Support for Intel Camera Imaging ISP subsystem.
 Copyright (c) 2010 - 2015, Intel Corporation.
 
@@ -9756,6 +9756,12 @@ ia_css_stream_create(const struct ia_css_stream_config *stream_config,
 		}
 
 		my_css.active_pipes[ia_css_pipe_get_pipe_num(curr_pipe)] = curr_pipe;
+#if defined(IS_ISP_2500_SYSTEM)
+		/* stream and pipes are configured, configure cropping info */
+		err = input_feeder_configure(curr_pipe);
+		if (err != IA_CSS_SUCCESS)
+			goto ERR;
+#endif
 	}
 
 	curr_stream->started = false;
@@ -9974,7 +9980,6 @@ ia_css_stream_start(struct ia_css_stream *stream)
 #endif /* !HAS_NO_INPUT_SYSTEM */
 
 	err = sh_css_pipe_start(stream);
-	ia_css_set_system_mode(IA_CSS_SYS_MODE_WORKING);
 	IA_CSS_LEAVE_ERR(err);
 	return err;
 }
@@ -10465,6 +10470,9 @@ ia_css_start_sp(void)
 	err = sh_css_start_sp1();
 #endif /* HAS_SEC_SP */
 
+	if (ia_css_is_system_mode_suspend_or_resume() == false) { /* skip in suspend/resume flow */
+		ia_css_set_system_mode(IA_CSS_SYS_MODE_WORKING);
+	}
 	IA_CSS_LEAVE_ERR(err);
 	return err;
 }
@@ -10563,6 +10571,7 @@ ia_css_stop_sp(void)
 	if (ia_css_is_system_mode_suspend_or_resume() == false) { /* skip in suspend/resume flow */
 		/* clear pending param sets from refcount */
 		sh_css_param_clear_param_sets();
+		ia_css_set_system_mode(IA_CSS_SYS_MODE_INIT);  /* System is initialized but not 'running' */
 	}
 
 #if defined(HAS_SEC_SP)

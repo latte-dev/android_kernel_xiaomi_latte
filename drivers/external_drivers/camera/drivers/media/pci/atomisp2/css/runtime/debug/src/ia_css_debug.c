@@ -1,4 +1,4 @@
-/*
+/**
 Support for Intel Camera Imaging ISP subsystem.
 Copyright (c) 2010 - 2015, Intel Corporation.
 
@@ -3643,6 +3643,9 @@ void ia_css_debug_ext_command_handler(void)
 	static bool cmd_started = false;
 	unsigned int curr_stream_num = 0;
 	unsigned int curr_pipe_num = 0;
+
+	if (!sh_css_sp_is_running())
+		return;	/* SP is not running yet */
 
 	ext_cmd = ia_css_device_load_uint32(ext_cmd_add);
 	ia_css_debug_dtrace(IA_CSS_DEBUG_PARAM, "ia_css_debug_ext_command_handler()\n");
