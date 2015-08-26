@@ -154,7 +154,7 @@ static int snkpe_send_pr_swap_accept(struct sink_port_pe *sink)
 
 static int snkpe_send_pr_swap_reject(struct sink_port_pe *sink)
 {
-	snkpe_update_state(sink, PE_PRS_SNK_SRC_REJECT_PR_SWAP);
+	snkpe_update_state(sink, PE_SNK_READY);
 	return policy_send_packet(&sink->p, NULL, 0,
 				PD_CTRL_MSG_REJECT, PE_EVT_SEND_REJECT);
 }
@@ -230,14 +230,6 @@ static int snkpe_handle_pss_transition_to_off(struct sink_port_pe *sink)
 		pr_err("SNKPE: Error in setting POWER_ROLE_SWAP (%d)\n", ret);
 		goto trans_to_off_err;
 	}
-	/* request the Device Policy Manager to turn off the Sink
-	 * by putting the charger into HiZ mode */
-	ret = policy_set_charger_mode(&sink->p, CHRGR_SET_HZ);
-	if (ret < 0) {
-		pr_err("SNKPE: Error in putting into HiZ mode (%d)\n", ret);
-		goto trans_to_off_err;
-	}
-
 	schedule_work(&sink->timer_work);
 	return 0;
 
@@ -257,8 +249,7 @@ static void snkpe_handle_send_swap(struct sink_port_pe *sink)
 
 	if (ret == 0) {
 		pr_warn("SNKPE: %s sender response expired\n", __func__);
-		snkpe_update_state(sink, PE_SNK_HARD_RESET);
-		schedule_work(&sink->timer_work);
+		snkpe_update_state(sink, PE_SNK_READY);
 		goto send_swap_out;
 	}
 	/* Either accepr or reject received */
@@ -436,9 +427,6 @@ static void snkpe_received_msg_good_crc(struct sink_port_pe *sink)
 			snkpe_update_state(sink, PE_SNK_STARTUP);
 			schedule_work(&sink->timer_work);
 		}
-		break;
-	case PE_SNK_GIVE_SINK_CAP:
-		snkpe_update_state(sink, PE_SNK_READY);
 		break;
 	case PE_SNK_SELECT_CAPABILITY:
 		schedule_work(&sink->timer_work);
@@ -643,6 +631,7 @@ static int snkpe_handle_give_snk_cap_state(struct sink_port_pe *sink)
 	pr_debug("SNKPE: PD_DATA_MSG_SINK_CAP sent\n");
 
 error:
+	snkpe_update_state(sink, PE_SNK_READY);
 	return ret;
 }
 
@@ -964,7 +953,12 @@ static int sink_port_policy_rcv_cmd(struct policy *p, enum pe_event evt)
 	case PE_EVT_RCVD_HARD_RESET_COMPLETE:
 		pr_err("SNKPE: RCVD PE_EVT_RCVD_HARD_RESET_COMPLETE\n");
 		sink->hard_reset_complete = true;
-		wake_up(&sink->wq);
+		if (sink->cur_state == PE_SNK_HARD_RESET)
+			wake_up(&sink->wq);
+		else {
+			snkpe_do_prot_reset(sink);
+			sink_do_reset(sink);
+		}
 		break;
 	case PE_EVT_RCVD_SOFT_RESET:
 		ret = snkpe_do_prot_reset(sink);
