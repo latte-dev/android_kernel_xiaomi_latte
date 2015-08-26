@@ -2360,7 +2360,7 @@ static int mmc_blk_queue_cmdq_req(struct mmc_queue *mq,
 
 			active_mqrq = container_of(card->host->areq,
 					struct mmc_queue_req, mmc_active);
-			*status &= ~(1 << active_mqrq->task_id);
+			*status &= ~(1ul << active_mqrq->task_id);
 		}
 	}
 
