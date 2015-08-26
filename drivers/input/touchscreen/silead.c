@@ -148,8 +148,7 @@ static int silead_ts_request_input_dev(struct silead_ts_data *data)
 static void silead_ts_report_touch(struct silead_ts_data *data, u16 x, u16 y,
 				   u8 id)
 {
-	input_mt_slot(data->input_dev, id - 1);
-	input_report_abs(data->input_dev,ABS_MT_TRACKING_ID, id);
+	input_mt_slot(data->input_dev, id);
 	input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, true);
 	input_report_abs(data->input_dev, ABS_MT_POSITION_X, x);
 	input_report_abs(data->input_dev, ABS_MT_POSITION_Y, y);
@@ -212,14 +211,14 @@ static void silead_ts_read_data(struct i2c_client *client)
 					       data->y_max - y : y,
 					       data->x_invert ?
 					       data->x_max - x : x,
-					       id);
+					       i - 1);
 		else
 			silead_ts_report_touch(data,
 					       data->x_invert ?
 					       data->x_max - x : x,
 					       data->y_invert ?
 					       data->y_max - y : y,
-					       id);
+					       i - 1);
 	}
 
 	input_mt_sync_frame(data->input_dev);
