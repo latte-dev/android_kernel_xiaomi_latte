@@ -196,7 +196,7 @@ static int wcgpio_check_events(struct wcove_gpio_info *info,
 	list_add_tail(&evt->node, &info->gpio_queue);
 	spin_unlock(&info->gpio_queue_lock);
 
-	queue_work(system_nrt_wq, &info->gpio_work);
+	schedule_work(&info->gpio_work);
 	return 0;
 }
 
