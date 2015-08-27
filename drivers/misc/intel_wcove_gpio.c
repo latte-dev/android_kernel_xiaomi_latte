@@ -164,6 +164,10 @@ static void wcgpio_ctrl_worker(struct work_struct *work)
 		gpiod_set_value_cansleep(info->gpio_otg,
 						evt->is_src_connected);
 
+		/* enable/disable vconn based on the provider(source) event */
+		gpiod_set_value_cansleep(info->gpio_vconn,
+						evt->is_src_connected);
+
 		/* FIXME: vchrgin GPIO is not setting here to select
 		 * Wireless Charging */
 		list_del(&evt->node);
