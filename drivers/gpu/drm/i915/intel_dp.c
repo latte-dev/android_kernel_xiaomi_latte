@@ -4277,9 +4277,35 @@ intel_dp_get_sink_irq(struct intel_dp *intel_dp, u8 *sink_irq_vector)
 				       sink_irq_vector, 1) == 1;
 }
 
+/*
+ * This function reads TEST_LANE_COUNT & TEST_LINK_RATE and updates
+ * them to cached dpcd values, thus the new values are implicitly
+ * used by rest of the code without need to be aware of the change.
+ */
 static uint8_t intel_dp_autotest_link_training(struct intel_dp *intel_dp)
 {
 	uint8_t test_result = DP_TEST_ACK;
+	uint8_t dpcd_val, ret;
+
+	ret = intel_dp_dpcd_read_wake(&intel_dp->aux,
+					     DP_TEST_LANE_COUNT,
+					     &dpcd_val, 1);
+
+	/* update values only if read returned 1 byte */
+	if (ret == 1) {
+		dpcd_val &= DP_MAX_LANE_COUNT_MASK;
+		intel_dp->dpcd[DP_MAX_LANE_COUNT] &= ~(DP_MAX_LANE_COUNT_MASK);
+		intel_dp->dpcd[DP_MAX_LANE_COUNT] |= dpcd_val;
+
+	}
+
+	ret = intel_dp_dpcd_read_wake(&intel_dp->aux,
+					     DP_TEST_LINK_RATE,
+					     &dpcd_val, 1);
+	if (ret == 1)
+		intel_dp->dpcd[DP_MAX_LINK_RATE] = dpcd_val;
+
+
 	return test_result;
 }
 
