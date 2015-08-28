@@ -197,11 +197,6 @@ void i915_save_dpst_regs(struct drm_i915_private *dev_priv)
 
 	dev_priv->regfile.saveBLM_HIST_GUARD = I915_READ(dev_priv->dpst.reg.blm_hist_guard);
 	dev_priv->regfile.saveBLM_HIST_CTL = I915_READ(dev_priv->dpst.reg.blm_hist_ctl);
-
-	/* Disable image enhancement table so we do not apply invalid
-	 * data when we resume */
-	dev_priv->regfile.saveBLM_HIST_CTL &=
-		~(dev_priv->dpst.ie_mod_table_enable);
 }
 
 void i915_restore_dpst_regs(struct drm_i915_private *dev_priv)

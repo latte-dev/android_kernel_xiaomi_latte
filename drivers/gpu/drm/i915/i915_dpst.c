@@ -510,6 +510,7 @@ void
 i915_dpst_display_off(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 blm_hist_ctl;
 
 	/* Check if dpst is user enabled*/
 	if (!dev_priv->dpst.user_enable)
@@ -522,6 +523,13 @@ i915_dpst_display_off(struct drm_device *dev)
 	dev_priv->dpst.display_off = true;
 
 	i915_dpst_disable_hist_interrupt(dev);
+	/*
+	 * Disabling Image Enhancement bit during display off to avoid
+	 * applying incorrect IE upon resume
+	 */
+	blm_hist_ctl = I915_READ(dev_priv->dpst.reg.blm_hist_ctl);
+	blm_hist_ctl &= ~(dev_priv->dpst.ie_mod_table_enable);
+	I915_WRITE(dev_priv->dpst.reg.blm_hist_ctl, blm_hist_ctl);
 	mutex_unlock(&dev_priv->dpst.ioctl_lock);
 
 	/* Send a fake signal to user, so that the user can be notified
