@@ -1902,6 +1902,9 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&chc.evt_work, pmic_event_worker);
 	INIT_LIST_HEAD(&chc.evt_queue);
 
+	/* clear otg mode flag before checking events */
+	intel_pmic_handle_otgmode(false);
+
 	ret = pmic_check_initial_events();
 	if (ret)
 		goto otg_req_fail;
