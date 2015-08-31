@@ -60,7 +60,7 @@ struct regmap_config aicxxx_i2c_regmap = {
 	.cache_type = REGCACHE_NONE,
 	.ranges = aic31xx_ranges,
 	.num_ranges = ARRAY_SIZE(aic31xx_ranges),
-	.max_register =  13 * 128,
+	.max_register =	13 * 128,
 };
 struct aic31xx_driver_data aic31xx_acpi_data = {
 	.acpi_device = 1,
@@ -709,6 +709,47 @@ aic310x_audio_map[] = {
 };
 
 /*
+  aic31xx_config_data_path
+  If there isn't a headset or headphone plugged in (jack_state == 0),
+  set the speaker data path (left channel) to be the average
+  of both left and right data to account for the mono configuration.
+
+  If jack_state is not zero, set L/R Channel configuration to default.
+ */
+static void aic31xx_config_data_path(struct snd_soc_codec *codec,
+			int jack_state)
+{
+	int value, cur_dpath_config, do_write = 0;
+	const int mono_config   = 0x30;
+	const int stereo_config = 0x14;
+
+	value = snd_soc_read(codec, AIC31XX_DACSETUP);
+
+	cur_dpath_config = value & (AIC31XX_R_DATAPATH_MASK |
+						AIC31XX_L_DATAPATH_MASK);
+
+	/* clear the data path settings */
+	value &= ~(AIC31XX_R_DATAPATH_MASK | AIC31XX_L_DATAPATH_MASK);
+
+	if ((jack_state == 0) && (cur_dpath_config == stereo_config)) {
+		/* left channel dac data path = average(left & right data) */
+		value |= mono_config;
+		pr_debug("%s mono\n", __func__);
+		do_write = 1;
+	} else if ((jack_state != 0) && (cur_dpath_config == mono_config)) {
+		/* default, left chan is left data, right chan is right data */
+		value |= stereo_config;
+		pr_debug("%s stereo\n", __func__);
+		do_write = 1;
+	}
+
+	if (do_write)
+		snd_soc_write(codec, AIC31XX_DACSETUP, value);
+
+	return;
+}
+
+/*
  * aic31xx_add_controls - add non dapm kcontrols.
  *
  * The different controls are in "aic31xx_snd_controls" table. The following
@@ -1169,6 +1210,7 @@ static void aic31xx_hs_jack_report(struct snd_soc_codec *codec,
 	default:
 		break;
 	}
+
 	mutex_unlock(&aic31xx->mutex);
 	snd_soc_jack_report(jack, state, report);
 	if ((state & SND_JACK_HEADSET) == SND_JACK_HEADSET)
@@ -1217,6 +1259,7 @@ int aic31xx_query_jack_status(struct snd_soc_codec *codec)
 	dev_dbg(codec->dev,
 			"AIC31XX_HSDETECT=0x%X,Jack Status returned is %x\n",
 								 status, state);
+	aic31xx_config_data_path(codec, state);
 	return state;
 }
 EXPORT_SYMBOL_GPL(aic31xx_query_jack_status);

@@ -197,7 +197,6 @@ int aic31xx_query_btn_press(struct snd_soc_codec *codec);
 void aic31xx_btn_press_intr_enable(struct snd_soc_codec *codec,
 		int enable);
 
-
 /* ****************** Book 0 Registers **************************************/
 /* ****************** AIC31XX has one book only *****************************/
 
@@ -319,9 +318,15 @@ void aic31xx_btn_press_intr_enable(struct snd_soc_codec *codec,
 #define AIC31XX_DACPRB					0xBC
 /*ADC Instruction Set Register*/
 #define AIC31XX_ADCPRB					0xBD
+
 /*DAC channel setup register*/
 #define AIC31XX_DACSETUP				0xBF
+#define AIC31XX_L_POWER_MASK                            0x80
+#define AIC31XX_R_POWER_MASK                            0x40
+#define AIC31XX_L_DATAPATH_MASK                         0x30
+#define AIC31XX_R_DATAPATH_MASK                         0x0C
 #define AIC31XX_SOFTSTEP_MASK				0x03
+
 /*DAC Mute and volume control register*/
 #define AIC31XX_DACMUTE					0xC0
 #define AIC31XX_DACMUTE_MASK				0x0C
