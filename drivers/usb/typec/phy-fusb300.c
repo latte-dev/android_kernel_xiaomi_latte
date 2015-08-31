@@ -1799,12 +1799,19 @@ static int fusb300_resume(struct device *dev)
 
 static int fusb300_late_suspend(struct device *dev)
 {
-	struct fusb300_chip *chip;
+	struct fusb300_chip *chip = dev_get_drvdata(dev);
+	struct typec_phy *phy = &chip->phy;
 
-	chip = dev_get_drvdata(dev);
-
-	/* enable power only for wakeup block */
-	regmap_write(chip->map, FUSB300_PWR_REG, FUSB300_PWR_BG_WKUP);
+	if (phy->state == TYPEC_STATE_ATTACHED_UFP ||
+		phy->state == TYPEC_STATE_ATTACHED_DFP) {
+		/* enable power for wakeup block and measure block*/
+		regmap_write(chip->map, FUSB300_PWR_REG,
+			FUSB300_PWR_BG_WKUP | FUSB300_PWR_MEAS);
+	} else {
+		/* enable power only for wakeup block */
+		regmap_write(chip->map, FUSB300_PWR_REG,
+			FUSB300_PWR_BG_WKUP);
+	}
 
 	/* Disable the irq during suspend to prevent fusb300
 	isr executed before the i2c controller resume.*/
@@ -1818,14 +1825,22 @@ static int fusb300_late_suspend(struct device *dev)
 
 static int fusb300_early_resume(struct device *dev)
 {
-	struct fusb300_chip *chip;
+	struct fusb300_chip *chip = dev_get_drvdata(dev);
+	struct typec_phy *phy = &chip->phy;
 
-	chip = dev_get_drvdata(dev);
-
-	/* enable the power for wakeup + measurement block */
-	regmap_write(chip->map, FUSB300_PWR_REG,
-			FUSB300_PWR_BG_WKUP | FUSB300_PWR_BMC |
-			FUSB300_PWR_MEAS);
+	if (phy->state == TYPEC_STATE_ATTACHED_UFP ||
+		phy->state == TYPEC_STATE_ATTACHED_DFP) {
+		/* enable the power for wakeup + measurement block and
+		 * internal osc */
+		regmap_write(chip->map, FUSB300_PWR_REG,
+				FUSB300_PWR_BG_WKUP | FUSB300_PWR_BMC |
+				FUSB300_PWR_MEAS | FUSB300_PWR_OSC);
+	} else {
+		/* enable the power for wakeup + measurement block */
+		regmap_write(chip->map, FUSB300_PWR_REG,
+				FUSB300_PWR_BG_WKUP | FUSB300_PWR_BMC |
+				FUSB300_PWR_MEAS);
+	}
 
 	/* Enable the irq after resume to prevent fusb300
 	isr executed before the i2c controller resume.*/
