@@ -297,6 +297,8 @@ static void snkpe_handle_dr_swap_transition(struct sink_port_pe *sink,
 		schedule_work(&sink->timer_work);
 		return;
 	}
+	pe_notify_policy_status_changed(&sink->p,
+			POLICY_TYPE_SINK, PE_STATUS_CHANGE_DR_CHANGED);
 	pr_debug("SNKPE:%s:Data role changed to %d", __func__, to_role);
 	snkpe_update_state(sink, PE_SNK_READY);
 }
@@ -435,15 +437,17 @@ static void snkpe_received_msg_good_crc(struct sink_port_pe *sink)
 		snkpe_handle_pss_transition_to_off(sink);
 		break;
 	case PE_PRS_SNK_SRC_SOURCE_ON:
-		pr_debug("SNKPE:%s: Calling swith policy\n", __func__);
-		policy_switch_policy(&sink->p, POLICY_TYPE_SOURCE);
+		pr_debug("SNKPE:%s: Notifying power role chnage\n", __func__);
+		pe_notify_policy_status_changed(&sink->p,
+			POLICY_TYPE_SINK, PE_STATUS_CHANGE_PR_CHANGED);
 		break;
 	case PE_DRS_DFP_UFP_ACCEPT_DR_SWAP:
 	case PE_DRS_UFP_DFP_ACCEPT_DR_SWAP:
 		complete(&sink->srt_complete);
 		break;
 	default:
-		pr_warn("SNKPE: Recved GOODCRC in %d state\n", sink->cur_state);
+		pr_debug("SNKPE: Recved GOODCRC in %d state\n",
+							sink->cur_state);
 		break;
 	}
 }
@@ -757,7 +761,10 @@ static void sink_handle_ready(struct sink_port_pe *sink)
 		snkpe_setup_charging(sink);
 
 ready_end:
+	sink->p.status = POLICY_STATUS_SUCCESS;
 	snkpe_update_state(sink, PE_SNK_READY);
+	pe_notify_policy_status_changed(&sink->p,
+			POLICY_TYPE_SINK, PE_STATUS_CHANGE_PD_SUCCESS);
 }
 
 static void sink_handle_transition_sink(struct sink_port_pe *sink)
@@ -834,6 +841,8 @@ static void sinkpe_handle_error_recovery(struct sink_port_pe *sink)
 				PE_EVT_SEND_PROTOCOL_RESET);
 	sink->no_response_timer_expired = false;
 	pr_err("SNKPE: No Response timer expired, going to error recovery\n");
+	pe_notify_policy_status_changed(&sink->p,
+			POLICY_TYPE_SINK, PE_STATUS_CHANGE_PD_FAIL);
 }
 
 /* This is the main task worker for sink pe */
@@ -1096,7 +1105,6 @@ static inline int sink_port_policy_start(struct policy *p)
 
 	pr_debug("SNKPE: %s\n", __func__);
 	mutex_lock(&sink->snkpe_state_lock);
-	p->status = POLICY_STATUS_RUNNING;
 	p->state = POLICY_STATE_ONLINE;
 	sink->cur_state = PE_SNK_STARTUP;
 	mutex_unlock(&sink->snkpe_state_lock);

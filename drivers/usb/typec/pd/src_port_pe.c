@@ -95,6 +95,7 @@ static void src_pe_reset_policy_engine(struct src_port_pe *src_pe)
 	/* By default dual power role is enabled*/
 	src_pe->pp_is_dual_prole = 1;
 	src_pe->pp_is_ext_pwrd = 0;
+	src_pe->got_snk_caps = 0;
 	src_pe->is_pd_configured = 0;
 }
 
@@ -250,6 +251,8 @@ static void src_pe_handle_dr_swap_transition(struct src_port_pe *src_pe,
 		return;
 	}
 	log_dbg("Data role changed to %d", to_role);
+	pe_notify_policy_status_changed(&src_pe->p,
+			POLICY_TYPE_SOURCE, PE_STATUS_CHANGE_DR_CHANGED);
 	mutex_lock(&src_pe->pe_lock);
 	src_pe->state = SRC_PE_STATE_PD_CONFIGURED;
 	mutex_unlock(&src_pe->pe_lock);
@@ -313,7 +316,6 @@ static int src_pe_handle_trigger_dr_swap(struct src_port_pe *src_pe)
 		src_pe->state = PE_DRS_DFP_UFP_SEND_DR_SWAP;
 	else
 		src_pe->state = PE_DRS_UFP_DFP_SEND_DR_SWAP;
-	src_pe->p.status = POLICY_STATUS_RUNNING;
 	mutex_unlock(&src_pe->pe_lock);
 	schedule_work(&src_pe->msg_work);
 
@@ -377,7 +379,6 @@ static void src_pe_handle_rcv_dr_swap(struct src_port_pe *src_pe)
 		src_pe->state = PE_DRS_DFP_UFP_ACCEPT_DR_SWAP;
 	else
 		src_pe->state = PE_DRS_UFP_DFP_ACCEPT_DR_SWAP;
-	src_pe->p.status = POLICY_STATUS_RUNNING;
 	mutex_unlock(&src_pe->pe_lock);
 	schedule_work(&src_pe->msg_work);
 
@@ -438,7 +439,7 @@ src_pe_handle_gcrc(struct src_port_pe *src_pe, struct pd_packet *pkt)
 		break;
 	default:
 		ret = -EINVAL;
-		log_info("GCRC received in wrong state=%d\n", src_pe->state);
+		log_dbg("GCRC received in wrong state=%d\n", src_pe->state);
 		break;
 	}
 
@@ -489,7 +490,6 @@ static int src_pe_handle_pr_swap(struct src_port_pe *src_pe)
 		 */
 		mutex_lock(&src_pe->pe_lock);
 		src_pe->state = PE_PRS_SRC_SNK_EVALUATE_PR_SWAP;
-		src_pe->p.status = POLICY_STATUS_RUNNING;
 		mutex_unlock(&src_pe->pe_lock);
 		ret = src_pe_pr_swap_ok(src_pe);
 	} else {
@@ -520,7 +520,6 @@ static int src_pe_rcv_request(struct policy *srcp, enum pe_event evt)
 		}
 		mutex_lock(&src_pe->pe_lock);
 		src_pe->state = PE_PRS_SRC_SNK_SEND_PR_SWAP;
-		src_pe->p.status = POLICY_STATUS_RUNNING;
 		mutex_unlock(&src_pe->pe_lock);
 		policy_send_packet(&src_pe->p, NULL, 0,
 					PD_CTRL_MSG_PR_SWAP, evt);
@@ -688,8 +687,9 @@ static int src_pe_snk_source_off_waitfor_psrdy(struct src_port_pe *src_pe)
 
 	/* RR Swap success, set role as sink and switch policy */
 	policy_set_power_role(&src_pe->p, POWER_ROLE_SINK);
-	log_dbg("Calling swith policy\n");
-	policy_switch_policy(&src_pe->p, POLICY_TYPE_SINK);
+	log_dbg("Notifying power role change\n");
+	pe_notify_policy_status_changed(&src_pe->p,
+			POLICY_TYPE_SOURCE, PE_STATUS_CHANGE_PR_CHANGED);
 error:
 	reinit_completion(&src_pe->psso_complete);
 	return ret;
@@ -734,7 +734,7 @@ get_sink_cap_error:
 	 * policy engine as success as PD negotiation is success.
 	 */
 	pe_notify_policy_status_changed(&src_pe->p,
-				POLICY_TYPE_SOURCE, POLICY_STATUS_SUCCESS);
+			POLICY_TYPE_SOURCE, PE_STATUS_CHANGE_PD_SUCCESS);
 get_snk_cap_timeout:
 	reinit_completion(&src_pe->srt_complete);
 }
@@ -817,7 +817,7 @@ static void src_pe_start_comm(struct work_struct *work)
 		mutex_unlock(&src_pe->pe_lock);
 		log_dbg("Not sending srccap as max re-try reached\n");
 		pe_notify_policy_status_changed(&src_pe->p,
-				POLICY_TYPE_SOURCE, src_pe->p.status);
+			POLICY_TYPE_SOURCE, PE_STATUS_CHANGE_PD_FAIL);
 	}
 }
 
@@ -829,7 +829,6 @@ static int src_pe_start_policy_engine(struct policy *p)
 	log_info("IN");
 	mutex_lock(&src_pe->pe_lock);
 	p->state = POLICY_STATE_ONLINE;
-	p->status = POLICY_STATUS_RUNNING;
 	policy_set_pd_state(p, true);
 	src_pe_reset_policy_engine(src_pe);
 	schedule_delayed_work(&src_pe->start_comm, 0);

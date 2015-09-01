@@ -59,8 +59,7 @@ struct policy *pe_get_running_policy(struct list_head *head)
 	struct policy *p = NULL;
 
 	list_for_each_entry(p, head, list) {
-		if (p && (p->state == POLICY_STATE_ONLINE)
-			&& (p->status == POLICY_STATUS_RUNNING))
+		if (p && p->state == POLICY_STATE_ONLINE)
 				return p;
 	}
 
@@ -209,17 +208,13 @@ static int pe_fwdcmd_to_policy(struct policy_engine *pe, enum pe_event evt)
 	int ret = 0;
 
 	p = pe_get_active_src_or_snk_policy(&pe->policy_list);
-	if (!p) {
-		pr_err("PE: No Active policy!\n");
-		return -EINVAL;
-	}
 
-	if (p && p->rcv_cmd) {
+	if (p && p->rcv_cmd)
 		p->rcv_cmd(p, evt);
-	} else {
-		pr_err("PE: Unable to find send cmd\n");
-		ret = -ENODEV;
-	}
+
+	p = pe_get_policy(pe, POLICY_TYPE_DISPLAY);
+	if (p && p->rcv_cmd)
+		p->rcv_cmd(p, evt);
 
 	return ret;
 }
@@ -420,10 +415,8 @@ static int pe_start_policy(struct policy_engine *pe, enum policy_type type)
 
 	if (p->state != POLICY_STATE_ONLINE)
 		p->start(p);
-	else {
+	else
 		pr_warn("PE: policy %d is already active!!!\n", type);
-		return -EINVAL;
-	}
 
 	return 0;
 }
@@ -530,43 +523,40 @@ static struct policy *__pe_find_policy(struct list_head *list,
 	return ERR_PTR(-ENODEV);
 }
 
-static void pe_policy_status_changed(struct policy_engine *pe, int policy_type,
-				int status)
+static void pe_policy_status_changed(struct policy_engine *pe,
+				enum policy_type ptype,
+				enum pe_status_change_evt status)
 {
 	struct policy *p;
+	enum pwr_role prole;
 	int ret;
 
 	if (!pe)
 		return;
-	switch (policy_type) {
-	case POLICY_TYPE_SOURCE:
-		/* Handle the source policy status change */
-		if (status == POLICY_STATUS_SUCCESS
-			|| status == POLICY_STATUS_FAIL) {
-			p = pe_get_policy(pe, POLICY_TYPE_DISPLAY);
-			/* Start the display policy */
-			if (!p) {
-				pr_err("PE: %s No Display policy found\n",
-						__func__);
-				break;
-			}
-			if (p->start) {
-				pr_info("PE: %s Stating disp policy\n",
-						__func__);
-				p->start(p);
-			}
-		}
+	switch (status) {
+	case PE_STATUS_CHANGE_PD_FAIL:
+	case PE_STATUS_CHANGE_PD_SUCCESS:
+		/* Start display pe after PD */
+		ret = pe_start_policy(pe, POLICY_TYPE_DISPLAY);
+		if (ret)
+			pr_warn("PE:%s: Failed to start disp policy\n",
+					__func__);
 		break;
-	case POLICY_TYPE_DISPLAY:
+
+	case PE_STATUS_CHANGE_DP_FAIL:
+	case PE_STATUS_CHANGE_DP_SUCCESS:
 		/* Handle the display policy status change */
+		prole = pe_get_power_role(pe);
+		if (prole != POWER_ROLE_SOURCE)
+			break;
+
 		p = pe_get_policy(pe, POLICY_TYPE_SOURCE);
 		if (!p) {
 			pr_err("PE: %s No Source policy found\n", __func__);
 			break;
 		}
 
-		if (p->status != POLICY_STATUS_SUCCESS
-			&& p->status != POLICY_STATUS_RUNNING) {
+		if (p->status != POLICY_STATUS_SUCCESS) {
 			pr_warn("PE:%s: Source PE not success!!\n", __func__);
 			break;
 		}
@@ -582,8 +572,36 @@ static void pe_policy_status_changed(struct policy_engine *pe, int policy_type,
 		if (pe->pp_caps.pp_is_ext_pwrd && p->rcv_request)
 			p->rcv_request(p, PE_EVT_SEND_PR_SWAP);
 		break;
+	case PE_STATUS_CHANGE_DR_CHANGED:
+		/* Restart Display PE on data role change */
+		ret = pe_stop_policy(pe, POLICY_TYPE_DISPLAY);
+		if (ret < 0) {
+			pr_err("PE:%s: Failed to stop disp policy\n",
+					__func__);
+			break;
+		}
+		ret = pe_start_policy(pe, POLICY_TYPE_DISPLAY);
+		if (ret < 0) {
+			pr_err("PE:%s: Failed to start disp policy\n",
+					__func__);
+			break;
+		}
+		pr_info("PE:%s: Restarted disp policy\n", __func__);
+		break;
+
+	case PE_STATUS_CHANGE_PR_CHANGED:
+		if (ptype == POLICY_TYPE_SINK)
+			pe_switch_policy(pe, POLICY_TYPE_SOURCE);
+		else if (ptype == POLICY_TYPE_SOURCE)
+			pe_switch_policy(pe, POLICY_TYPE_SINK);
+		else
+			pr_err("PE:%s:PR_CHANGE from invalid policy=%d\n",
+					__func__, ptype);
+		break;
+
 	default:
-		pr_debug("PE:%s: Not processing state change\n", __func__);
+		pr_debug("PE:%s: Not processing state change evt=%d\n",
+					__func__, status);
 	}
 }
 
@@ -783,7 +801,6 @@ static struct pe_operations ops = {
 	.get_cable_state = pe_get_cable_state,
 	.get_pd_state = pe_get_pd_state,
 	.set_pd_state = pe_set_pd_state,
-	.switch_policy = pe_switch_policy,
 	.process_data_msg = policy_engine_process_data_msg,
 	.process_ctrl_msg = policy_engine_process_ctrl_msg,
 	.process_cmd = policy_engine_process_cmd,
