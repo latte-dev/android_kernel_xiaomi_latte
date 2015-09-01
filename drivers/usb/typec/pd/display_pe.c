@@ -100,15 +100,42 @@ enum disp_pe_state {
 
 static void disp_pe_reset_policy_engine(struct disp_port_pe *disp_pe)
 {
+	mutex_lock(&disp_pe->pe_lock);
+	disp_pe->p.state = POLICY_STATE_OFFLINE;
+	disp_pe->p.status = POLICY_STATUS_UNKNOWN;
+	cancel_delayed_work(&disp_pe->start_comm);
+	disp_pe->cmd_retry = 0;
+	disp_pe->dp_mode = TYPEC_DP_TYPE_NONE;
+	if (disp_pe->hpd_state) {
+		policy_set_dp_state(&disp_pe->p, CABLE_DETACHED,
+					TYPEC_DP_TYPE_NONE);
+		disp_pe->hpd_state = false;
+	}
 	disp_pe->state = DISP_PE_STATE_NONE;
 	/* Clear port caps */
 	memset(&disp_pe->port_caps, 0, sizeof(struct disp_port_caps));
+	mutex_unlock(&disp_pe->pe_lock);
 }
 
 static void disp_pe_do_protocol_reset(struct disp_port_pe *disp_pe)
 {
 	policy_send_packet(&disp_pe->p, NULL, 0, PD_CMD_PROTOCOL_RESET,
 				PE_EVT_SEND_PROTOCOL_RESET);
+}
+
+static void disp_pe_handle_dp_fail(struct disp_port_pe *disp_pe)
+{
+	log_info("DP failed\n");
+	cancel_delayed_work(&disp_pe->start_comm);
+	mutex_lock(&disp_pe->pe_lock);
+	disp_pe->state = DISP_PE_STATE_ALT_MODE_FAIL;
+	disp_pe->p.status = POLICY_STATUS_FAIL;
+	mutex_unlock(&disp_pe->pe_lock);
+
+	/* Update the DP state to policy engine */
+	pe_notify_policy_status_changed(&disp_pe->p,
+			POLICY_TYPE_DISPLAY, PE_STATUS_CHANGE_DP_FAIL);
+
 }
 
 static int
@@ -276,12 +303,8 @@ static int disp_pe_handle_discover_identity(struct disp_port_pe *disp_pe,
 		log_dbg(" State -> DISP_PE_STATE_SVID_SENT\n");
 		break;
 	case REP_NACK:
-		mutex_lock(&disp_pe->pe_lock);
-		cancel_delayed_work(&disp_pe->start_comm);
-		disp_pe->state = DISP_PE_STATE_ALT_MODE_FAIL;
-		disp_pe->p.status = POLICY_STATUS_FAIL;
-		mutex_unlock(&disp_pe->pe_lock);
 		log_err("Responder doesn't support alternate mode\n");
+		disp_pe_handle_dp_fail(disp_pe);
 		break;
 	case REP_BUSY:
 		break;
@@ -337,12 +360,8 @@ static int disp_pe_handle_discover_svid(struct disp_port_pe *disp_pe,
 			log_err("This Display doesn't supports VESA\n");
 		/* Stop the display detection process */
 	case REP_NACK:
-		mutex_lock(&disp_pe->pe_lock);
-		cancel_delayed_work(&disp_pe->start_comm);
-		disp_pe->state = DISP_PE_STATE_ALT_MODE_FAIL;
-		disp_pe->p.status = POLICY_STATUS_FAIL;
-		mutex_unlock(&disp_pe->pe_lock);
 		log_warn("Responder doesn't support alternate mode\n");
+		disp_pe_handle_dp_fail(disp_pe);
 		break;
 	case REP_BUSY:
 		log_info("Responder BUSY!!. Retry Discover SVID\n");
@@ -437,12 +456,8 @@ static int disp_pe_handle_discover_mode(struct disp_port_pe *disp_pe,
 		/* Stop the display detection process */
 
 	case REP_NACK:
-		mutex_lock(&disp_pe->pe_lock);
-		cancel_delayed_work(&disp_pe->start_comm);
-		disp_pe->state = DISP_PE_STATE_ALT_MODE_FAIL;
-		disp_pe->p.status = POLICY_STATUS_FAIL;
-		mutex_unlock(&disp_pe->pe_lock);
 		log_warn("Responder doesn't support alternate mode\n");
+		disp_pe_handle_dp_fail(disp_pe);
 		break;
 	case REP_BUSY:
 		log_warn("Responder BUSY!!. Retry Discover SVID\n");
@@ -479,11 +494,7 @@ static int disp_pe_handle_enter_mode(struct disp_port_pe *disp_pe,
 	case REP_NACK:
 		log_warn("Display falied to enter dp mode %d\n",
 			disp_pe->dp_mode);
-		cancel_delayed_work(&disp_pe->start_comm);
-		mutex_lock(&disp_pe->pe_lock);
-		disp_pe->state = DISP_PE_STATE_ALT_MODE_FAIL;
-		disp_pe->p.status = POLICY_STATUS_FAIL;
-		mutex_unlock(&disp_pe->pe_lock);
+		disp_pe_handle_dp_fail(disp_pe);
 	}
 	return 0;
 }
@@ -514,15 +525,11 @@ static int disp_pe_handle_display_configure(struct disp_port_pe *disp_pe,
 					disp_pe->dp_mode);
 		/* Update the DP state to policy engine */
 		pe_notify_policy_status_changed(&disp_pe->p,
-				POLICY_TYPE_DISPLAY, POLICY_STATUS_SUCCESS);
+			POLICY_TYPE_DISPLAY, PE_STATUS_CHANGE_DP_SUCCESS);
 		break;
 	case REP_NACK:
 		log_warn("NAK for display config cmd %d\n", disp_pe->dp_mode);
-		mutex_lock(&disp_pe->pe_lock);
-		cancel_delayed_work(&disp_pe->start_comm);
-		disp_pe->state = DISP_PE_STATE_ALT_MODE_FAIL;
-		disp_pe->p.status = POLICY_STATUS_FAIL;
-		mutex_unlock(&disp_pe->pe_lock);
+		disp_pe_handle_dp_fail(disp_pe);
 	}
 	return 0;
 }
@@ -670,14 +677,8 @@ static void disp_pe_start_comm(struct work_struct *work)
 		schedule_delayed_work(&disp_pe->start_comm,
 					HZ * CMD_NORESPONCE_TIME);
 	} else {
-		mutex_lock(&disp_pe->pe_lock);
-		disp_pe->state = DISP_PE_STATE_ALT_MODE_FAIL;
-		disp_pe->p.status = POLICY_STATUS_FAIL;
-		mutex_unlock(&disp_pe->pe_lock);
 		log_warn("Not scheduling srccap as max re-try reached\n");
-		/* Update the DP state to policy engine */
-		pe_notify_policy_status_changed(&disp_pe->p,
-				POLICY_TYPE_DISPLAY, POLICY_STATUS_FAIL);
+		disp_pe_handle_dp_fail(disp_pe);
 	}
 }
 
@@ -685,13 +686,18 @@ static int disp_pe_start_policy_engine(struct policy *p)
 {
 	struct disp_port_pe *disp_pe = container_of(p,
 					struct disp_port_pe, p);
+	enum data_role drole;
 
 	log_dbg("IN");
 	mutex_lock(&disp_pe->pe_lock);
 	p->state = POLICY_STATE_ONLINE;
-	p->status = POLICY_STATUS_RUNNING;
 	disp_pe->cmd_retry = 0;
-	schedule_delayed_work(&disp_pe->start_comm, 0);
+
+	/* Start DI only in host mode*/
+	drole = policy_get_data_role(p);
+	if (drole == DATA_ROLE_DFP)
+		schedule_delayed_work(&disp_pe->start_comm, 0);
+
 	mutex_unlock(&disp_pe->pe_lock);
 	return 0;
 }
@@ -702,19 +708,8 @@ static int disp_pe_stop_policy_engine(struct policy *p)
 					struct disp_port_pe, p);
 
 	log_dbg("IN");
-	mutex_lock(&disp_pe->pe_lock);
-	p->state = POLICY_STATE_OFFLINE;
-	p->status = POLICY_STATUS_UNKNOWN;
-	cancel_delayed_work(&disp_pe->start_comm);
 	disp_pe_reset_policy_engine(disp_pe);
-	disp_pe->cmd_retry = 0;
-	disp_pe->dp_mode = TYPEC_DP_TYPE_NONE;
-	if (disp_pe->hpd_state) {
-		policy_set_dp_state(&disp_pe->p, CABLE_DETACHED,
-					TYPEC_DP_TYPE_NONE);
-		disp_pe->hpd_state = false;
-	}
-	mutex_unlock(&disp_pe->pe_lock);
+
 	return 0;
 }
 
