@@ -372,7 +372,8 @@ static void disp_pe_process_dp_modes(struct disp_port_pe *disp_pe,
 				/* Mode intex starts from 1 */
 				index_4x = i + 1;
 			}
-		} else if (!index_2x) {
+		}
+		if (!index_2x) {
 			if ((dmode_pkt->mode[i].ufp_pin
 			& DISP_PORT_PIN_ASSIGN_D)
 			|| (dmode_pkt->mode[i].dfp_pin
@@ -380,7 +381,8 @@ static void disp_pe_process_dp_modes(struct disp_port_pe *disp_pe,
 				/* Mode intex starts from 1 */
 				index_2x = i + 1;
 			}
-		} else
+		}
+		if (index_2x && index_4x)
 			break;
 	}
 	disp_pe->port_caps.dmode_4x_index = index_4x;
@@ -407,20 +409,11 @@ static int disp_pe_handle_discover_mode(struct disp_port_pe *disp_pe,
 		}
 
 		disp_pe_process_dp_modes(disp_pe, dmode_pkt);
-		/* First check for 2X, Mode E */
+		/* First check for 2X, Mode D */
 		log_dbg("4x_index=%d, 2x_index=%d\n",
-			disp_pe->port_caps.dmode_4x_index,
-			disp_pe->port_caps.dmode_2x_index);
-		if (disp_pe->port_caps.dmode_4x_index) {
-			disp_pe_send_enter_mode(disp_pe,
-					disp_pe->port_caps.dmode_4x_index);
-			mutex_lock(&disp_pe->pe_lock);
-			disp_pe->state = DISP_PE_STATE_EMODE_SENT;
-			disp_pe->dp_mode = TYPEC_DP_TYPE_4X;
-			mutex_unlock(&disp_pe->pe_lock);
-			log_dbg("State -> DISP_PE_STATE_EMODE_SENT\n");
-			break;
-		} else if (disp_pe->port_caps.dmode_2x_index) {
+				disp_pe->port_caps.dmode_4x_index,
+				disp_pe->port_caps.dmode_2x_index);
+		if (disp_pe->port_caps.dmode_2x_index) {
 			disp_pe_send_enter_mode(disp_pe,
 				disp_pe->port_caps.dmode_2x_index);
 			mutex_lock(&disp_pe->pe_lock);
@@ -429,8 +422,18 @@ static int disp_pe_handle_discover_mode(struct disp_port_pe *disp_pe,
 			mutex_unlock(&disp_pe->pe_lock);
 			log_dbg("State -> DISP_PE_STATE_EMODE_SENT\n");
 			break;
-		}
-		log_warn("This Display doesn't supports neither 2X nor 4X\n");
+
+		} else if (disp_pe->port_caps.dmode_4x_index) {
+			disp_pe_send_enter_mode(disp_pe,
+					disp_pe->port_caps.dmode_4x_index);
+			mutex_lock(&disp_pe->pe_lock);
+			disp_pe->state = DISP_PE_STATE_EMODE_SENT;
+			disp_pe->dp_mode = TYPEC_DP_TYPE_4X;
+			mutex_unlock(&disp_pe->pe_lock);
+			log_dbg("State -> DISP_PE_STATE_EMODE_SENT\n");
+			break;
+		} else
+			log_warn("This Display doesn't supports neither 2X nor 4X\n");
 		/* Stop the display detection process */
 
 	case REP_NACK:
