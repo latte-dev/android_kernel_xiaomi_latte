@@ -258,13 +258,13 @@ static void pcie_aspm_l1ss_cfg(struct pcie_link_state *link, u32 state)
 	pr_debug("%s: state %d, old state %d\n",
 		__func__, l1ss_state, link->l1ss_enabled);
 
-	if (link->l1ss_enabled == l1ss_state)
-		return;
-
 	/* Restore the LTR values */
 	child = list_entry(linkbus->devices.next, struct pci_dev, bus_list);
 	pcie_write_ltr(child, link->dw_max_snoop_ltr,
 		link->dw_max_no_snoop_ltr);
+
+	if (link->l1ss_enabled == l1ss_state)
+		return;
 
 	/* Clear L1SS enable bits if L1 is going to be disabled
 	* or l1ss is disabled */
