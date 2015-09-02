@@ -53,9 +53,7 @@ struct wcove_gpio_info {
 	struct gpio_desc *gpio_vconn;
 	struct list_head gpio_queue;
 	struct work_struct gpio_work;
-	struct delayed_work vbus_work;
 	struct mutex lock;
-	int retry_count;
 	bool is_vbus_connected;
 	spinlock_t gpio_queue_lock;
 };
@@ -96,10 +94,11 @@ static int wcgpio_set_charger_state(struct wcove_gpio_info *info,
 	return set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGER, state);
 }
 
-static void wcgpio_update_vbus_state(struct wcove_gpio_info *info, bool state)
+static int wcgpio_update_vbus_state(struct wcove_gpio_info *info, bool state)
 {
 	int ret;
 
+	mutex_lock(&info->lock);
 	if (state) {
 		/* put charger into HiZ mode */
 		ret = wcgpio_set_charger_state(info, false);
@@ -116,21 +115,9 @@ static void wcgpio_update_vbus_state(struct wcove_gpio_info *info, bool state)
 			dev_warn(&info->pdev->dev,
 				"Error in VBUS disable %d", ret);
 	}
+	mutex_unlock(&info->lock);
 
-	if ((ret == -EAGAIN) &&
-		(info->retry_count <= MAX_UPDATE_VBUS_RETRY_COUNT)) {
-		info->retry_count++;
-		schedule_delayed_work(&info->vbus_work, VBUS_UPDATE_DIFFERED_DELAY);
-	} else
-		info->retry_count = 0;
-}
-
-static void wcgpio_vbus_worker(struct work_struct *work)
-{
-	struct wcove_gpio_info *info =
-		container_of(work, struct wcove_gpio_info, vbus_work.work);
-
-	wcgpio_update_vbus_state(info, info->is_vbus_connected);
+	return ret;
 }
 
 static void wcgpio_ctrl_worker(struct work_struct *work)
@@ -140,6 +127,8 @@ static void wcgpio_ctrl_worker(struct work_struct *work)
 	struct wcove_gpio_event *evt, *tmp;
 	unsigned long flags;
 	struct list_head new_list;
+	int retry_count;
+	int ret;
 
         if (list_empty(&info->gpio_queue))
                 return;
@@ -153,12 +142,23 @@ static void wcgpio_ctrl_worker(struct work_struct *work)
 				"%s:%d state=%d\n", __FILE__, __LINE__,
 				evt->is_src_connected);
 		info->is_vbus_connected = evt->is_src_connected;
-		info->retry_count = 0;
+		retry_count = 0;
 
-		/* cancelling the previous event handling scheduled, since a new
-		 * event has happened for connect/disconnect */
-		cancel_delayed_work(&info->vbus_work);
-		wcgpio_update_vbus_state(info, info->is_vbus_connected);
+		do {
+			/* loop is to update the vbus state in case fails, try
+			 * again upto max retry count */
+			ret = wcgpio_update_vbus_state(info,
+					info->is_vbus_connected);
+			if (ret != -EAGAIN)
+				break;
+
+			msleep(VBUS_UPDATE_DIFFERED_DELAY);
+		} while (++retry_count <= MAX_UPDATE_VBUS_RETRY_COUNT);
+
+		if (ret < 0) {
+			dev_warn(&info->pdev->dev,
+				"Error in update vbus state (%d)\n", ret);
+		}
 
 		/* enable/disable vbus based on the provider(source) event */
 		gpiod_set_value_cansleep(info->gpio_otg,
@@ -191,6 +191,11 @@ static int wcgpio_check_events(struct wcove_gpio_info *info,
 	}
 
 	evt->is_src_connected = extcon_get_cable_state(edev, "USB_TYPEC_SRC");
+	if (evt->is_src_connected == info->is_vbus_connected) {
+		dev_info(&info->pdev->dev, "already source %s\n",
+			evt->is_src_connected ? "Connected" : "Disconnected");
+		return 0;
+	}
 	dev_info(&info->pdev->dev,
 			"[extcon notification] evt: Provider - %s\n",
 			evt->is_src_connected ? "Connected" : "Disconnected");
@@ -247,7 +252,6 @@ static int wcove_gpio_probe(struct platform_device *pdev)
 	mutex_init(&info->lock);
 	INIT_LIST_HEAD(&info->gpio_queue);
 	INIT_WORK(&info->gpio_work, wcgpio_ctrl_worker);
-	INIT_DELAYED_WORK(&info->vbus_work, wcgpio_vbus_worker);
 	spin_lock_init(&info->gpio_queue_lock);
 
 	info->nb.notifier_call = wcgpio_event_handler;
