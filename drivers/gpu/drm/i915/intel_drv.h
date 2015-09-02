@@ -712,6 +712,9 @@ struct intel_dp {
 				     uint32_t aux_clock_divider);
 
 	int notify_had;
+
+	/* Displayport compliance testing */
+	unsigned long compliance_test_type;
 };
 
 struct intel_digital_port {
