@@ -3,7 +3,7 @@
 #
 
 pd_policy-y	:= devpolicy_mgr.o
-pd_policy-y	+= message.o protocol.o
+pd_policy-y	+= protocol.o
 pd_policy-y	+= policy_engine.o
 pd_policy-y	+= sink_port_pe.o
 pd_policy-y	+= src_port_pe.o

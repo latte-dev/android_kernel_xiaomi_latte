@@ -35,6 +35,43 @@ struct prot_msg {
 	struct pd_packet pkt;
 };
 
+
+static int pd_ctrl_msg(struct pd_prot *pd, u8 msg_type, u8 msg_id)
+{
+	struct pd_packet *buf = &pd->tx_buf;
+	struct pd_pkt_header *header = &buf->header;
+
+	header->msg_type = msg_type & PD_MSG_HEAD_MSG_TYPE;
+	header->data_role = pd->data_role & PD_MSG_HEADER_ROLE_BITS_MASK;
+	header->rev_id = PD_REV_ID_2 & PD_MSG_HEADER_REVID_BITS_MASK;
+	if (pd->pwr_role == PD_POWER_ROLE_PROVIDER)
+		header->pwr_role = 1;
+	else
+		header->pwr_role = 0;
+	header->msg_id = msg_id & PD_MSG_HEADER_MSGID_BITS_MASK;
+	header->num_data_obj = 0;
+
+	return 0;
+}
+
+static int pd_data_msg(struct pd_prot *pd, int len, u8 msg_type)
+{
+	struct pd_packet *buf = &pd->tx_buf;
+	struct pd_pkt_header *header = &buf->header;
+
+	header->msg_type = msg_type & PD_MSG_HEAD_MSG_TYPE;
+	header->data_role = pd->data_role & PD_MSG_HEADER_ROLE_BITS_MASK;
+	header->rev_id = PD_REV_ID_2 & PD_MSG_HEADER_REVID_BITS_MASK;
+	if (pd->pwr_role == PD_POWER_ROLE_PROVIDER)
+		header->pwr_role = 1;
+	else
+		header->pwr_role = 0;
+	header->msg_id = pd->tx_msg_id & PD_MSG_HEADER_MSGID_BITS_MASK;
+	header->num_data_obj = len & PD_MSG_HEADER_N_DOBJ_BITS_MASK;
+
+	return 0;
+}
+
 static void pd_policy_update_data_role(struct pd_prot *prot,
 					enum data_role drole)
 {

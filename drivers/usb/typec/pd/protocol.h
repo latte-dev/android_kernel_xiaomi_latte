@@ -120,7 +120,4 @@ static inline int protocol_bind_dpm(struct typec_phy *phy)
 static inline void protocol_unbind_dpm(struct typec_phy *phy)
 { }
 #endif /* CONFIG_USBC_PD && CONFIG_USBC_PD_POLICY */
-
-extern int pd_ctrl_msg(struct pd_prot *pd, u8 msg_type, u8 msg_id);
-extern int pd_data_msg(struct pd_prot *pd, int len, u8 msg_type);
 #endif /* __USB_PD_PROT_H__ */

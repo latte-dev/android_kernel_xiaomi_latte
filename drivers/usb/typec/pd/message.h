@@ -345,7 +345,4 @@ static inline u32 pd_fixed_pdo_to_volt(u32 pdo)
 	return (pdo & 0x3ff) * 50;
 }
 
-struct pd_prot;
-extern int pd_ctrl_msg(struct pd_prot *pd, u8 msg_type, u8 msg_id);
-extern int pd_data_msg(struct pd_prot *pd, int len, u8 msg_type);
 #endif /* __PD_MESSAGE_H__ */
