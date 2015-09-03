@@ -265,7 +265,7 @@ static inline void wcove_bcu_create_debugfs(struct wcpmic_bcu_info *info) { }
 static inline void wcove_bcu_remove_debugfs(struct wcpmic_bcu_info *info) { }
 #endif /* CONFIG_DEBUG_FS */
 
-static inline struct power_supply *wcove_bcu_get_psy_battery(void)
+static inline struct power_supply *wcove_bcu_get_psy_battery(enum psy_type type)
 {
 	struct class_dev_iter iter;
 	struct device *dev;
@@ -274,7 +274,8 @@ static inline struct power_supply *wcove_bcu_get_psy_battery(void)
 	class_dev_iter_init(&iter, power_supply_class, NULL, NULL);
 	while ((dev = class_dev_iter_next(&iter))) {
 		psy = (struct power_supply *)dev_get_drvdata(dev);
-		if (psy->type == POWER_SUPPLY_TYPE_BATTERY) {
+		if ((type == PSY_TYPE_BATTERY && IS_BATTERY(psy)) ||
+			(type == PSY_TYPE_CHARGER && IS_CHARGER(psy))) {
 			class_dev_iter_exit(&iter);
 			return psy;
 		}
@@ -291,7 +292,7 @@ static inline int wcove_bcu_get_battery_voltage(int *volt)
 	union power_supply_propval val;
 	int ret;
 
-	psy = wcove_bcu_get_psy_battery();
+	psy = wcove_bcu_get_psy_battery(PSY_TYPE_BATTERY);
 	if (!psy)
 		return -EINVAL;
 
@@ -302,21 +303,55 @@ static inline int wcove_bcu_get_battery_voltage(int *volt)
 	return ret;
 }
 
-/**
- * Initiate Graceful Shutdown by setting the SOC to 0% via battery driver and
- * post the power supply changed event to indicate the change in battery level.
- */
-static inline int wcove_bcu_action_voltage_drop(void)
+static int get_charger_online_status(struct wcpmic_bcu_info *info)
 {
 	struct power_supply *psy;
 	union power_supply_propval val;
 	int ret;
 
-	psy = wcove_bcu_get_psy_battery();
-	if (!psy)
-		return -EINVAL;
+	psy = wcove_bcu_get_psy_battery(PSY_TYPE_CHARGER);
+	if (!psy) {
+		dev_warn(info->dev, "unable to get psy\n");
+		goto error;
+	}
 
-	/* setting battery capacity to 0 */
+	/* checking the charger status */
+	ret = psy->get_property(psy, POWER_SUPPLY_PROP_ONLINE, &val);
+	if (ret < 0)
+		goto error;
+
+	return val.intval;
+
+error:
+	return -EINVAL;
+}
+
+/**
+ * Initiate Graceful Shutdown by setting the SOC to 0% via battery driver and
+ * post the power supply changed event to indicate the change in battery level.
+ */
+static int wcove_bcu_action_voltage_drop(struct wcpmic_bcu_info *info)
+{
+	struct power_supply *psy;
+	union power_supply_propval val;
+	int ret;
+
+	/* Do not set battery capacity to 0 to initiate graceful shutdown, when
+	 * battery is actually charging */
+	ret = get_charger_online_status(info);
+	if (ret != 0) {
+		dev_warn(info->dev, "charger is online or error\n");
+		return -EINVAL;
+	}
+
+	psy = wcove_bcu_get_psy_battery(PSY_TYPE_BATTERY);
+	if (!psy) {
+		dev_err(info->dev, "fail in getting psy\n");
+		return -EINVAL;
+	}
+
+	/* Trigger graceful shutdown via battery driver by setting SOC to 0% */
+	dev_info(info->dev, "Triggering Graceful Shutdown\n");
 	val.intval = 0;
 	ret = psy->set_property(psy, POWER_SUPPLY_PROP_CAPACITY, &val);
 	if (ret < 0)
@@ -398,12 +433,9 @@ static void wcove_bcu_handle_vwarna_event(void *dev_data)
 	int ret;
 	struct wcpmic_bcu_info *info = (struct wcpmic_bcu_info *)dev_data;
 
-	/* Trigger graceful shutdown via battery driver by setting SOC to 0% */
-	dev_info(info->dev, "Triggering Graceful Shutdown\n");
-	ret = wcove_bcu_action_voltage_drop();
+	ret = wcove_bcu_action_voltage_drop(info);
 	if (ret) {
-		dev_err(info->dev,
-			"Error in Triggering Graceful Shutdown\n");
+		dev_warn(info->dev, "No action taken for vwarna event\n");
 		return;
 	}
 

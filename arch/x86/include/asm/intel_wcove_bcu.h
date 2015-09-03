@@ -89,6 +89,19 @@
 /* Generic macro to assign the parameters (reg name and address) */
 #define reg_info(x)	{ .name = #x, .addr = x, .mode = MODE(x) }
 
+#define IS_BATTERY(psy) (psy->type == POWER_SUPPLY_TYPE_BATTERY)
+#define IS_CHARGER(psy) (psy->type == POWER_SUPPLY_TYPE_USB ||\
+			psy->type == POWER_SUPPLY_TYPE_USB_CDP || \
+			psy->type == POWER_SUPPLY_TYPE_USB_DCP || \
+			psy->type == POWER_SUPPLY_TYPE_USB_ACA || \
+			psy->type == POWER_SUPPLY_TYPE_USB_TYPEC)
+
+enum psy_type {
+	PSY_TYPE_UNKNOWN,
+	PSY_TYPE_BATTERY,
+	PSY_TYPE_CHARGER,
+};
+
 /**
  * These values are read from platform.
  * platform get these entries - default register configurations
