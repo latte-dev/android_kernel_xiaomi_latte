@@ -562,6 +562,12 @@ static int silead_ts_probe(struct i2c_client *client,
 	struct silead_ts_data *data;
 	struct device *dev = &client->dev;
 	int ret;
+	static int first_time = 0;
+/* loading the firmware to the Silead takes about 4 seconds, so let's defer
+ * probing until we are multi-threaded
+ */
+	if(++first_time == 1)
+		return -EPROBE_DEFER;
 
 	if (!i2c_check_functionality(client->adapter,
 				     I2C_FUNC_I2C |
