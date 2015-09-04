@@ -101,10 +101,10 @@ enum disp_pe_state {
 
 static void disp_pe_reset_policy_engine(struct disp_port_pe *disp_pe)
 {
+	cancel_delayed_work_sync(&disp_pe->start_comm);
 	mutex_lock(&disp_pe->pe_lock);
 	disp_pe->p.state = POLICY_STATE_OFFLINE;
 	disp_pe->p.status = POLICY_STATUS_UNKNOWN;
-	cancel_delayed_work(&disp_pe->start_comm);
 	disp_pe->cmd_retry = 0;
 	disp_pe->dp_mode = TYPEC_DP_TYPE_NONE;
 	if (disp_pe->hpd_state) {
@@ -127,7 +127,7 @@ static void disp_pe_do_protocol_reset(struct disp_port_pe *disp_pe)
 static void disp_pe_handle_dp_fail(struct disp_port_pe *disp_pe)
 {
 	log_info("DP failed\n");
-	cancel_delayed_work(&disp_pe->start_comm);
+	cancel_delayed_work_sync(&disp_pe->start_comm);
 	mutex_lock(&disp_pe->pe_lock);
 	disp_pe->state = DISP_PE_STATE_ALT_MODE_FAIL;
 	disp_pe->p.status = POLICY_STATUS_FAIL;

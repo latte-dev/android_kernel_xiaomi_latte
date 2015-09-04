@@ -968,19 +968,14 @@ static int src_pe_stop_policy_engine(struct policy *p)
 					struct src_port_pe, p);
 
 	log_info("IN");
+	cancel_delayed_work_sync(&src_pe->start_comm);
 	mutex_lock(&src_pe->pe_lock);
 	p->state = POLICY_STATE_OFFLINE;
 	p->status = POLICY_STATUS_UNKNOWN;
 	src_pe_reset_policy_engine(src_pe);
-	cancel_delayed_work_sync(&src_pe->start_comm);
 	policy_set_pd_state(p, false);
 	src_pe->cmd_retry = 0;
-	src_pe->got_snk_caps = 0;
-	src_pe->is_pd_configured = 0;
 	src_pe->vbus_retry_cnt = 0;
-	src_pe->pp_is_dual_drole = 0;
-	src_pe->pp_is_dual_prole = 0;
-	src_pe->pp_is_ext_pwrd = 0;
 	mutex_unlock(&src_pe->pe_lock);
 	return 0;
 }
