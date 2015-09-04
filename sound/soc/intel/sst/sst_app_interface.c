@@ -106,7 +106,7 @@ static int sst_create_algo_ipc(struct snd_ppp_params *algo_params,
 					struct ipc_post **msg, int pvt_id)
 {
 	u32 header_size = 0;
-	u32 ipc_msg_size = sizeof(u32) + sizeof(*algo_params)
+	u64 ipc_msg_size = sizeof(u32) + sizeof(*algo_params)
 			 - sizeof(algo_params->params) + algo_params->size;
 	u32 offset = 0;
 
