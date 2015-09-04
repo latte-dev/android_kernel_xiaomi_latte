@@ -17,7 +17,7 @@
 #include <linux/iio/iio.h>
 #include <linux/iio/sw_trigger.h>
 
-#define MAX_NAME_LEN 32
+#define MAX_NAME_LEN 64
 
 static struct config_group *trigger_make_group(struct config_group *group,
 					       const char *name)
