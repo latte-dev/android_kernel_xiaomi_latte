@@ -46,6 +46,8 @@ static bool int_handler_enabled;
 
 
 static void activate_irq_handler(void);
+static void set_wake_locked(int wake);
+
 
 struct bluetooth_low_power_mode {
 #ifndef DBG_DISABLE_BT_LOW_POWER
@@ -100,7 +102,7 @@ static int bt_lpm_acpi_probe(struct platform_device *pdev)
 	 */
 	dev_dbg(&pdev->dev, "ACPI specific probe\n");
 
-	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, NULL,
+	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, "enable_bt",
 						gpio_enable_bt_acpi_idx);
 	bt_lpm.gpio_enable_bt = desc_to_gpio(bt_lpm_gpiod);
 	if (!gpio_is_valid(bt_lpm.gpio_enable_bt)) {
@@ -110,7 +112,7 @@ static int bt_lpm_acpi_probe(struct platform_device *pdev)
 	}
 
 #ifndef DBG_DISABLE_BT_LOW_POWER
-	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, NULL,
+	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, "host_wake_bt",
 						gpio_wake_acpi_idx);
 	bt_lpm.gpio_wake = desc_to_gpio(bt_lpm_gpiod);
 	if (!gpio_is_valid(bt_lpm.gpio_wake)) {
@@ -119,7 +121,7 @@ static int bt_lpm_acpi_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, NULL,
+	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, "bt_wake_host",
 						host_wake_acpi_idx);
 	bt_lpm.gpio_host_wake = desc_to_gpio(bt_lpm_gpiod);
 	if (!gpio_is_valid(bt_lpm.gpio_host_wake)) {
@@ -174,6 +176,8 @@ static int bt_lpm_rfkill_set_power(void *data, bool blocked)
 		gpio_set_value(bt_lpm.gpio_reset, 1);
 #else
 		gpio_set_value(bt_lpm.gpio_enable_bt, 1);
+		set_wake_locked(1);
+
 #endif
 		pr_debug("%s: turn BT on\n", __func__);
 	} else {
@@ -182,6 +186,7 @@ static int bt_lpm_rfkill_set_power(void *data, bool blocked)
 		gpio_set_value(bt_lpm.gpio_reset, 0);
 #else
 		gpio_set_value(bt_lpm.gpio_enable_bt, 0);
+		set_wake_locked(0);
 #endif
 		pr_debug("%s: turn BT off\n", __func__);
 	}
@@ -220,8 +225,6 @@ static void set_wake_locked(int wake)
 static enum hrtimer_restart enter_lpm(struct hrtimer *timer)
 {
 	pr_debug("%s\n", __func__);
-
-	set_wake_locked(0);
 
 	return HRTIMER_NORESTART;
 }
@@ -269,6 +272,11 @@ static irqreturn_t host_wake_isr(int irq, void *dev)
 							IRQF_TRIGGER_RISING);
 
 	if (!bt_lpm.tty_dev) {
+		bt_lpm.host_wake = host_wake;
+		return IRQ_HANDLED;
+	}
+
+	if (!bt_enabled) {
 		bt_lpm.host_wake = host_wake;
 		return IRQ_HANDLED;
 	}
