@@ -35,11 +35,17 @@
 #include <trace/events/cpufreq_interactive.h>
 
 struct timer_list  bootboost_safety_timer;
-
+u32 max_nonturbo_freq;
 struct cpufreq_interactive_cpuinfo {
 	struct timer_list cpu_timer;
 	struct timer_list cpu_slack_timer;
-	spinlock_t load_lock; /* protects the next 9 fields */
+	spinlock_t load_lock; /* protects the next fields */
+	u64 prev_aperf;
+	u64 prev_mperf;
+	u64 prev_tsc;
+	u64 delta_mperf;
+	u64 delta_aperf;
+	u64 delta_tsc;
 	u64 time_in_idle;
 	u64 time_in_idle_timestamp;
 	u64 cputime_speedadj;
@@ -49,7 +55,6 @@ struct cpufreq_interactive_cpuinfo {
 	u64 time_in_irq;
 	u64 cputime_iowait;
 	u64 time_in_iowait;
-	bool io_busy;
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
 	struct cpufreq_policy *policy;
 	struct cpufreq_frequency_table *freq_table;
@@ -123,6 +128,7 @@ struct cpufreq_interactive_tunables {
 	/* End time of touchboost pulse in ktime converted to usecs */
 	u64 touchboostpulse_endtime;
 	bool boosted;
+	unsigned int io_boosted;
 	/*
 	 * Max additional time to wait in idle, beyond timer_rate, at speeds
 	 * above minimum before wakeup to reduce speed, or -1 if unnecessary.
@@ -179,6 +185,7 @@ static void cpufreq_interactive_timer_resched(
 {
 	struct cpufreq_interactive_tunables *tunables =
 		pcpu->policy->governor_data;
+	struct cpuinfo_x86 *c = &cpu_data(smp_processor_id());
 	unsigned long expires;
 	unsigned long flags;
 
@@ -186,11 +193,17 @@ static void cpufreq_interactive_timer_resched(
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	update_irq_time(pcpu);
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
-	pcpu->time_in_idle =
-		get_cpu_idle_time(smp_processor_id(),
-				  &pcpu->time_in_idle_timestamp,
-				  tunables->io_is_busy);
-	pcpu->cputime_speedadj = 0;
+	if (cpu_has(c, X86_FEATURE_APERFMPERF)) {
+		rdmsrl(MSR_IA32_MPERF, pcpu->prev_mperf);
+		rdmsrl(MSR_IA32_APERF, pcpu->prev_aperf);
+		rdmsrl(MSR_IA32_TSC, pcpu->prev_tsc);
+	} else {
+		pcpu->time_in_idle =
+			get_cpu_idle_time(smp_processor_id(),
+					  &pcpu->time_in_idle_timestamp,
+					  tunables->io_is_busy);
+		pcpu->cputime_speedadj = 0;
+	}
 	pcpu->cputime_speedadj_timestamp = pcpu->time_in_idle_timestamp;
 	expires = jiffies + usecs_to_jiffies(tunables->timer_rate);
 	mod_timer_pinned(&pcpu->cpu_timer, expires);
@@ -212,6 +225,7 @@ static void cpufreq_interactive_timer_start(
 	struct cpufreq_interactive_tunables *tunables, int cpu)
 {
 	struct cpufreq_interactive_cpuinfo *pcpu = &per_cpu(cpuinfo, cpu);
+	struct cpuinfo_x86 *c = &cpu_data(cpu);
 	unsigned long expires = jiffies +
 		usecs_to_jiffies(tunables->timer_rate);
 	unsigned long flags;
@@ -229,10 +243,16 @@ static void cpufreq_interactive_timer_start(
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	update_irq_time(pcpu);
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
-	pcpu->time_in_idle =
-		get_cpu_idle_time(cpu, &pcpu->time_in_idle_timestamp,
-				  tunables->io_is_busy);
-	pcpu->cputime_speedadj = 0;
+	if (cpu_has(c, X86_FEATURE_APERFMPERF)) {
+		rdmsrl(MSR_IA32_MPERF, pcpu->prev_mperf);
+		rdmsrl(MSR_IA32_APERF, pcpu->prev_aperf);
+		rdmsrl(MSR_IA32_TSC, pcpu->prev_tsc);
+	} else {
+		pcpu->time_in_idle =
+			get_cpu_idle_time(cpu, &pcpu->time_in_idle_timestamp,
+					  tunables->io_is_busy);
+		pcpu->cputime_speedadj = 0;
+	}
 	pcpu->cputime_speedadj_timestamp = pcpu->time_in_idle_timestamp;
 	spin_unlock_irqrestore(&pcpu->load_lock, flags);
 }
@@ -369,6 +389,7 @@ static u64 update_load(int cpu)
 	struct cpufreq_interactive_cpuinfo *pcpu = &per_cpu(cpuinfo, cpu);
 	struct cpufreq_interactive_tunables *tunables =
 		pcpu->policy->governor_data;
+	struct cpuinfo_x86 *c = &cpu_data(cpu);
 	u64 now;
 	u64 now_idle;
 	unsigned int delta_idle;
@@ -390,24 +411,28 @@ static u64 update_load(int cpu)
 	pcpu->time_in_irq = now_irq;
 	pcpu->time_in_iowait = now_iowait;
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
+	if (cpu_has(c, X86_FEATURE_APERFMPERF)) {
+		rdmsrl(MSR_IA32_MPERF, pcpu->delta_mperf);
+		pcpu->delta_mperf -= pcpu->prev_mperf;
+		rdmsrl(MSR_IA32_APERF, pcpu->delta_aperf);
+		pcpu->delta_aperf -= pcpu->prev_aperf;
+		rdmsrl(MSR_IA32_TSC, pcpu->delta_tsc);
+		pcpu->delta_tsc -= pcpu->prev_tsc;
+	} else {
+		now_idle = get_cpu_idle_time(cpu, &now, tunables->io_is_busy);
+		delta_idle = (unsigned int)(now_idle - pcpu->time_in_idle);
+		delta_time = (unsigned int)(now - pcpu->time_in_idle_timestamp);
 
-	now_idle = get_cpu_idle_time(cpu, &now, tunables->io_is_busy);
-	delta_idle = (unsigned int)(now_idle - pcpu->time_in_idle);
-#ifdef CONFIG_IRQ_TIME_ACCOUNTING
-	if (pcpu->io_busy)
-		delta_idle -= delta_iowait;
-#endif
-	delta_time = (unsigned int)(now - pcpu->time_in_idle_timestamp);
+		if (delta_time <= delta_idle)
+			active_time = 0;
+		else
+			active_time = delta_time - delta_idle;
 
-	if (delta_time <= delta_idle)
-		active_time = 0;
-	else
-		active_time = delta_time - delta_idle;
+		pcpu->cputime_speedadj += active_time * pcpu->policy->cur;
 
-	pcpu->cputime_speedadj += active_time * pcpu->policy->cur;
-
-	pcpu->time_in_idle = now_idle;
-	pcpu->time_in_idle_timestamp = now;
+		pcpu->time_in_idle = now_idle;
+		pcpu->time_in_idle_timestamp = now;
+	}
 	return now;
 }
 
@@ -421,13 +446,13 @@ static void cpufreq_interactive_timer(unsigned long data)
 		&per_cpu(cpuinfo, data);
 	struct cpufreq_interactive_tunables *tunables =
 		pcpu->policy->governor_data;
+	struct cpuinfo_x86 *c = &cpu_data(data);
 	unsigned int new_freq;
 	unsigned int loadadjfreq;
 	unsigned int index;
 	unsigned long flags;
 	u64 max_fvtime;
 	unsigned int cur;
-	bool io_boosted = false;
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	u64 cputime_irq;
 	u64 cputime_iowait;
@@ -470,44 +495,45 @@ static void cpufreq_interactive_timer(unsigned long data)
 	cputime_iowait = cputime_iowait * 100;
 	do_div(cputime_iowait, delta_time);
 	iowait_load = (unsigned int)cputime_iowait / cur;
+	tunables->io_boosted &= ~(1 << data);
 
 	if (have_governor_per_policy()) {
 		spin_lock_irqsave(&pcpu->load_lock, flags);
 		if (irq_load >= tunables->irq_load_threshold_val
 			&& iowait_load >= tunables->iowait_load_threshold_val) {
-			io_boosted = true;
-			pcpu->io_busy = true;
-		} else if (irq_load >= tunables->irq_load_threshold_val) {
-			pcpu->io_busy = true;
-		} else {
-			pcpu->io_busy = false;
+			tunables->io_boosted |= 1 << data;
 		}
 		spin_unlock_irqrestore(&pcpu->load_lock, flags);
 	} else {
 		if (irq_load >= tunables->irq_load_threshold_val
 			&& iowait_load >= tunables->iowait_load_threshold_val) {
-			io_boosted = true;
-			pcpu->io_busy = true;
-		} else if (irq_load >= tunables->irq_load_threshold_val) {
-			pcpu->io_busy = true;
-		} else {
-			pcpu->io_busy = false;
+			tunables->io_boosted |= 1 << data;
 		}
 	}
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
 
 	spin_lock_irqsave(&pcpu->target_freq_lock, flags);
-	do_div(cputime_speedadj, delta_time);
-	loadadjfreq = (unsigned int)cputime_speedadj * 100;
-#ifdef CONFIG_INTEL_MODULE_CPU_FREQ
-	cpu_load = loadadjfreq / pcpu->policy->cur;
-#else
-	cpu_load = loadadjfreq / pcpu->target_freq;
-#endif
+	if (cpu_has(c, X86_FEATURE_APERFMPERF)) {
+		/* mperf counter is incremented at tsc rate when the cpu is
+		 * active tsc counter is always incremented => the ratio is the
+		 * cpu load APERF is recommended to be used to determine what
+		 * the average frequency of the core was during the last sample
+		 * period.  APERF/MPERF will give you a ratio of the guaranteed
+		 * frequency. => APERF/MPERF x GUAR_FREQUENCY gives the average
+		 * CPU frequency.
+		 */
+		cpu_load = 100L*pcpu->delta_mperf / pcpu->delta_tsc;
+		loadadjfreq = 100L * max_nonturbo_freq *
+			pcpu->delta_aperf / pcpu->delta_tsc;
+	} else {
+		do_div(cputime_speedadj, delta_time);
+		loadadjfreq = (unsigned int)cputime_speedadj * 100;
+		cpu_load = loadadjfreq / pcpu->target_freq;
+	}
 	tunables->boosted = tunables->boost_val || now < tunables->boostpulse_endtime;
 
 	if (cpu_load >= tunables->go_hispeed_load ||
-			 tunables->boosted || io_boosted) {
+			 tunables->boosted || tunables->io_boosted) {
 		if (pcpu->policy->cur < tunables->hispeed_freq) {
 			new_freq = tunables->hispeed_freq;
 		} else {
@@ -1462,6 +1488,10 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 	struct cpufreq_frequency_table *freq_table;
 	struct cpufreq_interactive_tunables *tunables;
 	unsigned long flags;
+	static int scalable_bus_speed[] = {
+		83300, 100000, 133300, 116700, 80000, 93300, 90000, 88900, 87500
+	};
+	u32 lo, hi, bus_freq;
 
 	if (have_governor_per_policy())
 		tunables = policy->governor_data;
@@ -1505,7 +1535,11 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		tunables->iowait_load_threshold_val =
 				 DEFAULT_IOWAIT_LOAD_THRESHOLD;
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
-
+		rdmsr(MSR_PLATFORM_INFO, lo, hi);
+		max_nonturbo_freq = (lo >> 8) & 0xFF;
+		rdmsr(MSR_FSB_FREQ, lo, hi);
+		bus_freq = scalable_bus_speed[lo & 0x1F];
+		max_nonturbo_freq *= bus_freq;
 		spin_lock_init(&tunables->target_loads_lock);
 		spin_lock_init(&tunables->above_hispeed_delay_lock);
 
@@ -1590,7 +1624,6 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			del_timer_sync(&pcpu->cpu_slack_timer);
 			cpufreq_interactive_timer_start(tunables, j);
 			pcpu->governor_enabled = 1;
-			pcpu->io_busy = false;
 			up_write(&pcpu->enable_sem);
 		}
 
