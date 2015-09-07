@@ -2385,6 +2385,41 @@ static struct gsm_mux *gsm_alloc_mux(void)
 }
 
 /**
+ *	gsmld_set_tty_dead	-	mark underlying TTY as dead
+ *	@gsm: our mux
+ *
+ *	Sets the 'tty_dead' variable to 1 (indicating that the muxed TTY
+ *	is dead) without introducing deadlock in current line discipline
+ *	processings.
+ *
+ *	Locking: uses the TX lock
+ */
+static void gsmld_set_tty_dead(struct gsm_mux *gsm)
+{
+	if (!gsm->tty_dead) {
+		unsigned long flags;
+
+		gsm->tty_dead = 1;
+
+		/* As writes to the underlying TTY are done while holding
+		 * 'tx_lock', use it as a synchronization mechanism to ensure
+		 * that any possible command that is being written is flushed
+		 * out before leaving this function.
+		 *
+		 * No additional command will be sent as tty_dead was set to
+		 * 1 before acquiring the lock.
+		 */
+		spin_lock_irqsave(&gsm->tx_lock, flags);
+		spin_unlock_irqrestore(&gsm->tx_lock, flags);
+
+		/* Wakeup GSM event in case some code was waiting on state
+		 * change.
+		 */
+		wake_up(&gsm->event);
+	}
+}
+
+/**
  *	gsmld_output		-	write to link
  *	@gsm: our mux
  *	@data: bytes to output
@@ -2540,24 +2575,7 @@ static void gsmld_flush_buffer(struct tty_struct *tty)
 		 * writes on the TTY.
 		 */
 		struct gsm_mux *gsm = tty->disc_data;
-		unsigned long flags;
-
-		gsm->tty_dead = 1;
-		/* As writes to the underlying TTY are done while holding
-		 * 'tx_lock', use it as a synchronization mechanism to ensure
-		 * that any possible command that is being written is flushed
-		 * out before leaving this function.
-		 *
-		 * No additional command will be sent as tty_dead was set to
-		 * 1 before acquiring the lock.
-		 */
-		spin_lock_irqsave(&gsm->tx_lock, flags);
-		spin_unlock_irqrestore(&gsm->tx_lock, flags);
-
-		/* Wakeup GSM event in case some code was waiting on state
-		 * change.
-		 */
-		wake_up(&gsm->event);
+		gsmld_set_tty_dead(gsm);
 	}
 }
 
@@ -2609,7 +2627,7 @@ static void gsmld_close(struct tty_struct *tty)
 	 * we will not receive modem answer and we will timeout.
 	 * To close modem mux, please use ioctl GSMIOC_DEMUX first
 	 */
-	gsm->tty_dead = 1;
+	gsmld_set_tty_dead(gsm);
 
 	if (gsm->tty) {
 		gsmld_detach_gsm(tty, gsm);
