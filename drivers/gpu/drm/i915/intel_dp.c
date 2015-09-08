@@ -5423,9 +5423,6 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 	struct intel_encoder *intel_encoder;
 	struct drm_encoder *encoder;
 	struct intel_connector *intel_connector;
-#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
-	struct hdmi_audio_priv *hdmi_priv;
-#endif
 
 	intel_dig_port = kzalloc(sizeof(*intel_dig_port), GFP_KERNEL);
 	if (!intel_dig_port)
@@ -5480,30 +5477,6 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 	intel_encoder->cloneable = 0;
 	intel_encoder->hot_plug = intel_dp_hot_plug;
 
-#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
-	hdmi_priv = kzalloc(sizeof(struct hdmi_audio_priv),
-				GFP_KERNEL);
-	if (!hdmi_priv) {
-		pr_err("failed to allocate memory");
-		goto mem_err;
-	}
-	hdmi_priv->dev = dev;
-
-	if (IS_CHERRYVIEW(dev)) {
-		chv_set_lpe_audio_reg_pipe(dev, intel_encoder,
-					hdmi_priv, port);
-	} else {
-		hdmi_priv->hdmi_lpe_audio_reg =
-			I915_HDMI_AUDIO_LPE_B_CONFIG;
-	}
-
-	/* HACK */
-	hdmi_priv->monitor_type = MONITOR_TYPE_HDMI;
-	hdmi_priv->is_hdcp_supported = false;
-	i915_hdmi_audio_init(hdmi_priv);
-#endif
-
-mem_err:
 	intel_connector->panel.fitting_mode = 0;
 	if (!intel_dp_init_connector(intel_dig_port, intel_connector)) {
 		drm_encoder_cleanup(encoder);

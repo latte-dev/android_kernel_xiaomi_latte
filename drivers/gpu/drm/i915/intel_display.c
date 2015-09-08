@@ -13300,7 +13300,21 @@ void set_hdmi_priv(struct drm_device *dev)
 {
 #ifdef CONFIG_EXTCON
 	struct drm_i915_private *dev_priv = dev->dev_private;
+#endif
+	struct hdmi_audio_priv *hdmi_priv;
 
+	hdmi_priv = kzalloc(sizeof(struct hdmi_audio_priv), GFP_KERNEL);
+	if (!hdmi_priv) {
+		pr_err("failed to allocate memory");
+		return;
+	} else {
+		hdmi_priv->dev = dev;
+		hdmi_priv->monitor_type = MONITOR_TYPE_HDMI;
+		hdmi_priv->is_hdcp_supported = true;
+		i915_hdmi_audio_init(hdmi_priv);
+	}
+
+#ifdef CONFIG_EXTCON
 	dev_priv->hotplug_switch.name =
 		kasprintf(GFP_KERNEL, "hdmi_aud");
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO

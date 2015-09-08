@@ -2069,9 +2069,6 @@ void intel_hdmi_init(struct drm_device *dev, int hdmi_reg, enum port port)
 	struct intel_digital_port *intel_dig_port;
 	struct intel_encoder *intel_encoder;
 	struct intel_connector *intel_connector;
-#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
-	struct hdmi_audio_priv *hdmi_priv;
-#endif
 
 	intel_dig_port = kzalloc(sizeof(*intel_dig_port), GFP_KERNEL);
 	if (!intel_dig_port)
@@ -2129,25 +2126,6 @@ void intel_hdmi_init(struct drm_device *dev, int hdmi_reg, enum port port)
 	intel_dig_port->port = port;
 	intel_dig_port->hdmi.hdmi_reg = hdmi_reg;
 	intel_dig_port->dp.output_reg = 0;
-
-#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
-	hdmi_priv = kzalloc(sizeof(struct hdmi_audio_priv), GFP_KERNEL);
-	if (!hdmi_priv) {
-		pr_err("failed to allocate memory");
-	} else {
-		hdmi_priv->dev = dev;
-		hdmi_priv->hdmi_reg = hdmi_reg;
-		if (IS_CHERRYVIEW(dev)) {
-			chv_set_lpe_audio_reg_pipe(dev, intel_encoder,
-						hdmi_priv, port);
-		} else
-			hdmi_priv->hdmi_lpe_audio_reg =
-					I915_HDMI_AUDIO_LPE_B_CONFIG;
-		hdmi_priv->monitor_type = MONITOR_TYPE_HDMI;
-		hdmi_priv->is_hdcp_supported = true;
-		i915_hdmi_audio_init(hdmi_priv);
-	}
-#endif
 
 	intel_hdmi_init_connector(intel_dig_port, intel_connector);
 	intel_connector->panel.fitting_mode = 0;
