@@ -28,8 +28,6 @@
 #include <linux/mfd/intel_soc_pmic.h>
 #include "intel_soc_pmic_core.h"
 
-#define CRYSTAL_COVE_IRQ_NUM	7
-
 #define CHIPID		0x00
 #define CHIPVER		0x01
 #define IRQLVL1		0x02
@@ -181,7 +179,8 @@ struct intel_soc_pmic crystal_cove_pmic = {
 	.init		= crystal_cove_init,
 	.cell_dev	= crystal_cove_dev,
 	.irq_regmap	= crystal_cove_irqregmap,
-	.irq_num	= CRYSTAL_COVE_IRQ_NUM,
+	.irq_num	= sizeof(crystal_cove_irqregmap)/
+				sizeof(crystal_cove_irqregmap[0]),
 };
 
 MODULE_LICENSE("GPL");

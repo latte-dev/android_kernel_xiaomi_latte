@@ -48,8 +48,6 @@
 #include <linux/platform_device.h>
 
 
-#define WHISKEY_COVE_IRQ_NUM	17
-
 #define CHIPID		0x00
 #define CHIPVER	0x01
 
@@ -939,7 +937,8 @@ struct intel_soc_pmic whiskey_cove_pmic = {
 	.init		= whiskey_cove_init,
 	.cell_dev	= whiskey_cove_dev,
 	.irq_regmap	= whiskey_cove_irqregmap,
-	.irq_num	= WHISKEY_COVE_IRQ_NUM,
+	.irq_num	= sizeof(whiskey_cove_irqregmap)/
+				sizeof(whiskey_cove_irqregmap[0]),
 };
 
 #define TT_I2CDADDR_ADDR		0x00

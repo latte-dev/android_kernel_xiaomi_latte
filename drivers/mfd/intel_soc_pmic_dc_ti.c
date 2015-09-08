@@ -163,7 +163,8 @@ struct intel_soc_pmic dollar_cove_ti_pmic = {
 	.init		= dollar_cove_ti_init,
 	.cell_dev	= dollar_cove_ti_dev,
 	.irq_regmap	= dollar_cove_ti_irqregmap,
-	.irq_num	= 8,
+	.irq_num	= sizeof(dollar_cove_ti_irqregmap)/
+				sizeof(dollar_cove_ti_irqregmap[0]),
 };
 
 MODULE_LICENSE("GPL");
