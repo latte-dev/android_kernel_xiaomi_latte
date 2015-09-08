@@ -48,6 +48,9 @@
 #include <linux/kref.h>
 #include <linux/pm_qos.h>
 #include <linux/bitops.h>
+#ifdef CONFIG_EXTCON
+#include <linux/extcon.h>
+#endif
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 	#include "hdmi_audio_if.h"
 #endif
@@ -1718,6 +1721,11 @@ struct drm_i915_private {
 	int link_rate;
 	int hdmi_audio_interrupt_mask;
 	struct work_struct hdmi_audio_wq;
+#endif
+
+#ifdef CONFIG_EXTCON
+	/* Android uses switch to inform userspace about hotplug events. */
+	struct extcon_dev hotplug_switch;
 #endif
 
 	/* Atomicity fixes */

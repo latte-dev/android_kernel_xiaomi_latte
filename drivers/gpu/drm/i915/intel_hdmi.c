@@ -1217,11 +1217,6 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 	enum intel_display_power_domain power_domain;
 	enum drm_connector_status status = connector_status_disconnected;
 
-#ifdef CONFIG_EXTCON
-	struct intel_connector *intel_connector =
-				to_intel_connector(connector);
-#endif
-
 	DRM_DEBUG_KMS("[CONNECTOR:%d:%s]\n",
 		      connector->base.id, connector->name);
 
@@ -1285,9 +1280,9 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 		if ((status != i915_hdmi_state) && (IS_VALLEYVIEW(dev))) {
 #ifdef CONFIG_EXTCON
-			if (strlen(intel_connector->hotplug_switch.name) != 0)
+			if (strlen(dev_priv->hotplug_switch.name) != 0)
 				extcon_set_state(
-				&intel_connector->hotplug_switch, 0);
+				&dev_priv->hotplug_switch, 0);
 #endif
 			/* Send a disconnect event to audio */
 			DRM_DEBUG_DRIVER("Sending event to audio");
@@ -1316,10 +1311,6 @@ static int intel_hdmi_get_modes(struct drm_connector *connector)
 	enum intel_display_power_domain power_domain;
 	struct edid *edid = NULL;
 	int ret = 0;
-#ifdef CONFIG_EXTCON
-	struct intel_connector *intel_connector =
-				to_intel_connector(connector);
-#endif
 
 	/* We should parse the EDID data and find out if it's an HDMI sink so
 	 * we can send audio to it.
@@ -1331,8 +1322,8 @@ static int intel_hdmi_get_modes(struct drm_connector *connector)
 	/* No need to read modes if no connection */
 	if (connector->status != connector_status_connected) {
 #ifdef CONFIG_EXTCON
-		if (strlen(intel_connector->hotplug_switch.name) != 0)
-			extcon_set_state(&intel_connector->hotplug_switch, 0);
+		if (strlen(dev_priv->hotplug_switch.name) != 0)
+			extcon_set_state(&dev_priv->hotplug_switch, 0);
 #endif
 		goto e_out;
 	}
@@ -1353,9 +1344,9 @@ static int intel_hdmi_get_modes(struct drm_connector *connector)
 		if (intel_hdmi->notify_had) {
 			hdmi_get_eld(connector->eld);
 #ifdef CONFIG_EXTCON
-			if (strlen(intel_connector->hotplug_switch.name) != 0) {
+			if (strlen(dev_priv->hotplug_switch.name) != 0) {
 				extcon_set_state(
-				&intel_connector->hotplug_switch, 1);
+				&dev_priv->hotplug_switch, 1);
 			}
 #endif
 			intel_hdmi->notify_had = 0;
@@ -1924,10 +1915,10 @@ static void chv_hdmi_pre_enable(struct intel_encoder *encoder)
 static void intel_hdmi_destroy(struct drm_connector *connector)
 {
 #ifdef CONFIG_EXTCON
-	struct intel_connector *intel_connector =
-			to_intel_connector(connector);
-	extcon_dev_unregister(&intel_connector->hotplug_switch);
-	kfree(intel_connector->hotplug_switch.name);
+	struct drm_device *dev = connector->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	extcon_dev_unregister(&dev_priv->hotplug_switch);
+	kfree(dev_priv->hotplug_switch.name);
 #endif
 	drm_connector_cleanup(connector);
 	kfree(connector);
@@ -2053,20 +2044,20 @@ void intel_hdmi_init_connector(struct intel_digital_port *intel_dig_port,
 	drm_connector_register(connector);
 
 #ifdef CONFIG_EXTCON
-	intel_connector->hotplug_switch.name =
+	dev_priv->hotplug_switch.name =
 		kasprintf(GFP_KERNEL, "hdmi_%c", 'a' + port);
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 		if (IS_VALLEYVIEW(dev))
-			intel_connector->hotplug_switch.name = "hdmi";
+			dev_priv->hotplug_switch.name = "hdmi";
 #endif
-	if (!intel_connector->hotplug_switch.name) {
+	if (!dev_priv->hotplug_switch.name) {
 		DRM_ERROR("%s failed to allocate memory", __func__);
 		kfree(intel_connector);
 		kfree(intel_dig_port);
 		return;
 	}
 
-	extcon_dev_register(&intel_connector->hotplug_switch);
+	extcon_dev_register(&dev_priv->hotplug_switch);
 #endif
 
 	/* For G4X desktop chip, PEG_BAND_GAP_DATA 3:0 must first be written

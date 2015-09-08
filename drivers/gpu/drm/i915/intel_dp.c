@@ -4577,6 +4577,8 @@ intel_dp_get_edid_modes(struct drm_connector *connector, struct i2c_adapter *ada
 {
 	struct intel_connector *intel_connector = to_intel_connector(connector);
 	struct intel_dp *intel_dp = intel_attached_dp(connector);
+	struct drm_device *dev = connector->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	/* use cached edid if we have one */
 	if (intel_connector->edid) {
@@ -4589,8 +4591,8 @@ intel_dp_get_edid_modes(struct drm_connector *connector, struct i2c_adapter *ada
 		if (intel_dp->notify_had) {
 			hdmi_get_eld(connector->eld);
 #ifdef CONFIG_EXTCON
-			if (strlen(intel_connector->hotplug_switch.name) != 0)
-				extcon_set_state(&intel_connector->
+			if (strlen(dev_priv->hotplug_switch.name) != 0)
+				extcon_set_state(&dev_priv->
 					hotplug_switch, true);
 #endif
 			intel_dp->notify_had = false;
@@ -4692,9 +4694,9 @@ out:
 				intel_dp->notify_had = true;
 		} else {
 #ifdef CONFIG_EXTCON
-			if (strlen(intel_connector->hotplug_switch.name) != 0)
+			if (strlen(dev_priv->hotplug_switch.name) != 0)
 				extcon_set_state(
-				&intel_connector->hotplug_switch, false);
+				&dev_priv->hotplug_switch, false);
 #endif
 			/* Send a disconnect event to audio */
 			DRM_DEBUG_DRIVER("Sending event to audio");
@@ -4897,11 +4899,13 @@ static void
 intel_dp_connector_destroy(struct drm_connector *connector)
 {
 	struct intel_connector *intel_connector = to_intel_connector(connector);
+	struct drm_device *dev = connector->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 
 #ifdef CONFIG_EXTCON
-	extcon_dev_unregister(&intel_connector->hotplug_switch);
-	if (&intel_connector->hotplug_switch)
-		kfree(intel_connector->hotplug_switch.name);
+	extcon_dev_unregister(&dev_priv->hotplug_switch);
+	if (&dev_priv->hotplug_switch)
+		kfree(dev_priv->hotplug_switch.name);
 #endif
 
 	if (!IS_ERR_OR_NULL(intel_connector->edid))
@@ -5392,16 +5396,16 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 	} else {
 #ifdef CONFIG_EXTCON
 		/* use the same name as hdmi for now  */
-		intel_connector->hotplug_switch.name =
+		dev_priv->hotplug_switch.name =
 			kasprintf(GFP_KERNEL, "hdmi_%c", 'a' + port);
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 		if (IS_VALLEYVIEW(dev))
-			intel_connector->hotplug_switch.name = "hdmi";
+			dev_priv->hotplug_switch.name = "hdmi";
 #endif
-		if (!intel_connector->hotplug_switch.name)
+		if (!dev_priv->hotplug_switch.name)
 			DRM_ERROR("Couldn't allocate memory for audio");
 
-		extcon_dev_register(&intel_connector->hotplug_switch);
+		extcon_dev_register(&dev_priv->hotplug_switch);
 #endif
 	}
 
