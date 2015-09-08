@@ -365,10 +365,7 @@ static int hdmi_audio_set_caps(enum had_caps_list set_element,
 			int_masks |= I915_HDMI_AUDIO_UNDERRUN_ENABLE;
 		dev_priv->hdmi_audio_interrupt_mask &= ~int_masks;
 
-		if (dev_priv->hdmi_audio_interrupt_mask)
-			i915_enable_hdmi_audio_int(dev, pipe);
-		else
-			i915_disable_hdmi_audio_int(dev, pipe);
+		i915_disable_hdmi_audio_int(dev, pipe);
 		break;
 	default:
 		break;
