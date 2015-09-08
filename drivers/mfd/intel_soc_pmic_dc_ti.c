@@ -38,6 +38,10 @@ enum {
 	CCEOCAL = 7,
 };
 
+/*If need PMIC support power button event report, define it*/
+/*#define PMIC_DC_TI_PWR_BTN_EN*/
+
+#ifdef PMIC_DC_TI_PWR_BTN_EN
 static struct resource power_button_resources[] = {
 	{
 		.start	= PWRBTN,
@@ -45,6 +49,7 @@ static struct resource power_button_resources[] = {
 		.flags	= IORESOURCE_IRQ,
 	},
 };
+#endif
 
 static struct resource thermal_resources[] = {
 	{
@@ -90,12 +95,14 @@ static struct mfd_cell dollar_cove_ti_dev[] = {
 		.num_resources = ARRAY_SIZE(adc_resources),
 		.resources = adc_resources,
 	},
+#ifdef PMIC_DC_TI_PWR_BTN_EN
 	{
 		.name = "dollar_cove_ti_power_button",
 		.id = 0,
 		.num_resources = ARRAY_SIZE(power_button_resources),
 		.resources = power_button_resources,
 	},
+#endif
 	{
 		.name = "dollar_cove_ti_pwrsrc",
 		.id = 0,
