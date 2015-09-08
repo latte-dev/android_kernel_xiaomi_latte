@@ -1988,6 +1988,12 @@ int i915_driver_unload(struct drm_device *dev)
 		return ret;
 	}
 
+#ifdef CONFIG_EXTCON
+	if (&dev_priv->hotplug_switch) {
+		extcon_dev_unregister(&dev_priv->hotplug_switch);
+		kfree(dev_priv->hotplug_switch.name);
+	}
+#endif
 	intel_fini_runtime_pm(dev_priv);
 
 	intel_gpu_ips_teardown();

@@ -1914,12 +1914,6 @@ static void chv_hdmi_pre_enable(struct intel_encoder *encoder)
 
 static void intel_hdmi_destroy(struct drm_connector *connector)
 {
-#ifdef CONFIG_EXTCON
-	struct drm_device *dev = connector->dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	extcon_dev_unregister(&dev_priv->hotplug_switch);
-	kfree(dev_priv->hotplug_switch.name);
-#endif
 	drm_connector_cleanup(connector);
 	kfree(connector);
 }
@@ -2042,23 +2036,6 @@ void intel_hdmi_init_connector(struct intel_digital_port *intel_dig_port,
 
 	intel_connector_attach_encoder(intel_connector, intel_encoder);
 	drm_connector_register(connector);
-
-#ifdef CONFIG_EXTCON
-	dev_priv->hotplug_switch.name =
-		kasprintf(GFP_KERNEL, "hdmi_%c", 'a' + port);
-#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
-		if (IS_VALLEYVIEW(dev))
-			dev_priv->hotplug_switch.name = "hdmi";
-#endif
-	if (!dev_priv->hotplug_switch.name) {
-		DRM_ERROR("%s failed to allocate memory", __func__);
-		kfree(intel_connector);
-		kfree(intel_dig_port);
-		return;
-	}
-
-	extcon_dev_register(&dev_priv->hotplug_switch);
-#endif
 
 	/* For G4X desktop chip, PEG_BAND_GAP_DATA 3:0 must first be written
 	 * 0xd.  Failure to do so will result in spurious interrupts being

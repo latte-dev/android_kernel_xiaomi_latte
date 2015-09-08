@@ -13296,11 +13296,35 @@ static bool intel_crt_present(struct drm_device *dev)
 	return true;
 }
 
+void set_hdmi_priv(struct drm_device *dev)
+{
+#ifdef CONFIG_EXTCON
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	dev_priv->hotplug_switch.name =
+		kasprintf(GFP_KERNEL, "hdmi_aud");
+#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
+	if (IS_VALLEYVIEW(dev)) {
+		kfree(dev_priv->hotplug_switch.name);
+		dev_priv->hotplug_switch.name =
+			kasprintf(GFP_KERNEL, "hdmi");
+	}
+#endif
+	if (!dev_priv->hotplug_switch.name) {
+		DRM_ERROR("%s failed to allocate memory", __func__);
+		return;
+	}
+
+	extcon_dev_register(&dev_priv->hotplug_switch);
+#endif
+}
+
 static void intel_setup_outputs_vbt(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int i;
 
+	set_hdmi_priv(dev);
 	for (i = 0; i < dev_priv->vbt.child_dev_num; i++) {
 		int dvo_port =
 			dev_priv->vbt.child_dev[i].common.dvo_port;

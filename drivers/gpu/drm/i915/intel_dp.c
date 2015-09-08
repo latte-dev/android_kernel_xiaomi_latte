@@ -4899,14 +4899,6 @@ static void
 intel_dp_connector_destroy(struct drm_connector *connector)
 {
 	struct intel_connector *intel_connector = to_intel_connector(connector);
-	struct drm_device *dev = connector->dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
-#ifdef CONFIG_EXTCON
-	extcon_dev_unregister(&dev_priv->hotplug_switch);
-	if (&dev_priv->hotplug_switch)
-		kfree(dev_priv->hotplug_switch.name);
-#endif
 
 	if (!IS_ERR_OR_NULL(intel_connector->edid))
 		kfree(intel_connector->edid);
@@ -5393,20 +5385,6 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 			intel_dp_init_panel_power_timestamps(intel_dp);
 			intel_dp_init_panel_power_sequencer(dev, intel_dp, &power_seq);
 		}
-	} else {
-#ifdef CONFIG_EXTCON
-		/* use the same name as hdmi for now  */
-		dev_priv->hotplug_switch.name =
-			kasprintf(GFP_KERNEL, "hdmi_%c", 'a' + port);
-#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
-		if (IS_VALLEYVIEW(dev))
-			dev_priv->hotplug_switch.name = "hdmi";
-#endif
-		if (!dev_priv->hotplug_switch.name)
-			DRM_ERROR("Couldn't allocate memory for audio");
-
-		extcon_dev_register(&dev_priv->hotplug_switch);
-#endif
 	}
 
 	intel_dp_aux_init(intel_dp, intel_connector);
