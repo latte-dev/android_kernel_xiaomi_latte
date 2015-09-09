@@ -59,6 +59,19 @@ static void snkpe_reset_params(struct sink_port_pe *sink)
 	sink->pp_is_ext_pwrd = 0;
 }
 
+/* PR_SWAP fail handling is different from reset on timeout error.
+ * During PR_SWAP as the CC pull-up is changed, on failure there is
+ * no guarentee that this device still act as source. Hence this
+ * failure should be treated as disconnect and start toggle in DRP.
+ */
+static void snkpe_handle_pr_swap_fail(struct sink_port_pe *sink)
+{
+	snkpe_reset_params(sink);
+	pr_err("SNKPE:%s: Notifying PR_SWAP_FAIL to PE\n", __func__);
+	pe_notify_policy_status_changed(&sink->p,
+			POLICY_TYPE_SINK, PE_STATUS_CHANGE_PR_SWAP_FAIL);
+}
+
 static int snkpe_get_req_cap(struct sink_port_pe *sink,
 					struct pd_packet *pkt,
 					struct power_cap *pcap,
@@ -676,9 +689,7 @@ static void snkpe_handle_pss_transition_off(struct sink_port_pe *sink)
 
 trans_off_err:
 	pr_err("SNKPE: Error in pss_transition_off %d\n", ret);
-	/* Move to PE_SNK_Hard_Reset state */
-	snkpe_update_state(sink, PE_SNK_HARD_RESET);
-	schedule_work(&sink->timer_work);
+	snkpe_handle_pr_swap_fail(sink);
 	return;
 }
 

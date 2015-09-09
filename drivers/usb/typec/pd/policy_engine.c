@@ -531,6 +531,7 @@ static void pe_policy_status_changed(struct policy_engine *pe,
 	enum pwr_role prole;
 	int ret;
 
+	pr_debug("PE:%s: Change event=%d\n", __func__, status);
 	if (!pe)
 		return;
 	switch (status) {
@@ -599,6 +600,19 @@ static void pe_policy_status_changed(struct policy_engine *pe,
 					__func__, ptype);
 		break;
 
+	case PE_STATUS_CHANGE_PR_SWAP_FAIL:
+		/* As PR_SWAP changes the CC pull-up and pull-down,
+		 * swap fail should be treated as disconnect and enable
+		 * the CC toggle in DRP mode.
+		 */
+		pe_set_power_role(pe, POWER_ROLE_NONE);
+		pe_set_data_role(pe, DATA_ROLE_NONE);
+		/* Stop all active policies */
+		list_for_each_entry(p, &pe->policy_list, list) {
+			if (p && (p->state == POLICY_STATE_ONLINE))
+				p->stop(p);
+		}
+		break;
 	default:
 		pr_debug("PE:%s: Not processing state change evt=%d\n",
 					__func__, status);

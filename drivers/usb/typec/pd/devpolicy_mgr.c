@@ -533,26 +533,6 @@ static void dpm_update_power_role(struct devpolicy_mgr *dpm,
 		}
 		break;
 	case POWER_ROLE_SINK:
-		if (cur_prole == POWER_ROLE_SWAP
-			&& prev_prole == POWER_ROLE_SINK) {
-			/* PR swap from SINK to SRC failed.
-			 * Pull-Down the CC line.
-			 */
-			set_pu_pd = true;
-			pu_pd = false;
-		} else if (cur_prole == POWER_ROLE_SOURCE
-				&& prev_prole == POWER_ROLE_SWAP) {
-			/* During PR SWAP from SNK to SRC, after source
-			 * is enabled, the other device failed to switch
-			 * to sink and did send PS_RDY ontime. So switch
-			 * back from src to snk.
-			 */
-			set_pu_pd = true;
-			pu_pd = false;
-			dpm->provider_state = CABLE_DETACHED;
-			dpm_notify_cable_state(dpm, "USB_TYPEC_SRC",
-						CABLE_DETACHED);
-		}
 		dpm->consumer_state = CABLE_ATTACHED;
 		/* Send SNK connect */
 		cbl_type = "USB_TYPEC_SNK";
@@ -560,14 +540,6 @@ static void dpm_update_power_role(struct devpolicy_mgr *dpm,
 		break;
 
 	case POWER_ROLE_SOURCE:
-		if (cur_prole == POWER_ROLE_SWAP
-			&& prev_prole == POWER_ROLE_SOURCE) {
-			/* PR SWAP from SRC to SNK failed and falling
-			 * back to SRC, Pull-Up the CC line
-			 */
-			set_pu_pd = true;
-			pu_pd = true;
-		}
 		dpm->provider_state = CABLE_ATTACHED;
 		/* Send SRC connect */
 		cbl_type = "USB_TYPEC_SRC";
@@ -590,9 +562,12 @@ static void dpm_update_power_role(struct devpolicy_mgr *dpm,
 	}
 	dpm->prev_prole = cur_prole;
 	dpm->cur_prole = prole;
-	dpm_notify_cable_state(dpm, cbl_type, cbl_state);
+
+	if (cbl_type != NULL)
+		dpm_notify_cable_state(dpm, cbl_type, cbl_state);
 	if (set_pu_pd)
 		dpm_set_pu_pd(dpm, pu_pd);
+
 update_prole_err:
 	mutex_unlock(&dpm->role_lock);
 
@@ -617,6 +592,8 @@ static void dpm_handle_ext_cable_event(struct devpolicy_mgr *dpm,
 					struct cable_event *evt)
 {
 	enum devpolicy_mgr_events dpm_evt = DEVMGR_EVENT_NONE;
+	enum pwr_role prole;
+	enum data_role drole;
 
 		pr_debug("DPM:%s: Cable type=%s - %s\n", __func__,
 			((evt->cbl_type == CABLE_TYPE_CONSUMER) ? "Consumer" :
@@ -628,32 +605,48 @@ static void dpm_handle_ext_cable_event(struct devpolicy_mgr *dpm,
 		if (evt->cbl_type == CABLE_TYPE_CONSUMER
 			&& evt->cbl_state != dpm->consumer_state) {
 			dpm->consumer_state = evt->cbl_state;
-			if (evt->cbl_state == CABLE_ATTACHED)
+			if (evt->cbl_state == CABLE_ATTACHED) {
 				dpm_evt = DEVMGR_EVENT_UFP_CONNECTED;
-			else if (evt->cbl_state == CABLE_DETACHED)
+				drole = DATA_ROLE_UFP;
+				prole = POWER_ROLE_SINK;
+			} else if (evt->cbl_state == CABLE_DETACHED) {
 				dpm_evt = DEVMGR_EVENT_UFP_DISCONNECTED;
-			else
+				drole = DATA_ROLE_NONE;
+				prole = POWER_ROLE_NONE;
+			} else
 				pr_warn("DPM:%s: Unknown consumer state=%d\n",
 					__func__, evt->cbl_state);
 
 		} else if (evt->cbl_type == CABLE_TYPE_PROVIDER
 			&& evt->cbl_state != dpm->provider_state) {
 			dpm->provider_state = evt->cbl_state;
-			if (evt->cbl_state == CABLE_ATTACHED)
+			if (evt->cbl_state == CABLE_ATTACHED) {
 				dpm_evt = DEVMGR_EVENT_DFP_CONNECTED;
-			else if (evt->cbl_state == CABLE_DETACHED)
+				drole = DATA_ROLE_DFP;
+				prole = POWER_ROLE_SOURCE;
+			} else if (evt->cbl_state == CABLE_DETACHED) {
 				dpm_evt = DEVMGR_EVENT_DFP_DISCONNECTED;
-			else
+				drole = DATA_ROLE_NONE;
+				prole = POWER_ROLE_NONE;
+			} else
 				pr_warn("DPM:%s: Unknown consumer state=%d\n",
 					__func__, evt->cbl_state);
 		} else
 			pr_debug("DPM: consumer/provider state not changed\n");
 
-		mutex_unlock(&dpm->role_lock);
 
 		/* Notify policy engine on valid event*/
-		if (dpm_evt != DEVMGR_EVENT_NONE)
+		if (dpm_evt != DEVMGR_EVENT_NONE) {
+			dpm->prev_drole = dpm->cur_drole;
+			dpm->cur_drole = drole;
+
+			dpm->prev_prole = dpm->cur_prole;
+			dpm->cur_prole = prole;
+			mutex_unlock(&dpm->role_lock);
+
 			dpm_notify_policy_evt(dpm, dpm_evt);
+		} else
+			mutex_unlock(&dpm->role_lock);
 
 }
 

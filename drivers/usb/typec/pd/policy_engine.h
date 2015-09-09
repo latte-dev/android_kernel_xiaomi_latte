@@ -301,6 +301,7 @@ enum pe_status_change_evt {
 	PE_STATUS_CHANGE_DP_SUCCESS,
 	PE_STATUS_CHANGE_DR_CHANGED,
 	PE_STATUS_CHANGE_PR_CHANGED,
+	PE_STATUS_CHANGE_PR_SWAP_FAIL,
 };
 
 struct pe_port_partner_caps {

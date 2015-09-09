@@ -112,6 +112,21 @@ static void src_pe_do_pe_reset_on_error(struct src_port_pe *src_pe)
 	schedule_delayed_work(&src_pe->start_comm, 0);
 }
 
+/* PR_SWAP fail handling is different from reset on timeout error.
+ * During PR_SWAP as the CC pull-up is changed, on failure there is
+ * no guarentee that this device still act as source. Hence this
+ * failure should be treated as disconnect and start toggle in DRP.
+ */
+static void src_pe_handle_pr_swap_fail(struct src_port_pe *src_pe)
+{
+	mutex_lock(&src_pe->pe_lock);
+	src_pe_reset_policy_engine(src_pe);
+	mutex_unlock(&src_pe->pe_lock);
+	log_info("Notifying PR_SWAP_FAIL to PE");
+	pe_notify_policy_status_changed(&src_pe->p,
+			POLICY_TYPE_SOURCE, PE_STATUS_CHANGE_PR_SWAP_FAIL);
+}
+
 static int src_pe_send_srccap_cmd(struct src_port_pe *src_pe)
 {
 	int ret;
@@ -209,24 +224,23 @@ static int src_pe_handle_sink_transition_to_off(struct src_port_pe *src_pe)
 	ret = src_pe_sink_transition_wait_for_vbus_off(src_pe);
 	if (ret < 0) {
 		log_err("Failed to disable the VBUS, HARD_RESET\n");
-		goto trans_to_off_fail;
+		goto trans_to_swap_fail;
 	}
 
 	ret = src_pe_handle_snk_source_off(src_pe);
 	if (ret < 0) {
 		log_err("Failed to send PD_RDY\n");
-		goto trans_to_off_fail;
+		goto trans_to_swap_fail;
 	}
+
+	/* wait for ps_rdy from port partner. */
+	schedule_work(&src_pe->msg_work);
 
 	return 0;
 
-trans_to_off_fail:
-	/* Change the role back to source */
-	policy_set_power_role(&src_pe->p, POWER_ROLE_SOURCE);
-
 trans_to_swap_fail:
-	/* As role swap accepted, reset state & send hard reset */
-	src_pe_do_pe_reset_on_error(src_pe);
+	/* As role swap accepted, handle pr swap fail*/
+	src_pe_handle_pr_swap_fail(src_pe);
 	return ret;
 }
 
@@ -421,17 +435,8 @@ src_pe_handle_gcrc(struct src_port_pe *src_pe, struct pd_packet *pkt)
 		schedule_work(&src_pe->msg_work);
 		break;
 	case PE_PRS_SRC_SNK_ACCEPT_PR_SWAP:
-		log_dbg("SRC_SNK_ACCEPT_PR_SWAP -> SRC_SNK_TRANSITION_TO_OFF");
-		schedule_work(&src_pe->msg_work);
-		break;
 	case PE_PRS_SRC_SNK_SEND_PR_SWAP:
-		/* work schedule after rcv good crc for PR_SWAP to
-		 * recevice Accept */
-		schedule_work(&src_pe->msg_work);
-		break;
 	case PE_PRS_SRC_SNK_SOURCE_OFF:
-		log_dbg("PE_PRS_SRC_SNK_SOURCE_OFF -> PE_SNK_STARTUP");
-		schedule_work(&src_pe->msg_work);
 		break;
 	case PE_DRS_DFP_UFP_ACCEPT_DR_SWAP:
 	case PE_DRS_UFP_DFP_ACCEPT_DR_SWAP:
@@ -464,13 +469,24 @@ static int src_pe_handle_request_cmd(struct src_port_pe *src_pe)
 
 static int src_pe_pr_swap_ok(struct src_port_pe *src_pe)
 {
-	if (src_pe->state != PE_PRS_SRC_SNK_EVALUATE_PR_SWAP)
-		return -EINVAL;
+	int ret;
 
 	mutex_lock(&src_pe->pe_lock);
 	src_pe->state = PE_PRS_SRC_SNK_ACCEPT_PR_SWAP;
 	mutex_unlock(&src_pe->pe_lock);
-	return src_pe_send_accept_cmd(src_pe);
+	ret = src_pe_send_accept_cmd(src_pe);
+	if (ret) {
+		log_err("Failed to send Accept for dr swap");
+		goto swap_ok_error;
+	}
+	schedule_work(&src_pe->msg_work);
+	return 0;
+
+swap_ok_error:
+	mutex_lock(&src_pe->pe_lock);
+	src_pe->state = SRC_PE_STATE_PD_CONFIGURED;
+	mutex_unlock(&src_pe->pe_lock);
+	return ret;
 }
 
 static int src_pe_handle_pr_swap(struct src_port_pe *src_pe)
@@ -523,6 +539,8 @@ static int src_pe_rcv_request(struct policy *srcp, enum pe_event evt)
 		mutex_unlock(&src_pe->pe_lock);
 		policy_send_packet(&src_pe->p, NULL, 0,
 					PD_CTRL_MSG_PR_SWAP, evt);
+		/* Schedule worker to wait for Accept/Reject and process*/
+		schedule_work(&src_pe->msg_work);
 		break;
 	case PE_EVT_SEND_DR_SWAP:
 		ret = src_pe_handle_trigger_dr_swap(src_pe);
@@ -573,10 +591,11 @@ src_pe_rcv_pkt(struct policy *srcp, struct pd_packet *pkt, enum pe_event evt)
 		ret = src_pe_handle_request_cmd(src_pe);
 		break;
 	case PE_EVT_RCVD_PR_SWAP:
-		if (src_pe->state != ERROR_RECOVERY) {
+		if (src_pe->state == SRC_PE_STATE_PD_CONFIGURED) {
 			ret = src_pe_handle_pr_swap(src_pe);
 		} else {
-			log_err("State Machine is in Error Recovery Mode!\n");
+			log_err("PR_SWAP cannot process in state =%d",
+					src_pe->state);
 			ret = -EINVAL;
 		}
 		break;
@@ -635,6 +654,9 @@ int src_pe_rcv_cmd(struct policy *srcp, enum pe_event evt)
 	return ret;
 }
 
+/* This function will wait for accept/reject from port partner after
+ * DR_SWAP sent and  handle the responce.
+ */
 static int src_pe_handle_after_prswap_sent(struct src_port_pe *src_pe)
 {
 	unsigned long timeout;
@@ -650,8 +672,10 @@ static int src_pe_handle_after_prswap_sent(struct src_port_pe *src_pe)
 		log_err("SRT time expired, move to READY");
 		goto error;
 	}
-	if (src_pe->last_rcv_evt != PE_EVT_RCVD_ACCEPT)
+	if (src_pe->last_rcv_evt != PE_EVT_RCVD_ACCEPT) {
+		log_info("PR_SWAP not accepted by port partner");
 		goto error;
+	}
 
 	mutex_unlock(&src_pe->pe_lock);
 	ret = src_pe_handle_sink_transition_to_off(src_pe);
@@ -664,6 +688,7 @@ error:
 	reinit_completion(&src_pe->srt_complete);
 	return ret;
 }
+
 static int src_pe_snk_source_off_waitfor_psrdy(struct src_port_pe *src_pe)
 {
 	unsigned long timeout;
@@ -675,17 +700,13 @@ static int src_pe_snk_source_off_waitfor_psrdy(struct src_port_pe *src_pe)
 	 * cur_state */
 	ret = wait_for_completion_timeout(&src_pe->psso_complete, timeout);
 	if (ret == 0) {
-		log_err("PSSO time expired Sending PD_CMD_HARD_RESET");
-		mutex_lock(&src_pe->pe_lock);
-		src_pe->cmd_retry = 0;
-		mutex_unlock(&src_pe->pe_lock);
-		/* Change the role back to source */
-		policy_set_power_role(&src_pe->p, POWER_ROLE_SOURCE);
-		src_pe_do_pe_reset_on_error(src_pe);
+		log_err("PSSO time expired during pr_swap");
+		src_pe_handle_pr_swap_fail(src_pe);
 		goto error;
 	}
 
 	/* RR Swap success, set role as sink and switch policy */
+	log_dbg("PE_PRS_SRC_SNK_SOURCE_OFF -> PE_SNK_STARTUP");
 	policy_set_power_role(&src_pe->p, POWER_ROLE_SINK);
 	log_dbg("Notifying power role change\n");
 	pe_notify_policy_status_changed(&src_pe->p,
@@ -750,6 +771,7 @@ static void src_pe_msg_worker(struct work_struct *work)
 		src_pe_handle_after_prswap_sent(src_pe);
 		break;
 	case PE_PRS_SRC_SNK_ACCEPT_PR_SWAP:
+		log_dbg("SRC_SNK_ACCEPT_PR_SWAP -> SRC_SNK_TRANSITION_TO_OFF");
 		src_pe_handle_sink_transition_to_off(src_pe);
 		break;
 	case PE_PRS_SRC_SNK_SOURCE_OFF:
