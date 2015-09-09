@@ -1811,6 +1811,11 @@
 #define RT5670_ZCD_HP_DIS			(0x0 << 15)
 #define RT5670_ZCD_HP_EN			(0x1 << 15)
 
+/* Inline Command Control 1 (0xdb) */
+#define RT5670_STA_HOLD_UP_BTN                 (0x1 << 13)
+#define RT5670_STA_HOLD_CENTER_BTN             (0x1 << 10)
+#define RT5670_STA_HOLD_DOWN_BTN               (0x1 << 7)
+#define RT5670_INLINE_EN                       (0x1 << 6)
 
 /* Codec Private Register definition */
 /* 3D Speaker Control (0x63) */
@@ -1926,6 +1931,7 @@ enum {
 #define RT5670_REG_DISP_LEN 23
 
 int rt5670_headset_detect(struct snd_soc_codec *codec, int jack_insert);
+int rt5670_button_detect(struct snd_soc_codec *codec);
 int rt5670_check_interrupt_event(struct snd_soc_codec *codec, int *data);
 int rt5670_check_jd_status(struct snd_soc_codec *codec);
 int rt5670_check_bp_status(struct snd_soc_codec *codec);

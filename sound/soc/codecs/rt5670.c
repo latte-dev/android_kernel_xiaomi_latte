@@ -65,6 +65,7 @@ static struct rt5670_init_reg init_list[] = {
 	{ RT5670_DIG_MISC	, 0xc019 }, /* fa[0]=1, fa[3]=1'b MCLK det,
 						fa[15:14]=11'b for pdm */
 	{ RT5670_IL_CMD2	, 0x0010 }, /* set Inline Command Window */
+	{ RT5670_IL_CMD3	, 0x0009 },
 	{ RT5670_A_JD_CTRL1     , 0x0001 }, /* set JD1 mode 1 (1 port) */
 	{ RT5670_PRIV_INDEX	, 0x0014 },
 	{ RT5670_PRIV_DATA	, 0x9a8a },
@@ -190,7 +191,7 @@ static const u16 rt5670_reg[RT5670_VENDOR_ID2 + 1] = {
 	[RT5670_SV_ZCD1] = 0x0809,
 	[RT5670_IL_CMD] = 0x0001,
 	[RT5670_IL_CMD2] = 0x0049,
-	[RT5670_IL_CMD3] = 0x0009,
+	[RT5670_IL_CMD3] = 0x0024,
 	[RT5670_DRC_HL_CTRL1] = 0x8000,
 	[RT5670_ADC_MONO_HP_CTRL1] = 0xb300,
 	[RT5670_ADC_STO2_HP_CTRL1] = 0xb300,
@@ -327,6 +328,7 @@ static int rt5670_volatile_register(
 	case RT5670_DSP_CTRL3:
 	case RT5670_DSP_CTRL4:
 	case RT5670_DSP_CTRL5:
+	case RT5670_JD_CTRL3:
 	case RT5670_VENDOR_ID:
 	case RT5670_VENDOR_ID1:
 	case RT5670_VENDOR_ID2:
@@ -548,7 +550,7 @@ int rt5670_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 		}
 		rt5670_index_update_bits(codec, 0x3e, 0x40, 0x40);
 		snd_soc_update_bits(codec, RT5670_MICBIAS, 0x10, 0x0);
-		snd_soc_update_bits(codec, RT5670_IL_CMD, 0x1f, 0x0);
+		snd_soc_update_bits(codec, RT5670_IL_CMD, 0x1f, 0x5);
 	} else {
 		snd_soc_update_bits(codec, RT5670_INT_IRQ_ST, 0x8, 0x0);
 		rt5670->jack_type = 0;
