@@ -199,8 +199,6 @@ static int typec_detect_send_psy_notification(struct typec_detect *detect,
 static void typec_detect_notify_extcon(struct typec_detect *detect,
 						char *type, bool state)
 {
-	bool notify_otg = false;
-	int otg_evt;
 	enum typec_cable_type cbl_type;
 
 	dev_dbg(detect->phy->dev, "%s: type = %s state = %d\n",
@@ -237,14 +235,6 @@ static void typec_detect_notify_extcon(struct typec_detect *detect,
 			break;
 
 		detect->usb_host_state = state;
-		/* Send ID notification to USB subsystem so that
-		 *  system will switch host mode of operation.
-		 */
-		notify_otg = true;
-		if (state)
-			otg_evt = USB_EVENT_ID;
-		else
-			otg_evt = USB_EVENT_NONE;
 		break;
 
 	case E_TYPEC_CABLE_USB:
@@ -252,14 +242,6 @@ static void typec_detect_notify_extcon(struct typec_detect *detect,
 			break;
 
 		detect->usb_state = state;
-		/* Send ID notification to USB subsystem so that
-		 *  system will switch device mode of operation.
-		 */
-		notify_otg = true;
-		if (state)
-			otg_evt = USB_EVENT_VBUS;
-		else
-			otg_evt = USB_EVENT_NONE;
 		break;
 
 	case E_TYPEC_CABLE_DP_SRC:
@@ -271,9 +253,6 @@ static void typec_detect_notify_extcon(struct typec_detect *detect,
 
 	extcon_set_cable_state(detect->edev, type, state);
 
-	if (notify_otg)
-		atomic_notifier_call_chain(&detect->otg->notifier,
-						otg_evt, NULL);
 notify_ext_err:
 	mutex_unlock(&detect->lock);
 }
