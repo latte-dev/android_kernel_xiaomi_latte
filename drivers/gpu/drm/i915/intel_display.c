@@ -13299,9 +13299,6 @@ static bool intel_crt_present(struct drm_device *dev)
 static void intel_setup_outputs_vbt(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int hdmi_ports = 0;
-	int dp_ports = 0;
-	int port = 0;
 	int i;
 
 	for (i = 0; i < dev_priv->vbt.child_dev_num; i++) {
@@ -13321,7 +13318,7 @@ static void intel_setup_outputs_vbt(struct drm_device *dev)
 		case DVO_PORT_DPC:
 		case DVO_PORT_DPD:
 			if (devtype & DEVICE_TYPE_eDP_BITS) {
-				port = dvo_port - DVO_PORT_CRT;
+				int port = dvo_port - DVO_PORT_CRT;
 				intel_dp_init(dev, VLV_DISPLAY_BASE
 					+ DDI_BUF_CTL(port), port);
 			}
@@ -13331,13 +13328,16 @@ static void intel_setup_outputs_vbt(struct drm_device *dev)
 		case DVO_PORT_HDMID:
 			if (devtype == DEVICE_TYPE_DP_HDMI_DVI ||
 						devtype == DEVICE_TYPE_HDMI) {
-				/* Delay HDMI init, save the port */
-				hdmi_ports |= (1 << dvo_port);
+				int hdmi_reg = VLV_DISPLAY_BASE
+						+ PORT_ADDR(dvo_port);
+				intel_hdmi_init(dev, hdmi_reg, dvo_port);
 			}
 
 			if (devtype == DEVICE_TYPE_DP_HDMI_DVI ||
 						devtype == DEVICE_TYPE_DP) {
-				dp_ports |= (1 << dvo_port);
+				intel_dp_init(dev, VLV_DISPLAY_BASE
+						+ DDI_BUF_CTL(dvo_port),
+							dvo_port);
 			}
 			break;
 		default:
@@ -13345,58 +13345,6 @@ static void intel_setup_outputs_vbt(struct drm_device *dev)
 			break;
 
 		}
-	}
-
-	/*
-	* Current audio driver can support only one
-	* instance of HDMI. Dual HDMI enumeration causes
-	* panic during bootup. To handle this, for now
-	* add a preference order for enumeration of displays
-	* in driver: HDMI port D over port B over port C
-	* If the device has single HDMI enemurated, driver
-	* picks that port, but in case of multiple HDMI, it
-	* selects PORT D
-	*/
-	if (hdmi_ports) {
-		int hdmi_reg = 0;
-		if (hdmi_ports & (1 << DVO_PORT_HDMID)) {
-			port = DVO_PORT_HDMID;
-			hdmi_reg = VLV_DISPLAY_BASE
-				+ PORT_ADDR(port);
-		} else if (hdmi_ports & (1 << DVO_PORT_HDMIB)) {
-			port = DVO_PORT_HDMIB;
-			hdmi_reg = VLV_DISPLAY_BASE
-				+ PORT_ADDR(port);
-		} else if (hdmi_ports & (1 << DVO_PORT_HDMIC)) {
-			port = DVO_PORT_HDMIC;
-			hdmi_reg = VLV_DISPLAY_BASE
-				+ PORT_ADDR(port);
-		}
-
-		/*
-		 * Since audio is supported only on one external
-		 * panel, either HDMI or DP, we are giving
-		 * preference to HDMI over DP.
-		 */
-		dev_priv->support_dp_audio = false;
-
-		intel_hdmi_init(dev, hdmi_reg, port);
-		DRM_DEBUG_DRIVER("HDMI port=%c\n",
-			port_name(port));
-	} else {
-		dev_priv->support_dp_audio = true;
-	}
-
-	if (dp_ports) {
-		if (dp_ports & (1 << DVO_PORT_HDMIB))
-			port = DVO_PORT_HDMIB;
-		else if (dp_ports & (1 << DVO_PORT_HDMIC))
-			port = DVO_PORT_HDMIC;
-		else if (dp_ports & (1 << DVO_PORT_HDMID))
-			port = DVO_PORT_HDMID;
-
-		intel_dp_init(dev, VLV_DISPLAY_BASE + DDI_BUF_CTL(port), port);
-		DRM_DEBUG_KMS("DP on port=%c\n", port_name(port));
 	}
 }
 
