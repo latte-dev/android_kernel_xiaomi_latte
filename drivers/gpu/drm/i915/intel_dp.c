@@ -4679,7 +4679,7 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 out:
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 	if (IS_VALLEYVIEW(dev) && !is_edp(intel_dp) &&
-		dev_priv->support_dp_audio && status != i915_hdmi_state) {
+		status != i915_hdmi_state) {
 
 		/*
 		 * If HDMI status is conencted, the event to audio
@@ -5443,7 +5443,6 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 	struct intel_connector *intel_connector;
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 	struct hdmi_audio_priv *hdmi_priv;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 #endif
 
 	intel_dig_port = kzalloc(sizeof(*intel_dig_port), GFP_KERNEL);
@@ -5500,28 +5499,26 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 	intel_encoder->hot_plug = intel_dp_hot_plug;
 
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
-	if (dev_priv->support_dp_audio) {
-		hdmi_priv = kzalloc(sizeof(struct hdmi_audio_priv),
-					GFP_KERNEL);
-		if (!hdmi_priv) {
-			pr_err("failed to allocate memory");
-			goto mem_err;
-		}
-		hdmi_priv->dev = dev;
-
-		if (IS_CHERRYVIEW(dev)) {
-			chv_set_lpe_audio_reg_pipe(dev, intel_encoder,
-						hdmi_priv, port);
-		} else {
-			hdmi_priv->hdmi_lpe_audio_reg =
-				I915_HDMI_AUDIO_LPE_B_CONFIG;
-		}
-
-		/* HACK */
-		hdmi_priv->monitor_type = MONITOR_TYPE_HDMI;
-		hdmi_priv->is_hdcp_supported = false;
-		i915_hdmi_audio_init(hdmi_priv);
+	hdmi_priv = kzalloc(sizeof(struct hdmi_audio_priv),
+				GFP_KERNEL);
+	if (!hdmi_priv) {
+		pr_err("failed to allocate memory");
+		goto mem_err;
 	}
+	hdmi_priv->dev = dev;
+
+	if (IS_CHERRYVIEW(dev)) {
+		chv_set_lpe_audio_reg_pipe(dev, intel_encoder,
+					hdmi_priv, port);
+	} else {
+		hdmi_priv->hdmi_lpe_audio_reg =
+			I915_HDMI_AUDIO_LPE_B_CONFIG;
+	}
+
+	/* HACK */
+	hdmi_priv->monitor_type = MONITOR_TYPE_HDMI;
+	hdmi_priv->is_hdcp_supported = false;
+	i915_hdmi_audio_init(hdmi_priv);
 #endif
 
 mem_err:

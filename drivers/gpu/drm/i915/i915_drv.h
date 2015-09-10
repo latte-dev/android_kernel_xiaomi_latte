@@ -1718,7 +1718,6 @@ struct drm_i915_private {
 	int link_rate;
 	int hdmi_audio_interrupt_mask;
 	struct work_struct hdmi_audio_wq;
-	bool support_dp_audio;
 #endif
 
 	/* Atomicity fixes */
