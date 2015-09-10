@@ -13330,6 +13330,7 @@ void set_hdmi_priv(struct drm_device *dev)
 	}
 
 	extcon_dev_register(&dev_priv->hotplug_switch);
+	dev_priv->audio_port = 0;
 #endif
 }
 
@@ -13517,11 +13518,16 @@ static void intel_setup_outputs(struct drm_device *dev)
 }
 
 void chv_set_lpe_audio_reg_pipe(struct drm_device *dev,
-				   struct intel_encoder *intel_encoder,
-				   struct hdmi_audio_priv *hdmi_priv,
-				   enum port port)
+				int encoder_type, enum port port)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_encoder *intel_encoder;
+	struct hdmi_audio_priv *hdmi_priv = get_hdmi_priv();
+
+	if(!hdmi_priv) {
+		DRM_DEBUG_KMS("hdmi_priv was never allocated\n");
+		return;
+	}
 
 	/*
 	 * Due to hardware limitaion, Port D will always
@@ -13534,12 +13540,10 @@ void chv_set_lpe_audio_reg_pipe(struct drm_device *dev,
 		hdmi_priv->hdmi_lpe_audio_reg =
 			I915_HDMI_AUDIO_LPE_C_CONFIG;
 		hdmi_priv->pipe = PIPE_C;
-		if (intel_encoder->type == INTEL_OUTPUT_HDMI)
-			hdmi_priv->hdmi_reg =
-				VLV_CHV_HDMID;
-		else if (intel_encoder->type == INTEL_OUTPUT_DISPLAYPORT)
-			hdmi_priv->hdmi_reg =
-				CHV_DP_D;
+		if (encoder_type == INTEL_OUTPUT_HDMI)
+			hdmi_priv->hdmi_reg = VLV_CHV_HDMID;
+		else
+			hdmi_priv->hdmi_reg = CHV_DP_D;
 	} else {
 		list_for_each_entry(intel_encoder, &dev->
 			mode_config.encoder_list, base.head) {
@@ -13576,21 +13580,15 @@ void chv_set_lpe_audio_reg_pipe(struct drm_device *dev,
 		}
 
 		if (port == PORT_B) {
-			if (intel_encoder->type == INTEL_OUTPUT_HDMI)
-				hdmi_priv->hdmi_reg =
-					VLV_CHV_HDMIB;
-			else if (intel_encoder->type ==
-					INTEL_OUTPUT_DISPLAYPORT)
-				hdmi_priv->hdmi_reg =
-					VLV_DP_B;
+			if (encoder_type == INTEL_OUTPUT_HDMI)
+				hdmi_priv->hdmi_reg = VLV_CHV_HDMIB;
+			else
+				hdmi_priv->hdmi_reg = VLV_DP_B;
 		} else {
-			if (intel_encoder->type == INTEL_OUTPUT_HDMI)
-				hdmi_priv->hdmi_reg =
-					VLV_CHV_HDMIC;
-			else if (intel_encoder->type ==
-					INTEL_OUTPUT_DISPLAYPORT)
-				hdmi_priv->hdmi_reg =
-					VLV_DP_C;
+			if (encoder_type == INTEL_OUTPUT_HDMI)
+				hdmi_priv->hdmi_reg = VLV_CHV_HDMIC;
+			else
+				hdmi_priv->hdmi_reg = VLV_DP_C;
 		}
 	}
 }

@@ -1276,7 +1276,7 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 			intel_hdmi->has_audio =
 				(intel_hdmi->force_audio == HDMI_AUDIO_ON);
 		intel_encoder->type = INTEL_OUTPUT_HDMI;
-	} else {
+	} else if (dev_priv->audio_port == intel_dig_port->port) {
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 		if ((status != i915_hdmi_state) && (IS_VALLEYVIEW(dev))) {
 #ifdef CONFIG_EXTCON
@@ -1284,12 +1284,15 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 				extcon_set_state(
 				&dev_priv->hotplug_switch, 0);
 #endif
+			chv_set_lpe_audio_reg_pipe(dev, INTEL_OUTPUT_HDMI,
+					intel_dig_port->port);
 			/* Send a disconnect event to audio */
 			DRM_DEBUG_DRIVER("Sending event to audio");
 			mid_hdmi_audio_signal_event(dev_priv->dev,
 				HAD_EVENT_HOT_UNPLUG);
 		}
 #endif
+		dev_priv->audio_port = 0;
 	}
 
 det_out:
@@ -1307,6 +1310,9 @@ static int intel_hdmi_get_modes(struct drm_connector *connector)
 {
 	struct intel_encoder *intel_encoder = intel_attached_encoder(connector);
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(&intel_encoder->base);
+	struct intel_digital_port *intel_dig_port =
+				hdmi_to_dig_port(intel_hdmi);
+	struct drm_device *dev = connector->dev;
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	enum intel_display_power_domain power_domain;
 	struct edid *edid = NULL;
@@ -1320,11 +1326,13 @@ static int intel_hdmi_get_modes(struct drm_connector *connector)
 	intel_display_power_get(dev_priv, power_domain);
 
 	/* No need to read modes if no connection */
-	if (connector->status != connector_status_connected) {
+	if ((connector->status != connector_status_connected) &&
+		(dev_priv->audio_port == intel_dig_port->port)) {
 #ifdef CONFIG_EXTCON
 		if (strlen(dev_priv->hotplug_switch.name) != 0)
 			extcon_set_state(&dev_priv->hotplug_switch, 0);
 #endif
+		dev_priv->audio_port = 0;
 		goto e_out;
 	}
 
@@ -1339,20 +1347,25 @@ static int intel_hdmi_get_modes(struct drm_connector *connector)
 	if (edid) {
 		drm_mode_connector_update_edid_property(connector, edid);
 		ret = drm_add_edid_modes(connector, edid);
+		if (dev_priv->audio_port == 0) {
+			dev_priv->audio_port = intel_dig_port->port;
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
-		drm_edid_to_eld(connector, edid);
-		if (intel_hdmi->notify_had) {
-			hdmi_get_eld(connector->eld);
+			drm_edid_to_eld(connector, edid);
+			if (intel_hdmi->notify_had) {
+				chv_set_lpe_audio_reg_pipe(dev, INTEL_OUTPUT_HDMI,
+						intel_dig_port->port);
+				hdmi_get_eld(connector->eld);
 #ifdef CONFIG_EXTCON
-			if (strlen(dev_priv->hotplug_switch.name) != 0) {
-				extcon_set_state(
-				&dev_priv->hotplug_switch, 1);
-			}
+				if (strlen(dev_priv->hotplug_switch.name) != 0) {
+					extcon_set_state(
+					&dev_priv->hotplug_switch, 1);
+				}
 #endif
-			intel_hdmi->notify_had = 0;
+			}
 		}
 #endif
 	}
+	intel_hdmi->notify_had = 0;
 
 	/* Update the mode status */
 	intel_hdmi->edid_mode_count = ret;

@@ -76,6 +76,11 @@ static inline int android_hdmi_get_eld(struct drm_device *dev, void *eld)
 	return 0;
 }
 
+struct hdmi_audio_priv *get_hdmi_priv()
+{
+	return hdmi_priv;
+}
+
 /*
  * return whether HDMI audio device is busy.
  */
