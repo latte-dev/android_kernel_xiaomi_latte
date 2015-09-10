@@ -76,6 +76,7 @@ int xhci_intel_need_disable_stall(struct xhci_hcd *xhci)
 
 	/* Assign the values */
 	modem_present = modem_data->package.elements[0].integer.value;
+	xhci->ssic_device_present = modem_present;
 	xhci->ssic_port_number = modem_data->package.elements[1].integer.value;
 	modem_type = modem_data->package.elements[2].integer.value;
 
