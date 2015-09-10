@@ -317,8 +317,11 @@ i915_gem_get_aperture_ioctl2(struct drm_device *dev, void *data,
 
 			if (vma_in_mappable_region(vma, map_limit)) {
 				vma_list_entry = i915_vma_list_entry_create(vma);
-				if (IS_ERR(vma_list_entry))
+				if (IS_ERR(vma_list_entry)) {
+					DRM_ERROR("No vma in active list\n");
+					mutex_unlock(&dev->struct_mutex);
 					return PTR_ERR(vma_list_entry);
+				}
 				list_add(&vma_list_entry->vma_ap_link, &map_list);
 			}
 		}
@@ -330,8 +333,11 @@ i915_gem_get_aperture_ioctl2(struct drm_device *dev, void *data,
 
 			if (vma_in_mappable_region(vma, map_limit)) {
 				vma_list_entry = i915_vma_list_entry_create(vma);
-				if (IS_ERR(vma_list_entry))
+				if (IS_ERR(vma_list_entry)) {
+					DRM_ERROR("No vma in inactive list\n");
+					mutex_unlock(&dev->struct_mutex);
 					return PTR_ERR(vma_list_entry);
+				}
 				list_add(&vma_list_entry->vma_ap_link, &map_list);
 			}
 		}
