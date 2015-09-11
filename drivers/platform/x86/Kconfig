@@ -865,4 +865,10 @@ config INTEL_PSTORE_PRAM
 	  Safe to say Y, will not bind if your BIOS doesn't support
 	  this feature.
 
+config INTEL_TASKS_DUMP
+	bool "Intel panic tasks dumper"
+	depends on PRINTK
+	---help---
+	  This provides a way to get full tasks dump in case of panic.
+
 endif # X86_PLATFORM_DEVICES

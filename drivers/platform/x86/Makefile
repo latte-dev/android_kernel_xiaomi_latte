@@ -62,3 +62,4 @@ obj-$(CONFIG_INTEL_SOC_PMIC)	+= whiskycove_pmic_cc.o
 obj-$(CONFIG_ACPI)		+= intel_em_config.o
 obj-$(CONFIG_INTEL_GPIO_HSIC)	+= intel-gpio-hsic.o
 obj-$(CONFIG_INTEL_PSTORE_PRAM)	+= intel_pstore_pram.o
+obj-$(CONFIG_INTEL_TASKS_DUMP)	+= intel-tasks-dumper.o
