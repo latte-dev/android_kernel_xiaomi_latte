@@ -157,6 +157,7 @@
 #define USBSRCDET_SUSBHWDET_DETON	(1 << 0)
 #define USBSRCDET_SUSBHWDET_DETSUCC	(1 << 1)
 #define USBSRCDET_SUSBHWDET_DETFAIL	(3 << 0)
+#define USBSRCDET_SUSBHWDET		(3 << 0)
 
 #define USBPHYCTRL_CHGDET_N_POL_MASK	(1 << 1)
 #define USBPHYCTRL_USBPHYRSTB_MASK	(1 << 0)
@@ -379,18 +380,27 @@ struct pmic_regs_def {
 	u16 addr;
 };
 
+enum cable_type {
+	CABLE_TYPE_NONE,
+	CABLE_TYPE_USB,
+	CABLE_TYPE_HOST,
+	CABLE_TYPE_SINK,
+	CABLE_TYPE_SOURCE,
+};
+
+struct pmic_cable_event {
+	struct list_head node;
+	enum cable_type ctype;
+	bool cbl_state;
+};
+
 struct pmic_chrgr_drv_context {
 	bool invalid_batt;
 	bool is_batt_present;
 	bool current_sense_enabled;
 	bool is_internal_usb_phy;
 	enum pmic_charger_cable_type charger_type;
-	/* Variables to hold otg and host data mode status*/
-	bool otg_mode_enabled;
-	bool dev_mode_enabled;
-	/* Variables to hold src and sink power mode status*/
-	bool src_enabled;
-	bool snk_enabled;
+
 	/* Vatiabled to represent extcon cable's status */
 	bool host_cable_state;
 	bool device_cable_state;
@@ -426,4 +436,6 @@ struct pmic_chrgr_drv_context {
 	struct extcon_specific_cable_nb snk_cable;
 	struct notifier_block cable_nb;
 	struct work_struct extcon_work;
+	struct list_head cable_evt_list;
+	spinlock_t cable_event_queue_lock;
 };
