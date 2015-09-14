@@ -58,6 +58,17 @@ typedef enum {
     N_mp_const_ID
 } mp_const_ID_t;
 
+/* _isValidMpudata is for internal use by mpmath and bbb's.
+ * isValidMpudata is for external use by functions on top.
+ */
+#ifndef ENABLE_VALID_MP_DATA_CHECK
+#define _isValidMpsdata(data,bitdepth) (1)
+#define _isValidMpudata(data,bitdepth) (1)
+#else
+#define _isValidMpsdata(data,bitdepth) isValidMpsdata(data,bitdepth)
+#define _isValidMpudata(data,bitdepth) isValidMpsdata(data,bitdepth)
+
+#endif
 STORAGE_CLASS_MPMATH_FUNC_H bool isValidMpsdata(
     const mpsdata_t             data,
     const bitdepth_t            bitdepth);

@@ -34,7 +34,7 @@ The version string has four dot-separated numbers, read left to right:
 
 */
 
-#define CSS_API_VERSION_STRING	"2.1.20.8"
+#define CSS_API_VERSION_STRING	"2.1.20.9"
 
 /*
 Change log
@@ -431,6 +431,10 @@ v2.1.20.7 (2 changes parallel), Output_system_in_res Information
 v2.1.20.8, Temprarily disable memory debug features for SVOS.
 - Temporary commented out the additions to allow SKC testing till root cause found
 - Changed files ia_css_env.h and sh_css.c.
+
+v2.1.20.9, Enable ISP 2.7 naming
+- Add IA_CSS_PIPE_VERSION_2_7 to enum ia_css_pipe_version
+- Add #define SH_CSS_ISP_PIPE_VERSION_2_7 4
 
 */
 

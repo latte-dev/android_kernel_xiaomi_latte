@@ -58,7 +58,8 @@ enum ia_css_pipe_mode {
 enum ia_css_pipe_version {
 	IA_CSS_PIPE_VERSION_1 = 1,		/**< ISP1.0 pipe */
 	IA_CSS_PIPE_VERSION_2_2 = 2,		/**< ISP2.2 pipe */
-	IA_CSS_PIPE_VERSION_2_6_1 = 3		/**< ISP2.6.1 pipe */
+	IA_CSS_PIPE_VERSION_2_6_1 = 3,		/**< ISP2.6.1 pipe */
+	IA_CSS_PIPE_VERSION_2_7 = 4		/**< ISP2.7 pipe */
 };
 
 /**

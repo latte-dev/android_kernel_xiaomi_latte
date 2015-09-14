@@ -86,6 +86,7 @@ more details.
 #define SH_CSS_ISP_PIPE_VERSION_1	1
 #define SH_CSS_ISP_PIPE_VERSION_2_2	2
 #define SH_CSS_ISP_PIPE_VERSION_2_6_1	3
+#define SH_CSS_ISP_PIPE_VERSION_2_7	4
 
 /*--------------- sRGB Gamma -----------------
 CCM        : YCgCo[0,8191] -> RGB[0,4095]
