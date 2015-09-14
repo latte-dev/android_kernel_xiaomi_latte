@@ -3134,91 +3134,65 @@ intel_dp_get_link_status(struct intel_dp *intel_dp, uint8_t link_status[DP_LINK_
 				       DP_LINK_STATUS_SIZE) == DP_LINK_STATUS_SIZE;
 }
 
-/*
- * These are source-specific values; current Intel hardware supports
- * a maximum voltage of 800mV and a maximum pre-emphasis of 6dB
- */
-
 static uint8_t
-intel_dp_voltage_max(struct intel_dp *intel_dp)
+intel_dp_voltage_max(struct intel_dp *intel_dp, uint8_t preemph)
 {
 	struct drm_device *dev = intel_dp_to_dev(intel_dp);
 	enum port port = dp_to_dig_port(intel_dp)->port;
 
-	if (IS_VALLEYVIEW(dev) || IS_BROADWELL(dev))
-		return DP_TRAIN_VOLTAGE_SWING_LEVEL_3;
-	else if (IS_GEN7(dev) && port == PORT_A)
-		return DP_TRAIN_VOLTAGE_SWING_LEVEL_2;
-	else if (HAS_PCH_CPT(dev) && port != PORT_A)
-		return DP_TRAIN_VOLTAGE_SWING_LEVEL_3;
-	else
-		return DP_TRAIN_VOLTAGE_SWING_LEVEL_2;
-}
+	preemph = preemph & DP_TRAIN_PRE_EMPHASIS_MASK;
 
-static uint8_t
-intel_dp_pre_emphasis_max(struct intel_dp *intel_dp, uint8_t voltage_swing)
-{
-	struct drm_device *dev = intel_dp_to_dev(intel_dp);
-	enum port port = dp_to_dig_port(intel_dp)->port;
-
-	if (IS_BROADWELL(dev)) {
-		switch (voltage_swing & DP_TRAIN_VOLTAGE_SWING_MASK) {
-		case DP_TRAIN_VOLTAGE_SWING_400:
-		case DP_TRAIN_VOLTAGE_SWING_600:
-			return DP_TRAIN_PRE_EMPHASIS_6;
-		case DP_TRAIN_VOLTAGE_SWING_800:
-			return DP_TRAIN_PRE_EMPHASIS_3_5;
-		case DP_TRAIN_VOLTAGE_SWING_1200:
+	if (IS_GEN7(dev) && port == PORT_A) {
+		switch (preemph) {
+		case DP_TRAIN_PRE_EMPH_LEVEL_2:
+			/* explicit fall through */
 		default:
-			return DP_TRAIN_PRE_EMPHASIS_0;
+			return DP_TRAIN_VOLTAGE_SWING_LEVEL_0;
+		case DP_TRAIN_PRE_EMPH_LEVEL_1:
+			/* explicit fall through */
+		case DP_TRAIN_PRE_EMPH_LEVEL_0:
+			return DP_TRAIN_VOLTAGE_SWING_LEVEL_2;
 		}
-	} else if (IS_HASWELL(dev)) {
-		switch (voltage_swing & DP_TRAIN_VOLTAGE_SWING_MASK) {
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_0:
-			return DP_TRAIN_PRE_EMPH_LEVEL_3;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_1:
-			return DP_TRAIN_PRE_EMPH_LEVEL_2;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_2:
-			return DP_TRAIN_PRE_EMPH_LEVEL_1;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_3:
+	} else if ((INTEL_INFO(dev)->gen >= 7) && !IS_IVYBRIDGE(dev)) {
+		switch (preemph) {
+		case DP_TRAIN_PRE_EMPH_LEVEL_3:
+			/* explicit fall through */
 		default:
-			return DP_TRAIN_PRE_EMPH_LEVEL_0;
-		}
-	} else if (IS_VALLEYVIEW(dev)) {
-		switch (voltage_swing & DP_TRAIN_VOLTAGE_SWING_MASK) {
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_0:
-			return DP_TRAIN_PRE_EMPH_LEVEL_3;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_1:
-			return DP_TRAIN_PRE_EMPH_LEVEL_2;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_2:
-			return DP_TRAIN_PRE_EMPH_LEVEL_1;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_3:
-		default:
-			return DP_TRAIN_PRE_EMPH_LEVEL_0;
-		}
-	} else if (IS_GEN7(dev) && port == PORT_A) {
-		switch (voltage_swing & DP_TRAIN_VOLTAGE_SWING_MASK) {
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_0:
-			return DP_TRAIN_PRE_EMPH_LEVEL_2;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_1:
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_2:
-			return DP_TRAIN_PRE_EMPH_LEVEL_1;
-		default:
-			return DP_TRAIN_PRE_EMPH_LEVEL_0;
+			return DP_TRAIN_VOLTAGE_SWING_LEVEL_0;
+		case DP_TRAIN_PRE_EMPH_LEVEL_2:
+			return DP_TRAIN_VOLTAGE_SWING_LEVEL_1;
+		case DP_TRAIN_PRE_EMPH_LEVEL_1:
+			return DP_TRAIN_VOLTAGE_SWING_LEVEL_2;
+		case DP_TRAIN_PRE_EMPH_LEVEL_0:
+			return DP_TRAIN_VOLTAGE_SWING_LEVEL_3;
 		}
 	} else {
-		switch (voltage_swing & DP_TRAIN_VOLTAGE_SWING_MASK) {
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_0:
-			return DP_TRAIN_PRE_EMPH_LEVEL_2;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_1:
-			return DP_TRAIN_PRE_EMPH_LEVEL_2;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_2:
-			return DP_TRAIN_PRE_EMPH_LEVEL_1;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_3:
+		switch (preemph) {
+		case DP_TRAIN_PRE_EMPH_LEVEL_2:
+			return DP_TRAIN_VOLTAGE_SWING_LEVEL_1;
+		case DP_TRAIN_PRE_EMPH_LEVEL_1:
+			/* explicit fall through */
+		case DP_TRAIN_PRE_EMPH_LEVEL_0:
+			return DP_TRAIN_VOLTAGE_SWING_LEVEL_2;
 		default:
 			return DP_TRAIN_PRE_EMPH_LEVEL_0;
 		}
 	}
+}
+
+static uint8_t
+intel_dp_pre_emphasis_max(struct intel_dp *intel_dp)
+{
+	struct drm_device *dev = intel_dp_to_dev(intel_dp);
+
+	/*
+	 * Till level 2 is "required" as per spec, so setting
+	 * 9_5/level 3 where supported and 6/level 2 otherwise
+	 */
+	if ((INTEL_INFO(dev)->gen >= 8) || IS_VALLEYVIEW(dev))
+		return DP_TRAIN_PRE_EMPH_LEVEL_3;
+	else
+		return DP_TRAIN_PRE_EMPH_LEVEL_2;
 }
 
 static uint32_t intel_vlv_signal_levels(struct intel_dp *intel_dp)
@@ -3515,13 +3489,13 @@ intel_get_adjust_train(struct intel_dp *intel_dp,
 			p = this_p;
 	}
 
-	voltage_max = intel_dp_voltage_max(intel_dp);
-	if (v >= voltage_max)
-		v = voltage_max | DP_TRAIN_MAX_SWING_REACHED;
-
-	preemph_max = intel_dp_pre_emphasis_max(intel_dp, v);
+	preemph_max = intel_dp_pre_emphasis_max(intel_dp);
 	if (p >= preemph_max)
 		p = preemph_max | DP_TRAIN_MAX_PRE_EMPHASIS_REACHED;
+
+	voltage_max = intel_dp_voltage_max(intel_dp, p);
+	if (v >= voltage_max)
+		v = voltage_max | DP_TRAIN_MAX_SWING_REACHED;
 
 	for (lane = 0; lane < 4; lane++)
 		intel_dp->train_set[lane] = v | p;
