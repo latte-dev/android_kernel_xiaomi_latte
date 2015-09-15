@@ -175,6 +175,11 @@
 #define ATOMISP_DEPTH_DEFAULT_MASTER_SENSOR 0
 #define ATOMISP_DEPTH_DEFAULT_SLAVE_SENSOR 1
 
+#define ATOMISP_ION_DEVICE_FD_OFFSET   16
+#define ATOMISP_ION_SHARED_FD_MASK     (0xFFFF)
+#define ATOMISP_ION_DEVICE_FD_MASK     (~ATOMISP_ION_SHARED_FD_MASK)
+#define ION_FD_UNSET (-1)
+
 #define DIV_NEAREST_STEP(n, d, step) \
 	round_down((2 * (n) + (d) * (step))/(2 * (d)), (step))
 

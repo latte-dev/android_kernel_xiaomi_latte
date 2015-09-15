@@ -58,6 +58,10 @@ INCLUDES +=	-I$(srctree)/$(src)/atomisp_driver/include \
 		-I$(srctree)/include/linux/ \
 		-I$(srctree)/drivers/staging/intel_media/bc_video
 
+ifeq ($(CONFIG_ION),y)
+INCLUDES += -I$(srctree)/drivers/staging/android/ion
+endif
+
 DEFINES := -DHRT_HW -DHRT_ISP_CSS_CUSTOM_HOST -DHRT_USE_VIR_ADDRS -DHRT_KERNEL -D__HOST__
 DEFINES += -DUSE_DYNAMIC_BIN
 DEFINES += -DISP_POWER_GATING

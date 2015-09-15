@@ -1292,8 +1292,35 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 
 		attributes.pgnr = pgnr;
 #ifdef CONFIG_ION
-		attributes.type = buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_ION
-					? HRT_USR_ION : HRT_USR_PTR;
+		if (buf->reserved & ATOMISP_BUFFER_TYPE_IS_ION) {
+			attributes.type = HRT_USR_ION;
+			if (asd->ion_dev_fd->val !=  ION_FD_UNSET) {
+				dev_dbg(isp->dev, "ION buffer queued, share_fd=%lddev_fd=%d.\n",
+				buf->m.userptr, asd->ion_dev_fd->val);
+				/*
+				 * Make sure the shared fd we just got
+				 * from user space isn't larger than
+				 * the space we have for it.
+				 */
+				if ((buf->m.userptr &
+				(ATOMISP_ION_DEVICE_FD_MASK)) != 0) {
+					dev_err(isp->dev,
+							"Error: v4l2 buffer fd:0X%0lX > 0XFFFF.\n",
+							buf->m.userptr);
+					ret = -EINVAL;
+					goto error;
+				}
+				buf->m.userptr |= asd->ion_dev_fd->val <<
+					ATOMISP_ION_DEVICE_FD_OFFSET;
+			} else {
+				dev_err(isp->dev, "v4l2 buffer type is ION, \
+						but no dev fd set from userspace.\n");
+				ret = -EINVAL;
+				goto error;
+			}
+		} else {
+			attributes.type = HRT_USR_PTR;
+		}
 #else
 		attributes.type = HRT_USR_PTR;
 #endif
@@ -1333,8 +1360,9 @@ done:
 		/* this buffer will have a per-frame parameter */
 		pipe->frame_request_config_id[buf->index] = buf->reserved2 &
 					~ATOMISP_BUFFER_HAS_PER_FRAME_SETTING;
-		dev_dbg(isp->dev, "This buffer requires per_frame setting which has isp_config_id %d\n",
-			pipe->frame_request_config_id[buf->index]);
+		dev_dbg(isp->dev, "This buffer requires per_frame setting \
+				which has isp_config_id %d\n",
+				pipe->frame_request_config_id[buf->index]);
 	} else {
 		pipe->frame_request_config_id[buf->index] = 0;
 	}
@@ -1508,7 +1536,8 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	buf->reserved2 = pipe->frame_config_id[buf->index];
 	rt_mutex_unlock(&isp->mutex);
 
-	dev_dbg(isp->dev, "dqbuf buffer %d (%s) for asd%d with exp_id %d, isp_config_id %d\n",
+	dev_dbg(isp->dev, "dqbuf buffer %d (%s) for asd%d with exp_id %d, \
+			isp_config_id %d\n",
 		buf->index, vdev->name, asd->index, buf->reserved >> 16,
 		buf->reserved2);
 	return 0;
@@ -1579,7 +1608,8 @@ static unsigned int atomisp_sensor_start_stream(struct atomisp_sub_device *asd)
 	else
 		return 1;
 }
-int atomisp_stream_on_master_slave_sensor(struct atomisp_device *isp, bool isp_timeout)
+int atomisp_stream_on_master_slave_sensor(struct atomisp_device *isp,
+	bool isp_timeout)
 {
 	unsigned int master = -1, slave = -1, delay_slave = 0;
 	int i, ret;
