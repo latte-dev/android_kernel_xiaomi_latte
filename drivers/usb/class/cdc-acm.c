@@ -885,7 +885,7 @@ static int wait_serial_change(struct acm *acm, unsigned long arg)
 		}
 	} while (!rv);
 
-	
+
 
 	return rv;
 }
@@ -1044,6 +1044,13 @@ static int acm_write_buffers_alloc(struct acm *acm)
 		}
 	}
 	return 0;
+}
+
+/* Zero packet needs to be sent for some modems */
+static bool acm_needs_zerp_pkt(struct usb_device *usb_dev)
+{
+	return usb_dev->descriptor.idVendor == INTEL_MODEM_VID &&
+		usb_dev->descriptor.idProduct == INTEL_MODEM_PID;
 }
 
 static int acm_probe(struct usb_interface *intf,
@@ -1384,6 +1391,8 @@ made_compressed_probe:
 				usb_sndbulkpipe(usb_dev, epwrite->bEndpointAddress),
 				NULL, acm->writesize, acm_write_bulk, snd);
 		snd->urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
+		if (acm_needs_zerp_pkt(usb_dev))
+			snd->urb->transfer_flags |= URB_ZERO_PACKET;
 		snd->instance = acm;
 	}
 

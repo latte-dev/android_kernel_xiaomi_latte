@@ -48,6 +48,13 @@
 #define ACM_CTRL_OVERRUN	0x40
 
 /*
+ * Intel 7260 modem VID/PID.
+ */
+
+#define INTEL_MODEM_VID		0x1519
+#define INTEL_MODEM_PID		0x0452
+
+/*
  * Internal driver structures.
  */
 
