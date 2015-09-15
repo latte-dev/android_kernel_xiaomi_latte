@@ -14962,9 +14962,11 @@ bool chv_upfront_link_train(struct drm_device *dev,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_connector *connector = intel_dp->attached_connector;
 	struct intel_encoder *encoder = connector->encoder;
+	enum intel_display_power_domain power_domain;
 	bool found = false;
 	bool valid_crtc = false;
 	uint8_t tmp_lane_count, tmp_link_bw;
+	power_domain = intel_display_port_power_domain(encoder);
 
 	if (!connector || !encoder) {
 		DRM_DEBUG_KMS("dp connector/encoder is NULL\n");
@@ -15053,6 +15055,13 @@ start_link_train:
 
 		DRM_DEBUG_KMS("upfront link training failed. lanes:%d bw:%d\n",
 				intel_dp->lane_count, intel_dp->link_bw);
+
+		/*
+		 * Phy layer needs to be turned off and on for
+		 * new set enabling to work
+		 */
+		intel_display_power_put(dev_priv, power_domain);
+		intel_display_power_get(dev_priv, power_domain);
 
 		/* Go down to the next level and retry link training */
 		if (intel_dp->lane_count == 4) {
