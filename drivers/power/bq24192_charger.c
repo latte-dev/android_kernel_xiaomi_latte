@@ -2410,9 +2410,10 @@ static int bq24192_probe(struct i2c_client *client,
 		dev_err(&chip->client->dev,
 			"chgr_int_n GPIO is not available\n");
 	} else {
-		ret = request_threaded_irq(chip->irq,
+		ret = devm_request_threaded_irq(&bq24192_client->dev, chip->irq,
 				bq24192_irq_isr, bq24192_irq_thread,
-				IRQF_TRIGGER_FALLING, "BQ24192", chip);
+				IRQF_ONESHOT | IRQF_TRIGGER_FALLING,
+				"BQ24192", chip);
 		if (ret) {
 			dev_err(&bq24192_client->dev,
 				"failed to register irq for pin %d\n",
@@ -2548,9 +2549,6 @@ static int bq24192_remove(struct i2c_client *client)
 
 	if (!chip->pdata->slave_mode)
 		power_supply_unregister(&chip->usb);
-
-	if (chip->irq > 0)
-		free_irq(chip->irq, chip);
 
 	i2c_set_clientdata(client, NULL);
 	wake_lock_destroy(&chip->wakelock);
