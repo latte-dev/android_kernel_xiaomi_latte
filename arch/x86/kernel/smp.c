@@ -123,7 +123,7 @@ static inline void store_regs(struct pt_regs *regs)
 	crash_setup_regs(&get_cpu_var(cpu_regs), regs);
 
 	/* Flush CPU cache */
-	asm("cli;wbinvd;sti");
+	wbinvd();
 }
 
 /*
