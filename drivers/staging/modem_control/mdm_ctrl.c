@@ -293,6 +293,14 @@ static int get_hangup_reasons(struct mdm_info *mdm)
 	return mdm->hangup_causes;
 }
 
+/**
+ * mdm_ctrl_get_irq_info - get modem irq informations
+ */
+static unsigned char mdm_ctrl_get_irq_info(struct mdm_info *mdm)
+{
+	return mdm->irq_requests;
+}
+
 /*****************************************************************************
  *
  * Char device functions
@@ -362,6 +370,7 @@ inline bool mcd_is_initialized(struct mdm_info *mdm)
 static int mcd_init(struct mdm_info *mdm)
 {
 	int ret = 0;
+	mdm->irq_requests = NO_EVENT;
 
 	if (mdm->pdata->mdm.init(mdm->pdata->modem_data)) {
 		pr_err(DRVNAME ": MDM init failed...returning -ENODEV.");
@@ -392,11 +401,11 @@ static int mcd_init(struct mdm_info *mdm)
 				ret);
 			ret = -ENODEV;
 			goto del_cpu;
-		}
-	} else {
+		} else
+			mdm->irq_requests |= RST_EVENT;
+	} else
 		pr_info(DRVNAME ": No IRQ RST\n");
-		ret = -EIO;
-	}
+
 
 	if (mdm->pdata->cpu.get_irq_cdump(mdm->pdata->cpu_data) > 0) {
 		ret = request_irq(mdm->pdata->cpu.
@@ -410,7 +419,8 @@ static int mcd_init(struct mdm_info *mdm)
 				ret);
 			ret = -ENODEV;
 			goto free_irq;
-		}
+		} else
+			mdm->irq_requests |= CD_EVENT;
 	} else
 		pr_info(DRVNAME ": No IRQ COREDUMP\n");
 
@@ -502,7 +512,7 @@ long mdm_ctrl_dev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 			ret = mcd_init(mdm);
 
-			if ((!ret) || (ret == -EIO))
+			if (!ret)
 				pr_info(DRVNAME ": modem (board: %d, family: %d,pwr:%d,hub:%d)",
 					cfg.board, cfg.type,
 					cfg.pwr_on, cfg.usb_hub);
@@ -646,6 +656,17 @@ long mdm_ctrl_dev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 		pr_info(DRVNAME ": states polled = 0x%x\n",
 			mdm->polled_states);
+		break;
+
+	case MDM_CTRL_GET_CFG:
+		param = mdm_ctrl_get_irq_info(mdm);
+
+		ret = copy_to_user((void __user *)arg, &param, sizeof(param));
+		if (ret < 0) {
+			pr_info(DRVNAME ": copy to user failed ret = %ld\n",
+				ret);
+			return -EFAULT;
+		}
 		break;
 
 	case MDM_CTRL_SET_CFG:

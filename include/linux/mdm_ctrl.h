@@ -77,6 +77,13 @@ enum mdm_ctrl_pwr_on_type {
 	POWER_ON_PMIC
 };
 
+/* Type of GPIO events configuration */
+enum {
+	NO_EVENT = 0x00,
+	RST_EVENT = 0x01,
+	CD_EVENT = 0x02,
+};
+
 /**
  * struct mdm_ctrl_cmd - Command parameters
  *
@@ -119,6 +126,7 @@ struct mdm_ctrl_cfg {
 #define MDM_CTRL_CLEAR_HANGUP_REASONS	_IO(MDM_CTRL_MAGIC, 9)
 #define MDM_CTRL_SET_POLLED_STATES	_IO(MDM_CTRL_MAGIC, 10)
 #define MDM_CTRL_SET_CFG		_IO(MDM_CTRL_MAGIC, 11)
+#define MDM_CTRL_GET_CFG		_IO(MDM_CTRL_MAGIC, 12)
 
 #endif /* _MDM_CTRL_H */
 

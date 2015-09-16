@@ -87,6 +87,7 @@ struct mdm_info {
 	struct timer_list flashing_timer;
 
 	bool is_mdm_ctrl_disabled;
+	unsigned char irq_requests;
 };
 
 /**
