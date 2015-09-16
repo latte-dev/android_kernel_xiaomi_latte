@@ -1499,6 +1499,11 @@ void intel_edp_panel_off(struct intel_dp *intel_dp)
 	POSTING_READ(pp_ctrl_reg);
 
 	intel_dp->last_power_cycle = jiffies;
+
+	/* wait for power down delay */
+	msleep(intel_dp->panel_power_down_delay);
+
+	/* confirm panel exited from power down sequence */
 	wait_panel_off(intel_dp);
 
 	/* We got a reference when we enabled the VDD. */
@@ -4288,7 +4293,6 @@ intel_dp_link_down(struct intel_dp *intel_dp)
 	DP &= ~DP_AUDIO_OUTPUT_ENABLE;
 	I915_WRITE(intel_dp->output_reg, DP & ~DP_PORT_EN);
 	POSTING_READ(intel_dp->output_reg);
-	msleep(intel_dp->panel_power_down_delay);
 }
 
 static bool
