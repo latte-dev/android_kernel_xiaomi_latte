@@ -134,7 +134,7 @@ intel_dp_max_link_bw(struct intel_dp *intel_dp)
 		break;
 	case DP_LINK_BW_5_4: /* 1.2 capable displays may advertise higher bw */
 		if (((IS_HASWELL(dev) && !IS_HSW_ULX(dev)) ||
-		     INTEL_INFO(dev)->gen >= 8) &&
+		    IS_BROADWELL(dev) || (INTEL_INFO(dev)->gen >= 9)) &&
 		    intel_dp->dpcd[DP_DPCD_REV] >= 0x12)
 			max_link_bw = DP_LINK_BW_5_4;
 		else
