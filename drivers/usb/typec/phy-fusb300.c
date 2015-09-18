@@ -1806,7 +1806,8 @@ static int fusb300_late_suspend(struct device *dev)
 		phy->state == TYPEC_STATE_ATTACHED_DFP) {
 		/* enable power for wakeup block and measure block*/
 		regmap_write(chip->map, FUSB300_PWR_REG,
-			FUSB300_PWR_BG_WKUP | FUSB300_PWR_MEAS);
+			FUSB300_PWR_BG_WKUP | FUSB300_PWR_BMC |
+			FUSB300_PWR_MEAS);
 	} else {
 		/* enable power only for wakeup block */
 		regmap_write(chip->map, FUSB300_PWR_REG,
