@@ -4855,6 +4855,25 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 			DRM_DEBUG_DRIVER("CP or sink specific irq unhandled\n");
 	}
 
+	if (IS_CHERRYVIEW(dev) &&
+		intel_dp->compliance_test_type != DP_TEST_LINK_TRAINING &&
+			intel_encoder->type == INTEL_OUTPUT_DISPLAYPORT) {
+
+		/*
+		 * TODO: Need to test connected boot scenario once platform
+		 * patches are ready. This path is tested on reworked-RVP only.
+		 */
+		if (intel_encoder->connectors_active &&
+						crtc && crtc->enabled) {
+			intel_crtc = to_intel_crtc(crtc);
+			DRM_DEBUG_KMS("Disabling crtc %c for upfront LT\n",
+					pipe_name(intel_crtc->pipe));
+			intel_crtc_control(crtc, false);
+		}
+		chv_upfront_link_train(dev, intel_dp, intel_crtc);
+	}
+
+
 out:
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 	if (IS_VALLEYVIEW(dev) && !is_edp(intel_dp) &&
