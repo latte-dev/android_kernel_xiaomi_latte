@@ -44,6 +44,27 @@
 #define INTEL_DP_RESOLUTION_STANDARD	(2 << INTEL_DP_RESOLUTION_SHIFT_MASK)
 #define INTEL_DP_RESOLUTION_FAILSAFE	(3 << INTEL_DP_RESOLUTION_SHIFT_MASK)
 
+u32 dpio_signal_levels[4][4][5] = {
+	{
+		{0x00000000, 0x00349800, 0x04340000, 0x80800000, 0x02020000},
+		{0x02020000, 0x004d9800, 0x044d0000, 0x80800000, 0x00000000},
+		{0x00000000, 0x00669800, 0x04660000, 0x80800000, 0x02020000},
+		{0x02020000, 0x009a9800, 0x049a0000, 0x80800000, 0x00000000}
+	},
+	{
+		{0x00000000, 0x004e9800, 0x044e0000, 0x55550000, 0x02020000},
+		{0x02020000, 0x00749800, 0x04740000, 0x55550000, 0x00000000},
+		{0x00000000, 0x009a9800, 0x049a0000, 0x55550000, 0x02020000}
+	},
+	{
+		{0x02020000, 0x00689800, 0x04680000, 0x40400000, 0x00000000},
+		{0x00000000, 0x009a9800, 0x049a0000, 0x39390000, 0x02020000}
+	},
+	{
+		{0x00000000, 0x009a9800, 0x049a0000, 0x2b2b0000, 0x02020000}
+	}
+};
+
 struct dp_link_dpll {
 	int link_bw;
 	struct dpll dpll;
@@ -3315,168 +3336,26 @@ static uint32_t intel_chv_signal_levels(struct intel_dp *intel_dp)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_digital_port *dport = dp_to_dig_port(intel_dp);
 	struct intel_crtc *intel_crtc = to_intel_crtc(dport->base.base.crtc);
-	u32 deemph_reg_value, margin_reg_value, val;
 	uint8_t train_set = intel_dp->train_set[0];
 	enum dpio_channel ch = vlv_dport_to_channel(dport);
 	enum pipe pipe = intel_crtc->pipe;
-	int i;
+	u32 *vallist;
+	uint8_t v, p;
 
-	switch (train_set & DP_TRAIN_PRE_EMPHASIS_MASK) {
-	case DP_TRAIN_PRE_EMPH_LEVEL_0:
-		switch (train_set & DP_TRAIN_VOLTAGE_SWING_MASK) {
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_0:
-			deemph_reg_value = 128;
-			margin_reg_value = 52;
-			break;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_1:
-			deemph_reg_value = 128;
-			margin_reg_value = 77;
-			break;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_2:
-			deemph_reg_value = 128;
-			margin_reg_value = 102;
-			break;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_3:
-			deemph_reg_value = 128;
-			margin_reg_value = 154;
-			/* FIXME extra to set for 1200 */
-			break;
-		default:
-			return 0;
-		}
-		break;
-	case DP_TRAIN_PRE_EMPH_LEVEL_1:
-		switch (train_set & DP_TRAIN_VOLTAGE_SWING_MASK) {
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_0:
-			deemph_reg_value = 85;
-			margin_reg_value = 78;
-			break;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_1:
-			deemph_reg_value = 85;
-			margin_reg_value = 116;
-			break;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_2:
-			deemph_reg_value = 85;
-			margin_reg_value = 154;
-			break;
-		default:
-			return 0;
-		}
-		break;
-	case DP_TRAIN_PRE_EMPH_LEVEL_2:
-		switch (train_set & DP_TRAIN_VOLTAGE_SWING_MASK) {
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_0:
-			deemph_reg_value = 64;
-			margin_reg_value = 104;
-			break;
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_1:
-			deemph_reg_value = 64;
-			margin_reg_value = 154;
-			break;
-		default:
-			return 0;
-		}
-		break;
-	case DP_TRAIN_PRE_EMPH_LEVEL_3:
-		switch (train_set & DP_TRAIN_VOLTAGE_SWING_MASK) {
-		case DP_TRAIN_VOLTAGE_SWING_LEVEL_0:
-			deemph_reg_value = 43;
-			margin_reg_value = 154;
-			break;
-		default:
-			return 0;
-		}
-		break;
-	default:
-		return 0;
-	}
+	v = (train_set & DP_TRAIN_VOLTAGE_SWING_MASK) >>
+			DP_TRAIN_VOLTAGE_SWING_SHIFT;
+	p = (train_set & DP_TRAIN_PRE_EMPHASIS_MASK) >>
+			DP_TRAIN_PRE_EMPHASIS_SHIFT;
+
+	vallist = dpio_signal_levels[p][v];
 
 	mutex_lock(&dev_priv->dpio_lock);
 
-	/* Clear calc init */
-	val = vlv_dpio_read(dev_priv, pipe, VLV_PCS01_DW10(ch));
-	val &= ~(DPIO_PCS_SWING_CALC_TX0_TX2 | DPIO_PCS_SWING_CALC_TX1_TX3);
-	val &= ~(DPIO_PCS_TX1DEEMP_MASK | DPIO_PCS_TX2DEEMP_MASK);
-	val |= DPIO_PCS_TX1DEEMP_9P5 | DPIO_PCS_TX2DEEMP_9P5;
-	vlv_dpio_write(dev_priv, pipe, VLV_PCS01_DW10(ch), val);
-
-	val = vlv_dpio_read(dev_priv, pipe, VLV_PCS23_DW10(ch));
-	val &= ~(DPIO_PCS_SWING_CALC_TX0_TX2 | DPIO_PCS_SWING_CALC_TX1_TX3);
-	val &= ~(DPIO_PCS_TX1DEEMP_MASK | DPIO_PCS_TX2DEEMP_MASK);
-	val |= DPIO_PCS_TX1DEEMP_9P5 | DPIO_PCS_TX2DEEMP_9P5;
-	vlv_dpio_write(dev_priv, pipe, VLV_PCS23_DW10(ch), val);
-
-	val = vlv_dpio_read(dev_priv, pipe, VLV_PCS01_DW9(ch));
-	val &= ~(DPIO_PCS_TX1MARGIN_MASK | DPIO_PCS_TX2MARGIN_MASK);
-	val |= DPIO_PCS_TX1MARGIN_000 | DPIO_PCS_TX2MARGIN_000;
-	vlv_dpio_write(dev_priv, pipe, VLV_PCS01_DW9(ch), val);
-
-	val = vlv_dpio_read(dev_priv, pipe, VLV_PCS23_DW9(ch));
-	val &= ~(DPIO_PCS_TX1MARGIN_MASK | DPIO_PCS_TX2MARGIN_MASK);
-	val |= DPIO_PCS_TX1MARGIN_000 | DPIO_PCS_TX2MARGIN_000;
-	vlv_dpio_write(dev_priv, pipe, VLV_PCS23_DW9(ch), val);
-
-	/* Program swing deemph */
-	for (i = 0; i < 4; i++) {
-		val = vlv_dpio_read(dev_priv, pipe, CHV_TX_DW4(ch, i));
-		val &= ~DPIO_SWING_DEEMPH9P5_MASK;
-		val |= deemph_reg_value << DPIO_SWING_DEEMPH9P5_SHIFT;
-		vlv_dpio_write(dev_priv, pipe, CHV_TX_DW4(ch, i), val);
-	}
-
-	/* Program swing margin */
-	for (i = 0; i < 4; i++) {
-		val = vlv_dpio_read(dev_priv, pipe, CHV_TX_DW2(ch, i));
-		val &= ~DPIO_SWING_MARGIN000_MASK;
-		val |= margin_reg_value << DPIO_SWING_MARGIN000_SHIFT;
-		vlv_dpio_write(dev_priv, pipe, CHV_TX_DW2(ch, i), val);
-	}
-
-	/* Disable unique transition scale */
-	for (i = 0; i < 4; i++) {
-		val = vlv_dpio_read(dev_priv, pipe, CHV_TX_DW3(ch, i));
-		val &= ~DPIO_TX_UNIQ_TRANS_SCALE_EN;
-		vlv_dpio_write(dev_priv, pipe, CHV_TX_DW3(ch, i), val);
-	}
-
-	if (((train_set & DP_TRAIN_PRE_EMPHASIS_MASK)
-			== DP_TRAIN_PRE_EMPH_LEVEL_0) &&
-		((train_set & DP_TRAIN_VOLTAGE_SWING_MASK)
-			== DP_TRAIN_VOLTAGE_SWING_LEVEL_3)) {
-
-		/*
-		 * The document said it needs to set bit 27 for ch0 and bit 26
-		 * for ch1. Might be a typo in the doc.
-		 * For now, for this unique transition scale selection, set bit
-		 * 27 for ch0 and ch1.
-		 */
-		for (i = 0; i < 4; i++) {
-			val = vlv_dpio_read(dev_priv, pipe, CHV_TX_DW3(ch, i));
-			val |= DPIO_TX_UNIQ_TRANS_SCALE_EN;
-			vlv_dpio_write(dev_priv, pipe, CHV_TX_DW3(ch, i), val);
-		}
-
-		for (i = 0; i < 4; i++) {
-			val = vlv_dpio_read(dev_priv, pipe, CHV_TX_DW2(ch, i));
-			val &= ~(0xff << DPIO_UNIQ_TRANS_SCALE_SHIFT);
-			val |= (0x9a << DPIO_UNIQ_TRANS_SCALE_SHIFT);
-			vlv_dpio_write(dev_priv, pipe, CHV_TX_DW2(ch, i), val);
-		}
-	}
-
-	/* Start swing calculation */
-	val = vlv_dpio_read(dev_priv, pipe, VLV_PCS01_DW10(ch));
-	val |= DPIO_PCS_SWING_CALC_TX0_TX2 | DPIO_PCS_SWING_CALC_TX1_TX3;
-	vlv_dpio_write(dev_priv, pipe, VLV_PCS01_DW10(ch), val);
-
-	val = vlv_dpio_read(dev_priv, pipe, VLV_PCS23_DW10(ch));
-	val |= DPIO_PCS_SWING_CALC_TX0_TX2 | DPIO_PCS_SWING_CALC_TX1_TX3;
-	vlv_dpio_write(dev_priv, pipe, VLV_PCS23_DW10(ch), val);
-
-	/* LRC Bypass */
-	val = vlv_dpio_read(dev_priv, pipe, CHV_CMN_DW30);
-	val |= DPIO_LRC_BYPASS;
-	vlv_dpio_write(dev_priv, pipe, CHV_CMN_DW30, val);
+	vlv_dpio_write(dev_priv, pipe, CHV_PCS_DW10(ch), vallist[0]);
+	vlv_dpio_write(dev_priv, pipe, VLV_TX_DW2(ch), vallist[1]);
+	vlv_dpio_write(dev_priv, pipe, VLV_TX_DW3(ch), vallist[2]);
+	vlv_dpio_write(dev_priv, pipe, VLV_TX_DW4(ch), vallist[3]);
+	vlv_dpio_write(dev_priv, pipe, CHV_PCS_DW10(ch), vallist[4]);
 
 	mutex_unlock(&dev_priv->dpio_lock);
 
