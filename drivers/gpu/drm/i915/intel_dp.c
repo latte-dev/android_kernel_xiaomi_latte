@@ -2971,7 +2971,6 @@ static void chv_pre_enable_dp(struct intel_encoder *encoder)
 		to_intel_crtc(encoder->base.crtc);
 	enum dpio_channel ch = vlv_dport_to_channel(dport);
 	int pipe = intel_crtc->pipe;
-	int data, i;
 	u32 val, stagger;
 
 	mutex_lock(&dev_priv->dpio_lock);
@@ -3001,19 +3000,6 @@ static void chv_pre_enable_dp(struct intel_encoder *encoder)
 	val = vlv_dpio_read(dev_priv, pipe, VLV_PCS23_DW0(ch));
 	val |= (DPIO_PCS_TX_LANE2_RESET | DPIO_PCS_TX_LANE1_RESET);
 	vlv_dpio_write(dev_priv, pipe, VLV_PCS23_DW0(ch), val);
-
-	/* Program Tx lane latency optimal setting*/
-	for (i = 0; i < 4; i++) {
-		/* Set the latency optimal bit */
-		data = (i == 1) ? 0x0 : 0x6;
-		vlv_dpio_write(dev_priv, pipe, CHV_TX_DW11(ch, i),
-				data << DPIO_FRC_LATENCY_SHFIT);
-
-		/* Set the upar bit */
-		data = (i == 1) ? 0x0 : 0x1;
-		vlv_dpio_write(dev_priv, pipe, CHV_TX_DW14(ch, i),
-				data << DPIO_UPAR_SHIFT);
-	}
 
 	/* Data lane stagger programming */
 	if (intel_crtc->config.port_clock > 270000)
