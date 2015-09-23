@@ -3953,7 +3953,7 @@ void
 intel_dp_complete_link_train(struct intel_dp *intel_dp)
 {
 	bool channel_eq = false;
-	int tries, cr_tries;
+	int tries;
 	uint32_t DP = intel_dp->DP;
 	uint32_t training_pattern = DP_TRAINING_PATTERN_2;
 
@@ -3970,13 +3970,14 @@ intel_dp_complete_link_train(struct intel_dp *intel_dp)
 	}
 
 	tries = 0;
-	cr_tries = 0;
 	channel_eq = false;
 	for (;;) {
 		uint8_t link_status[DP_LINK_STATUS_SIZE];
 
-		if (cr_tries > 5) {
-			DRM_ERROR("failed to train DP, aborting\n");
+		/* Try 5 times, then exit if that fails */
+		if (tries > 4) {
+			intel_dp_link_down(intel_dp);
+			DRM_ERROR("failed equalization after 5 tries\n");
 			break;
 		}
 
@@ -3992,25 +3993,13 @@ intel_dp_complete_link_train(struct intel_dp *intel_dp)
 			intel_dp_set_link_train(intel_dp, &DP,
 						training_pattern |
 						DP_LINK_SCRAMBLING_DISABLE);
-			cr_tries++;
+			++tries;
 			continue;
 		}
 
 		if (drm_dp_channel_eq_ok(link_status, intel_dp->lane_count)) {
 			channel_eq = true;
 			break;
-		}
-
-		/* Try 5 times, then try clock recovery if that fails */
-		if (tries > 5) {
-			intel_dp_link_down(intel_dp);
-			intel_dp_start_link_train(intel_dp);
-			intel_dp_set_link_train(intel_dp, &DP,
-						training_pattern |
-						DP_LINK_SCRAMBLING_DISABLE);
-			tries = 0;
-			cr_tries++;
-			continue;
 		}
 
 		/* Update training set as requested by target */
