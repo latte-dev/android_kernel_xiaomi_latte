@@ -64,10 +64,11 @@
 
 
 struct disp_port_caps {
-	bool usb_dev_support;
-	bool usb_host_support;
 	int dmode_2x_index;
 	int dmode_4x_index;
+	bool usb_dev_support;
+	bool usb_host_support;
+	u8 pin_assign;
 };
 
 struct disp_port_pe {
@@ -259,23 +260,48 @@ static int disp_pe_send_enter_mode(struct disp_port_pe *disp_pe, int index)
 static int disp_pe_send_display_configure(struct disp_port_pe *disp_pe)
 {
 	struct pd_packet pkt;
-	struct disp_config *dconf;
-	int ret;
+	struct disp_config dconf;
+	int ret, index;
+
+
+	memset(&dconf, 0, sizeof(dconf));
+	dconf.conf_sel = DISP_CONFIG_UFPU_AS_UFP_D;
+	dconf.trans_sig = DISP_PORT_SIGNAL_DP_1P3;
+
+	if (disp_pe->dp_mode == TYPEC_DP_TYPE_2X) {
+		dconf.dfp_pin = DISP_PORT_PIN_ASSIGN_D;
+		index = disp_pe->port_caps.dmode_2x_index;
+
+	} else if (disp_pe->dp_mode == TYPEC_DP_TYPE_4X) {
+		if (disp_pe->port_caps.pin_assign
+				& DISP_PORT_PIN_ASSIGN_E)
+			dconf.dfp_pin = DISP_PORT_PIN_ASSIGN_E;
+
+		else if (disp_pe->port_caps.pin_assign
+				& DISP_PORT_PIN_ASSIGN_C)
+			dconf.dfp_pin = DISP_PORT_PIN_ASSIGN_C;
+		else {
+			log_err("Unknown 4X pin assign=%x\n",
+					disp_pe->port_caps.pin_assign);
+			ret = -EINVAL;
+			goto config_error;
+		}
+		index = disp_pe->port_caps.dmode_4x_index;
+
+	} else {
+		log_err("Invalid dp_mode=%d\n", disp_pe->dp_mode);
+		ret = -EINVAL;
+		goto config_error;
+	}
 
 	disp_pe_prepare_vdm_header(&pkt, DP_CONFIGURE,
-						VESA_SVID, 0);
-	dconf = (struct disp_config *)&pkt.data_obj[1];
-	dconf->conf_sel = DISP_CONFIG_UFPU_AS_UFP_D;
-	dconf->trans_sig = DISP_PORT_SIGNAL_DP_1P3;
-
-	if (disp_pe->dp_mode == TYPEC_DP_TYPE_2X)
-		dconf->dfp_pin = DISP_PORT_PIN_ASSIGN_D;
-	else if (disp_pe->dp_mode == TYPEC_DP_TYPE_4X)
-		dconf->dfp_pin = DISP_PORT_PIN_ASSIGN_E;
+						VESA_SVID, index);
+	memcpy(&pkt.data_obj[1], &dconf, sizeof(dconf));
 
 	ret = policy_send_packet(&disp_pe->p, &pkt.data_obj[0], 8,
 				PD_DATA_MSG_VENDOR_DEF, PE_EVT_SEND_VDM);
 
+config_error:
 	return ret;
 }
 
@@ -380,25 +406,37 @@ static void disp_pe_process_dp_modes(struct disp_port_pe *disp_pe,
 
 	for (i = 0; i < dmode_pkt->msg_hdr.num_data_obj - 1; i++) {
 		if (!index_4x) {
-			if ((dmode_pkt->mode[i].ufp_pin
-				& DISP_PORT_PIN_ASSIGN_E)
-				|| (dmode_pkt->mode[i].ufp_pin
-				& DISP_PORT_PIN_ASSIGN_C)
-				|| (dmode_pkt->mode[i].dfp_pin
-				& DISP_PORT_PIN_ASSIGN_E)
-				|| (dmode_pkt->mode[i].dfp_pin
-				& DISP_PORT_PIN_ASSIGN_C)) {
+			if (dmode_pkt->mode[i].ufp_pin
+					& DISP_PORT_PIN_ASSIGN_E
+				|| dmode_pkt->mode[i].dfp_pin
+					& DISP_PORT_PIN_ASSIGN_E) {
 				/* Mode intex starts from 1 */
 				index_4x = i + 1;
+				disp_pe->port_caps.pin_assign |=
+					DISP_PORT_PIN_ASSIGN_E;
+				log_dbg("Port supports Pin Assign E\n");
+			}
+			if (dmode_pkt->mode[i].ufp_pin
+					& DISP_PORT_PIN_ASSIGN_C
+				|| dmode_pkt->mode[i].dfp_pin
+					& DISP_PORT_PIN_ASSIGN_C) {
+				/* Mode intex starts from 1 */
+				index_4x = i + 1;
+				disp_pe->port_caps.pin_assign |=
+					DISP_PORT_PIN_ASSIGN_C;
+				log_dbg("Port supports Pin Assign C\n");
 			}
 		}
 		if (!index_2x) {
-			if ((dmode_pkt->mode[i].ufp_pin
-			& DISP_PORT_PIN_ASSIGN_D)
-			|| (dmode_pkt->mode[i].dfp_pin
-			& DISP_PORT_PIN_ASSIGN_D)) {
+			if (dmode_pkt->mode[i].ufp_pin
+					& DISP_PORT_PIN_ASSIGN_D
+				|| dmode_pkt->mode[i].dfp_pin
+					& DISP_PORT_PIN_ASSIGN_D) {
 				/* Mode intex starts from 1 */
 				index_2x = i + 1;
+				disp_pe->port_caps.pin_assign |=
+					DISP_PORT_PIN_ASSIGN_D;
+				log_dbg("Port supports Pin Assign D\n");
 			}
 		}
 		if (index_2x && index_4x)
@@ -677,7 +715,7 @@ static void disp_pe_start_comm(struct work_struct *work)
 		schedule_delayed_work(&disp_pe->start_comm,
 					HZ * CMD_NORESPONCE_TIME);
 	} else {
-		log_warn("Not scheduling srccap as max re-try reached\n");
+		log_warn("Not scheduling DI worker as max re-try reached\n");
 		disp_pe_handle_dp_fail(disp_pe);
 	}
 }
