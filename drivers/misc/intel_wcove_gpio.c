@@ -54,7 +54,6 @@ struct wcove_gpio_info {
 	struct list_head gpio_queue;
 	struct work_struct gpio_work;
 	struct mutex lock;
-	bool is_vbus_connected;
 	spinlock_t gpio_queue_lock;
 };
 
@@ -141,14 +140,13 @@ static void wcgpio_ctrl_worker(struct work_struct *work)
 		dev_info(&info->pdev->dev,
 				"%s:%d state=%d\n", __FILE__, __LINE__,
 				evt->is_src_connected);
-		info->is_vbus_connected = evt->is_src_connected;
 		retry_count = 0;
 
 		do {
 			/* loop is to update the vbus state in case fails, try
 			 * again upto max retry count */
 			ret = wcgpio_update_vbus_state(info,
-					info->is_vbus_connected);
+					evt->is_src_connected);
 			if (ret != -EAGAIN)
 				break;
 
@@ -191,11 +189,6 @@ static int wcgpio_check_events(struct wcove_gpio_info *info,
 	}
 
 	evt->is_src_connected = extcon_get_cable_state(edev, "USB_TYPEC_SRC");
-	if (evt->is_src_connected == info->is_vbus_connected) {
-		dev_info(&info->pdev->dev, "already source %s\n",
-			evt->is_src_connected ? "Connected" : "Disconnected");
-		return 0;
-	}
 	dev_info(&info->pdev->dev,
 			"[extcon notification] evt: Provider - %s\n",
 			evt->is_src_connected ? "Connected" : "Disconnected");
