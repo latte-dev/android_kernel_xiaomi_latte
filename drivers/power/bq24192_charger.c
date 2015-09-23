@@ -1318,16 +1318,7 @@ static inline int bq24192_enable_charging(
 		/* Schedule the charger task worker now */
 		schedule_delayed_work(&chip->chrg_task_wrkr, 0);
 
-		/*
-		 * Prevent system from entering s3 while charger is connected
-		 */
-		if (!wake_lock_active(&chip->wakelock))
-			wake_lock(&chip->wakelock);
 	} else {
-		/* Release the wake lock */
-		if (wake_lock_active(&chip->wakelock))
-			wake_unlock(&chip->wakelock);
-
 		/*
 		 * Cancel the worker since it need not run when charging is not
 		 * happening
@@ -1462,6 +1453,18 @@ static int bq24192_usb_set_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
 		chip->online = val->intval;
+		if (chip->online) {
+			/**
+			 * Prevent system from entering s3 while charger is
+			 * connected
+			 */
+			if (!wake_lock_active(&chip->wakelock))
+				wake_lock(&chip->wakelock);
+		} else {
+			/* Release the wake lock */
+			if (wake_lock_active(&chip->wakelock))
+				wake_unlock(&chip->wakelock);
+		}
 		break;
 	case POWER_SUPPLY_PROP_ENABLE_CHARGING:
 		bq24192_enable_hw_term(chip, val->intval);
