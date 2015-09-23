@@ -80,7 +80,7 @@ static void pd_policy_update_data_role(struct pd_prot *prot,
 	else if (drole == DATA_ROLE_DFP)
 		prot->data_role = PD_DATA_ROLE_DFP;
 
-	queue_work(system_nrt_wq, &prot->role_chng_work);
+	schedule_work(&prot->role_chng_work);
 }
 
 static void pd_policy_update_power_role(struct pd_prot *prot,
@@ -92,9 +92,9 @@ static void pd_policy_update_power_role(struct pd_prot *prot,
 	if (prole == POWER_ROLE_NONE || prole == POWER_ROLE_SINK)
 		prot->pwr_role = PD_POWER_ROLE_CONSUMER;
 	else if (prole == POWER_ROLE_SOURCE)
-		prot->pwr_role = PD_POWER_ROLE_CONSUMER;
+		prot->pwr_role = PD_POWER_ROLE_PROVIDER;
 
-	queue_work(system_nrt_wq, &prot->role_chng_work);
+	schedule_work(&prot->role_chng_work);
 }
 
 static struct prot_msg *prot_alloc_msg(void)
