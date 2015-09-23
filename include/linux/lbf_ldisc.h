@@ -44,11 +44,11 @@ long (*fm_cmd_write)(struct sk_buff *skb);
 };
 
 
-extern long register_fmdrv_to_ld_driv(
-		struct fm_ld_drv_register *fm_ld_drv_reg);
+extern long register_fmdrv_to_ld_driv
+		(struct fm_ld_drv_register *fm_ld_drv_reg);
 
-extern long unregister_fmdrv_from_ld_driv(
-		struct fm_ld_drv_register *fm_ld_drv_reg);
+extern long unregister_fmdrv_from_ld_driv
+		(struct fm_ld_drv_register *fm_ld_drv_reg);
 
 /*-------------MACRO---------------*/
 
@@ -68,10 +68,26 @@ extern long unregister_fmdrv_from_ld_driv(
 #define HCI_SCO_HDR_SIZE	3
 
 #define INVALID -1
-#define HCI_COMMAND_COMPLETE_EVENT	0x0E
-#define HCI_INTERRUPT_EVENT		0xFF
-#define HCI_COMMAND_STATUS_EVT		0x0F
-#define FMR_DEBUG_EVENT			0x2B
+#define HCI_COMMAND_COMPLETE_EVENT		0x0E
+#define HCI_COMMAND_HARDWARE_ERROR		0x10
+#define HCI_INTEL_BOOTUP_EVENT			0xFF
+#define HCI_FATAL_EXCEPTION			0xFF
+#define HCI_DEBUG_EXCEPTION			0xFF
+#define HCI_INTEL_BOOTUP_EVENT_ID		0x02
+#define HCI_INTEL_BOOTUP_REASON_HCI_RESET	0x00
+#define HCI_INTEL_BOOTUP_REASON_HW_RESET	0x01
+#define HCI_INTEL_BOOTUP_REASON_INTEL_RESET	0x02
+#define HCI_INTEL_BOOTUP_REASON_WATCHDOG_EXCEP	0x03
+#define HCI_INTEL_BOOTUP_REASON_FATAL_EXCEP	0x04
+#define HCI_INTEL_BOOTUP_REASON_SYSTEM_EXCEP	0x05
+#define HCI_INTEL_BOOTUP_REASON_UNKNW_EXCEP	0xFF
+#define HCI_FATAL_EXCEPTION_EVENT_ID		0x01
+#define HCI_DEBUG_EXCEPTION_EVENT_ID		0x08
+#define HCI_INTERRUPT_EVENT			0xFF
+#define HCI_COMMAND_STATUS_EVT			0x0F
+#define FMR_DEBUG_EVENT_ID			0x2B
+#define OPERATIONAL				0x01
+#define BOOTLOADER				0x00
 
 /* ---- PM PKT RESP ---- */
 #define ACK_RSP			0x02
@@ -86,6 +102,10 @@ extern long unregister_fmdrv_from_ld_driv(
 #define D0_TO_D2		3
 #define D2_TO_D0		4
 
+/*-----------System States-----*/
+#define S3			1
+#define S0			0
+
 /*----------- FMR Command ----*/
 #define FMR_WRITE       0xFC58
 #define FMR_READ	0xFC59
@@ -95,8 +115,23 @@ extern long unregister_fmdrv_from_ld_driv(
 #define FMR_TOP_WRITE   0xFC5D
 #define FMR_TOP_READ    0xFC5E
 
+/*-----------BT CMD----------*/
+#define BT_HCI_RESET	0x0C03
+#define BT_SECURE_SEND	0xFC09
+
+#define HCI_RESET_COMPL_RCV	2
+#define HCI_RESET_SEND		1
+#define HCI_REST_CMD		0
+#define HCI_CMD_TOUT		0
+#define HCI_HW_ERR			1
+
+
 #define STREAM_TO_UINT16(u16, p) { (p) += 4; u16 = ((unsigned int)(*(p)) + \
 					(((unsigned int)(*((p) + 1))) << 8)); }
+
+#define STREAM_TO_UINT16_OPCODE(u16, p) { (p) += 1; u16 = \
+				((unsigned int)(*(p)) + \
+				(((unsigned int)(*((p) + 1))) << 8)); }
 #define MAX_BT_CHNL_IDS 4
 
 /* ----- HCI receiver states ---- */
@@ -108,13 +143,27 @@ extern long unregister_fmdrv_from_ld_driv(
 #define TTY_THRESHOLD_THROTTLE		128 /* now based on remaining room */
 #define TTY_THRESHOLD_UNTHROTTLE	128
 
-#define BT_FW_DOWNLOAD_INIT	_IOR('L', 1, uint64_t)
-#define BT_FW_DOWNLOAD_COMPLETE _IOW('L', 2, uint64_t)
-#define BT_FMR_IDLE		_IOW('L', 3, uint64_t)
-#define BT_FMR_LPM_ENABLE	_IOW('L', 4, uint64_t)
-#define BT_HOST_WAKE		_IOW('L', 5, uint64_t)
+#define BT_FW_DOWNLOAD_INIT		_IOR('L', 1, uint64_t)
+#define BT_FW_DOWNLOAD_COMPLETE		_IOW('L', 2, uint64_t)
+#define BT_FMR_IDLE			_IOW('L', 3, uint64_t)
+#define BT_FMR_LPM_ENABLE		_IOW('L', 4, uint64_t)
+#define BT_FMR_HW_RESET			_IOW('L', 5, uint64_t)
 #define BT_HOST_WAKE_INTR_COUNT		_IOW('L', 6, uint64_t)
-#define BT_HOST_WAKE_INTR_COUNT_RESET		_IOW('L', 7, uint64_t)
+#define BT_HOST_WAKE_INTR_COUNT_RESET	_IOW('L', 7, uint64_t)
+#ifdef TEST_CODE
+#define BT_FMR_HW_ERR			_IOW('L', 8, uint64_t)
+#define BT_FMR_BOOTUP_ERR		_IOW('L', 9, uint64_t)
+#endif
+
+enum {
+	LOW,
+	HIGH
+};
+
+enum {
+	MODULE_HW_ERR,
+	MODULE_CMD_TIMEOUT
+};
 
 #define RELEVANT_IFLAG(iflag) ((iflag) & (IGNBRK|BRKINT|IGNPAR|PARMRK|INPCK))
 
