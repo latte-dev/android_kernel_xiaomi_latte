@@ -2754,6 +2754,10 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		break;
 	}
 	switch (cmd) {
+	case ATOMISP_IOC_S_SENSOR_RUNMODE:
+		err = atomisp_set_sensor_runmode(asd, arg);
+		break;
+
 	case ATOMISP_IOC_G_XNR:
 		err = atomisp_xnr(asd, 0, arg);
 		break;

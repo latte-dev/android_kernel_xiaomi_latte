@@ -44,6 +44,8 @@ struct atomisp_css_frame;
 #define MEMORY_SPACE_ENABLE	1
 #define INTR_IER		24
 #define INTR_IIR		16
+#define RUNMODE_MASK (ATOMISP_RUN_MODE_VIDEO | ATOMISP_RUN_MODE_STILL_CAPTURE \
+			| ATOMISP_RUN_MODE_PREVIEW)
 
 #ifdef CONFIG_GMIN_INTEL_MID
 extern int atomisp_punit_hpll_freq;
@@ -102,6 +104,12 @@ bool atomisp_is_viewfinder_support(struct atomisp_device *isp);
  * ISP features control function
  */
 
+/*
+ * Function to set sensor runmode by user when
+ * ATOMISP_IOC_S_SENSOR_RUNMODE ioctl was called
+ */
+int atomisp_set_sensor_runmode(struct atomisp_sub_device *asd,
+		struct atomisp_s_runmode *runmode);
 /*
  * Function to enable/disable lens geometry distortion correction (GDC) and
  * chromatic aberration correction (CAC)
