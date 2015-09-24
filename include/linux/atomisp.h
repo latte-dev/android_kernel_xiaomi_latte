@@ -895,6 +895,12 @@ struct atomisp_acc_fw_load_to_pipe {
 	__u32 type;			/* Binary type */
 	__u32 reserved[3];		/* Set to zero */
 };
+/*
+ * Set Senor run mode
+ */
+struct atomisp_s_runmode {
+	__u32 mode;
+};
 
 #define ATOMISP_ACC_FW_LOAD_FL_PREVIEW		(1 << 0)
 #define ATOMISP_ACC_FW_LOAD_FL_COPY		(1 << 1)
@@ -1212,6 +1218,8 @@ struct atomisp_sensor_ae_bracketing_lut {
 #define ATOMISP_IOC_S_SENSOR_EE_CONFIG \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 47, unsigned int)
 
+#define ATOMISP_IOC_S_SENSOR_RUNMODE \
+	_IOW('v', BASE_VIDIOC_PRIVATE + 48, struct atomisp_s_runmode)
 /*
  * Reserved ioctls. We have customer implementing it internally.
  * We can't use both numbers to not cause ABI conflict.
