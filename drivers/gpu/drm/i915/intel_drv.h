@@ -240,6 +240,8 @@ struct intel_connector {
 
 	/* Whether DPMS off is pending on this ? */
 	bool dpms_off_pending;
+
+	bool simulate_disconnect_connect;
 };
 
 typedef struct dpll {

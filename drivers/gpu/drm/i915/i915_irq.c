@@ -1153,6 +1153,51 @@ static void intel_hdmi_disable_port(struct drm_device *dev,
 	intel_hdmi->skip_port_check = true;
 }
 
+/*
+ * This function is the second half of logic to perform fake
+ * disconnect-connect. The first half was the connector setting
+ * a flag, returning status as disconnected and queing this function.
+ *
+ * This function uses simulate_disconnect_connect flag to identify the
+ * connector that should be detected again. Since this is executed after
+ * a delay if the panel is still plugged in it will be reported as
+ * connected to user mode
+ */
+static void intel_hpd_simulate_reconnect_work(struct work_struct *work)
+{
+	struct drm_i915_private *dev_priv =
+		container_of(work, struct drm_i915_private, simulate_work.work);
+	struct drm_device *dev = dev_priv->dev;
+	struct intel_encoder *intel_encoder;
+	struct intel_connector *intel_connector;
+	struct drm_connector *connector;
+	struct drm_mode_config *mode_config = &dev->mode_config;
+
+	DRM_DEBUG_KMS("\n");
+	mutex_lock(&mode_config->mutex);
+
+	list_for_each_entry(connector, &mode_config->connector_list, head) {
+		intel_connector = to_intel_connector(connector);
+		if (!intel_connector->simulate_disconnect_connect)
+			continue;
+
+		intel_connector->simulate_disconnect_connect = false;
+
+		if (!intel_connector->encoder)
+			continue;
+
+		intel_encoder = intel_connector->encoder;
+
+		spin_lock_irq(&dev_priv->irq_lock);
+		dev_priv->hpd_event_bits |= (1 << intel_encoder->hpd_pin);
+		spin_unlock_irq(&dev_priv->irq_lock);
+	}
+
+	mutex_unlock(&mode_config->mutex);
+
+	queue_work(dev_priv->hpdwq, &dev_priv->hotplug_work);
+}
+
 static void i915_digport_work_func(struct work_struct *work)
 {
 	struct drm_i915_private *dev_priv =
@@ -1299,6 +1344,7 @@ static void i915_hotplug_work_func(struct work_struct *work)
 static void intel_hpd_irq_uninstall(struct drm_i915_private *dev_priv)
 {
 	del_timer_sync(&dev_priv->hotplug_reenable_timer);
+	cancel_delayed_work_sync(&dev_priv->simulate_work);
 }
 
 static void ironlake_rps_change_irq_handler(struct drm_device *dev)
@@ -5349,6 +5395,8 @@ void intel_irq_init(struct drm_device *dev)
 	INIT_WORK(&dev_priv->gpu_error.work, i915_error_work_func);
 	INIT_WORK(&dev_priv->rps.work, gen6_pm_rps_work);
 	INIT_WORK(&dev_priv->l3_parity.error_work, ivybridge_parity_work);
+	INIT_DELAYED_WORK(&dev_priv->simulate_work,
+			intel_hpd_simulate_reconnect_work);
 
 	/* Let's track the enabled rps events */
 	dev_priv->pm_rps_events = GEN6_PM_RPS_EVENTS;

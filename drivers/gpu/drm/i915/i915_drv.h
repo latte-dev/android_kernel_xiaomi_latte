@@ -1934,7 +1934,9 @@ struct drm_i915_private {
 	struct intel_digital_port *hpd_irq_port[I915_MAX_PORTS];
 	u32 long_hpd_port_mask;
 	u32 short_hpd_port_mask;
+	u32 simulate_dp_in_progress;
 	struct work_struct dig_port_work;
+	struct delayed_work simulate_work;
 
 	/* Old dri1 support infrastructure, beware the dragons ya fools entering
 	 * here! */

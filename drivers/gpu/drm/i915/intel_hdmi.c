@@ -1147,6 +1147,12 @@ void intel_hdmi_hot_plug(struct intel_encoder *intel_encoder)
 
 	connector = &intel_hdmi->attached_connector->base;
 
+	/* check if simulate is in progress for current port */
+	if (dev_priv->simulate_dp_in_progress & intel_encoder->hpd_pin) {
+		DRM_DEBUG_KMS("Simulate DP disconnect in progress\n");
+		return;
+	}
+
 	/*
 	 * We are here, means there is a HDMI hot-plug
 	 * Lets try to get EDID

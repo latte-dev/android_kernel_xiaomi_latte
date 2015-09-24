@@ -4430,6 +4430,31 @@ update_status:
 
  }
 
+static void intel_dp_update_simulate_detach_info(struct intel_dp *intel_dp)
+{
+	struct intel_connector *intel_connector = intel_dp->attached_connector;
+	struct drm_device *dev = intel_dp_to_dev(intel_dp);
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_encoder *intel_encoder = &dp_to_dig_port(intel_dp)->base;
+
+	/*
+	 * Queue thread only if it is not already done.
+	 * the flag is cleared inside the callback function
+	 * hence we can be sure that there is no race condition
+	 * under which it may remain set.
+	 */
+	if (!intel_connector->simulate_disconnect_connect) {
+		intel_connector->simulate_disconnect_connect = true;
+
+		/* update current pin to indicate simulation in progress */
+		dev_priv->simulate_dp_in_progress = intel_encoder->hpd_pin;
+
+		DRM_DEBUG_KMS("Queue simulate work func\n");
+		mod_delayed_work(system_wq, &dev_priv->simulate_work,
+				msecs_to_jiffies(100));
+	}
+}
+
 /*
  * According to DP spec
  * 5.1.2:
@@ -4446,6 +4471,7 @@ intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 	u8 sink_irq_vector;
 	u8 link_status[DP_LINK_STATUS_SIZE];
 	u8 old_sink_count = intel_dp->sink_count;
+	u8 old_lane_count = intel_dp->dpcd[DP_MAX_LANE_COUNT];
 	bool ret;
 
 	*perform_full_detect = false;
@@ -4487,6 +4513,21 @@ intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 		if (sink_irq_vector & DP_AUTOMATED_TEST_REQUEST) {
 			intel_dp_handle_test_request(intel_dp, true);
 			sink_irq_vector &= ~DP_AUTOMATED_TEST_REQUEST;
+		}
+
+		/*
+		 * if lane count has changed, we need to inform
+		 * user mode of new capablities, this is done by setting
+		 * our flag to do a fake disconnect and connect so it
+		 * will appear to the user mode that a new panel is
+		 * connected and will use the new capabilties of the
+		 * panel
+		 */
+		if (old_lane_count != intel_dp->dpcd[DP_MAX_LANE_COUNT]) {
+			DRM_DEBUG_KMS("Lane count changed\n");
+			intel_dp_update_simulate_detach_info(intel_dp);
+			*perform_full_detect = true;
+			return;
 		}
 
 		if (sink_irq_vector & (DP_CP_IRQ | DP_SINK_SPECIFIC_IRQ))
@@ -4710,9 +4751,7 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	enum intel_display_power_domain power_domain;
 	struct edid *edid = NULL;
 	struct intel_crtc *intel_crtc = crtc ? to_intel_crtc(crtc) : NULL;
-#ifdef CONFIG_EXTCON
 	struct intel_connector *intel_connector = to_intel_connector(connector);
-#endif
 
 	intel_runtime_pm_get(dev_priv);
 
@@ -4722,7 +4761,10 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	DRM_DEBUG_KMS("[CONNECTOR:%d:%s]\n",
 		      connector->base.id, connector->name);
 
-	if (HAS_PCH_SPLIT(dev))
+	if (intel_connector->simulate_disconnect_connect) {
+		DRM_DEBUG_KMS("Simulating disconnect\n");
+		status = connector_status_disconnected;
+	} else if (HAS_PCH_SPLIT(dev))
 		status = ironlake_dp_detect(intel_dp);
 	else
 		status = g4x_dp_detect(intel_dp);
@@ -4807,6 +4849,9 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 		chv_upfront_link_train(dev, intel_dp, intel_crtc);
 	}
 
+	/* if simulation was in progress clear the flag */
+	if (dev_priv->simulate_dp_in_progress & intel_encoder->hpd_pin)
+		dev_priv->simulate_dp_in_progress &= ~(intel_encoder->hpd_pin);
 
 out:
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
