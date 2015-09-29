@@ -262,8 +262,24 @@ void typec_notify_cable_state(struct typec_phy *phy, char *type, bool state)
 	struct typec_detect *detect;
 
 	detect = get_typec_detect(phy);
-	if (detect)
-		typec_detect_notify_extcon(detect, type, state);
+	if (!detect)
+		return;
+
+	typec_detect_notify_extcon(detect, type, state);
+	/* If all four cables are disconnected, then start DRP toggling*/
+	if (!(detect->usb_state || detect->snk_state
+		|| detect->usb_host_state || detect->src_state)
+			&& detect->state != DETECT_STATE_UNATTACHED_DRP) {
+		dev_info(detect->phy->dev,
+			"%s: Cable Disconnected, Move to DRP Mode",
+				__func__);
+		typec_enable_autocrc(detect->phy, false);
+		mutex_lock(&detect->lock);
+		detect->state = DETECT_STATE_UNATTACHED_DRP;
+		mutex_unlock(&detect->lock);
+		typec_switch_mode(detect->phy, TYPEC_MODE_DRP);
+	}
+
 }
 EXPORT_SYMBOL_GPL(typec_notify_cable_state);
 
@@ -743,8 +759,15 @@ static void update_phy_state(struct work_struct *work)
 				__func__, detect->state);
 			typec_detect_notify_extcon(detect,
 						TYPEC_CABLE_USB_SNK, false);
-			typec_detect_notify_extcon(detect,
+			if (detect->usb_state) {
+				typec_detect_notify_extcon(detect,
 						TYPEC_CABLE_USB, false);
+			} else if (detect->usb_host_state) {
+				typec_detect_notify_extcon(detect,
+						TYPEC_CABLE_USB_HOST, false);
+			} else
+				dev_warn(phy->dev, "%s:Unknown date role!!\n",
+						__func__);
 
 			typec_enable_autocrc(detect->phy, false);
 
@@ -757,8 +780,16 @@ static void update_phy_state(struct work_struct *work)
 			/* state = DFP; disable VBUS */
 			typec_detect_notify_extcon(detect,
 						TYPEC_CABLE_USB_SRC, false);
-			typec_detect_notify_extcon(detect,
+			if (detect->usb_state) {
+				typec_detect_notify_extcon(detect,
+						TYPEC_CABLE_USB, false);
+			} else if (detect->usb_host_state) {
+				typec_detect_notify_extcon(detect,
 						TYPEC_CABLE_USB_HOST, false);
+			} else
+				dev_warn(phy->dev, "%s:Unknown date role!!\n",
+						__func__);
+
 
 			typec_enable_autocrc(detect->phy, false);
 
