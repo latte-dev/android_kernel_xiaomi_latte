@@ -731,7 +731,8 @@ void tty_hangup(struct tty_struct *tty)
 	printk(KERN_DEBUG "%s hangup...\n", tty_name(tty, buf));
 #endif
 	tty_kref_get(tty);
-	schedule_work(&tty->hangup_work);
+	if (!schedule_work(&tty->hangup_work))
+		tty_kref_put(tty);
 }
 
 EXPORT_SYMBOL(tty_hangup);
