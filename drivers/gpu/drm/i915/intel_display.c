@@ -15011,6 +15011,10 @@ start_link_train:
 	intel_dp->lane_count = intel_dp->dpcd[DP_MAX_LANE_COUNT] &
 					DP_MAX_LANE_COUNT_MASK;
 
+	/* CHV does not support HBR2 */
+	if (intel_dp->link_bw == DP_LINK_BW_5_4)
+		intel_dp->link_bw = DP_LINK_BW_2_7;
+
 	do {
 		/* Find port clock from link_bw */
 		crtc->config.port_clock =
@@ -15049,9 +15053,6 @@ start_link_train:
 			intel_dp->lane_count = 2;
 		} else if (intel_dp->lane_count == 2) {
 			intel_dp->lane_count = 1;
-		} else if (intel_dp->link_bw == DP_LINK_BW_5_4) {
-			intel_dp->link_bw = DP_LINK_BW_2_7;
-			intel_dp->lane_count = 4;
 		} else if (intel_dp->link_bw == DP_LINK_BW_2_7) {
 			intel_dp->link_bw = DP_LINK_BW_1_62;
 			intel_dp->lane_count = 4;
