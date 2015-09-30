@@ -14961,6 +14961,7 @@ bool chv_upfront_link_train(struct drm_device *dev,
 	struct intel_encoder *encoder = connector->encoder;
 	bool found = false;
 	bool valid_crtc = false;
+	uint8_t tmp_lane_count, tmp_link_bw;
 
 	if (!connector || !encoder) {
 		DRM_DEBUG_KMS("dp connector/encoder is NULL\n");
@@ -15000,6 +15001,10 @@ start_link_train:
 	DRM_DEBUG_KMS("upfront link training on pipe:%c\n",
 					pipe_name(crtc->pipe));
 	found = false;
+
+	/* Save the existing lane_count and link_bw values */
+	tmp_lane_count = intel_dp->lane_count;
+	tmp_link_bw = intel_dp->link_bw;
 
 	/* Initialize with Max Link rate & lane count supported by panel */
 	intel_dp->link_bw =  intel_dp->dpcd[DP_MAX_LINK_RATE];
@@ -15068,6 +15073,11 @@ exit:
 	if (found)
 		DRM_DEBUG_KMS("upfront link training passed. lanes:%d bw:%d\n",
 				intel_dp->lane_count, intel_dp->link_bw);
+
+	/* Restore lane_count and link_bw values */
+	intel_dp->lane_count = tmp_lane_count;
+	intel_dp->link_bw = tmp_link_bw;
+
 	return found;
 }
 
