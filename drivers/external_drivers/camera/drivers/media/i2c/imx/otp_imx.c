@@ -46,6 +46,12 @@
 #define IMX_OTP_READY_REG_DONE		1
 #define IMX_OTP_READ_ONETIME		32
 #define IMX_OTP_MODE_READ		1
+#define IMX227_OTP_START_ADDR           0x0A04
+#define IMX227_OTP_ENABLE_REG           0x0A00
+#define IMX227_OTP_READY_REG            0x0A01
+#define IMX227_OTP_PAGE_REG             0x0A02
+#define IMX227_OTP_READY_REG_DONE       1
+#define IMX227_OTP_MODE_READ            1
 
 static int
 imx_read_otp_data(struct i2c_client *client, u16 len, u16 reg, void *val)
@@ -135,6 +141,46 @@ void *imx_otp_read(struct v4l2_subdev *sd, u8 dev_addr,
 		/* Reading the OTP data array */
 		ret = imx_read_otp_reg_array(client, IMX_OTP_PAGE_SIZE,
 			IMX_OTP_START_ADDR, buf + i * IMX_OTP_PAGE_SIZE);
+		if (ret)
+			goto fail;
+	}
+
+	return buf;
+fail:
+	/* Driver has failed to find valid data */
+	dev_err(&client->dev, "sensor found no valid OTP data\n");
+	return ERR_PTR(ret);
+}
+
+void *imx227_otp_read(struct v4l2_subdev *sd, u8 dev_addr,
+	u32 start_addr, u32 size)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	u8 *buf;
+	int ret;
+	int i;
+
+	buf = devm_kzalloc(&client->dev, size, GFP_KERNEL);
+	if (!buf)
+		return ERR_PTR(-ENOMEM);
+
+	for (i = 0; i < IMX_OTP_PAGE_MAX; i++) {
+
+		/*set page NO.*/
+		ret = imx_write_reg(client, IMX_8BIT,
+			       IMX227_OTP_PAGE_REG, i & 0xff);
+		if (ret)
+			goto fail;
+
+		/*set read mode*/
+		ret = imx_write_reg(client, IMX_8BIT,
+			       IMX227_OTP_ENABLE_REG, IMX227_OTP_MODE_READ);
+		if (ret)
+			goto fail;
+
+		/* Reading the OTP data array */
+		ret = imx_read_otp_reg_array(client, IMX_OTP_PAGE_SIZE,
+			IMX227_OTP_START_ADDR, buf + i * IMX_OTP_PAGE_SIZE);
 		if (ret)
 			goto fail;
 	}
