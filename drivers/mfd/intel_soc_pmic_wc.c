@@ -801,6 +801,29 @@ static acpi_handle pmic_handle(void)
 	return ACPI_HANDLE(intel_soc_pmic_dev());
 }
 
+static int acpi_get_chgr_irq(int *irq)
+{
+	struct gpio_desc *gpiod;
+	struct device *dev = intel_soc_pmic_dev();
+	int ret;
+
+	gpiod = devm_gpiod_get_index(dev, KBUILD_MODNAME, 1);
+	if (IS_ERR(gpiod)) {
+		dev_err(dev, "Unable to get the gpio 1 %d\n", PTR_ERR(gpiod));
+		return -EINVAL;
+	}
+
+	ret = gpiod_direction_input(gpiod);
+	if (ret < 0) {
+		dev_err(dev, "Cannot configure chgr_irq as input %d\n",
+			ret);
+		return ret;
+	}
+
+	*irq = gpiod_to_irq(gpiod);
+	return 0;
+}
+
 static int acpi_get_lpat_table(int **lpat)
 {
 	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
@@ -949,13 +972,17 @@ static u8 pmic_read_tt(u8 addr)
 static void __init register_external_charger(void)
 {
 	static struct i2c_board_info i2c_info;
+	int irq;
 
 	if (!wcove_init_done)
 		return;
 
 	strncpy(i2c_info.type, "ext-charger", I2C_NAME_SIZE);
 	i2c_info.addr = pmic_read_tt(TT_I2CDADDR_ADDR);
-	i2c_info.irq = whiskey_cove_pmic.irq_base + CHGR_IRQ;
+	if (acpi_get_chgr_irq(&irq))
+		i2c_info.irq = whiskey_cove_pmic.irq_base + CHGR_IRQ;
+	else
+		i2c_info.irq = irq;
 	i2c_new_device(wcove_pmic_i2c_adapter, &i2c_info);
 }
 late_initcall(register_external_charger);
