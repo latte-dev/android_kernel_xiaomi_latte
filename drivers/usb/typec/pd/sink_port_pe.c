@@ -111,17 +111,27 @@ static int snkpe_get_req_cap(struct sink_port_pe *sink,
 	}
 
 	if (!is_mv_match) {
-		rcap->cap_mismatch = false;
 		i = 0; /* to select 1st pdo, Vsafe5V */
 	}
 
-	if (!rcap->cap_mismatch)
+	if (!rcap->cap_mismatch) {
 		rcap->obj_pos = i + 1; /* obj pos always starts from 1 */
-	else /* if cur is not match, select the previous pdo */
-		rcap->obj_pos = i;
+		rcap->max_ma = pcap->ma;
+		rcap->op_ma = pcap->ma;
+	} else  {
+		/* if cur is not match, select the previous pdo */
+		rcap->obj_pos = i ? i : 1;
+		rcap->op_ma = DATA_OBJ_TO_CURRENT(pkt->data_obj[rcap->obj_pos - 1]);
+		if (pcap->ma < rcap->op_ma) {
+			rcap->cap_mismatch = false;
+			rcap->max_ma = rcap->op_ma;
+			rcap->op_ma = pcap->ma;
+		} else {
+			rcap->max_ma = pcap->ma;
+		}
+	}
 
 	rcap->mv = DATA_OBJ_TO_VOLT(pkt->data_obj[rcap->obj_pos - 1]);
-	rcap->ma = DATA_OBJ_TO_CURRENT(pkt->data_obj[rcap->obj_pos - 1]);
 
 	return 0;
 }
@@ -149,8 +159,8 @@ static int snkpe_create_reqmsg(struct sink_port_pe *sink,
 
 	rdo->obj_pos = rcap->obj_pos;
 	rdo->cap_mismatch = rcap->cap_mismatch;
-	rdo->op_cur = CURRENT_TO_DATA_OBJ(rcap->ma);
-	rdo->max_cur = rdo->op_cur;
+	rdo->op_cur = CURRENT_TO_DATA_OBJ(rcap->op_ma);
+	rdo->max_cur = CURRENT_TO_DATA_OBJ(rcap->max_ma);
 
 	return 0;
 
@@ -537,7 +547,7 @@ static int snkpe_setup_charging(struct sink_port_pe *sink)
 
 	pr_debug("SNKPE:%s In\n", __func__);
 	/* Update the charger input current limit */
-	ret = policy_update_charger_ilim(&sink->p, sink->rcap.ma);
+	ret = policy_update_charger_ilim(&sink->p, sink->rcap.op_ma);
 	if (ret < 0) {
 		pr_err("SNKPE: Error in updating charger ilim (%d)\n",
 				ret);

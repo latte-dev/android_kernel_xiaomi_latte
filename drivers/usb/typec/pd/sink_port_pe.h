@@ -80,7 +80,8 @@ enum snkpe_timeout {
 
 struct req_cap {
 	u8 obj_pos;
-	u32 ma;
+	u32 op_ma;
+	u32 max_ma;
 	u32 mv;
 	bool cap_mismatch;
 };
