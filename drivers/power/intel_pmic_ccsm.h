@@ -425,6 +425,8 @@ struct pmic_chrgr_drv_context {
 	struct ps_pse_mod_prof *actual_bcprof;
 	struct ps_pse_mod_prof *runtime_bcprof;
 	struct intel_pmic_ccsm_platform_data *pdata;
+	/* Wakelock to prevent platform enter suspend when event processing */
+        struct wake_lock wakelock;
 	struct usb_phy *otg;
 	struct thermal_cooling_device *vbus_cdev;
 	struct list_head evt_queue;

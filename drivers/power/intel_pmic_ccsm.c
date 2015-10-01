@@ -40,6 +40,7 @@
 #include <linux/power/battery_id.h>
 #include <linux/mfd/intel_soc_pmic.h>
 #include <linux/extcon.h>
+#include <linux/wakelock.h>
 #include "intel_pmic_ccsm.h"
 
 /* Macros */
@@ -1815,6 +1816,10 @@ static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 	bool notify_otg = false;
 
 	mutex_lock(&pmic_lock);
+	/* Prevent system for entering to suspend when event processing */
+	if (!wake_lock_active(&chc.wakelock))
+		wake_lock(&chc.wakelock);
+
 	switch (cbl_type) {
         case CABLE_TYPE_USB:
 		/* Send VBUS notification to USB subsystem so that system will
@@ -1865,7 +1870,6 @@ static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 		goto vbus_fail;
 	}
 
-
 	/* notify otg driver with event */
 	if (notify_otg) {
 		dev_dbg(chc.dev, "%s notified %d to otg\n", __func__, otg_evt);
@@ -1875,6 +1879,10 @@ static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 	}
 
 vbus_fail:
+	/* Release the wake lock */
+	if (wake_lock_active(&chc.wakelock))
+		wake_unlock(&chc.wakelock);
+
 	mutex_unlock(&pmic_lock);
 }
 
@@ -2015,7 +2023,9 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 
 	INIT_LIST_HEAD(&chc.cable_evt_list);
 	spin_lock_init(&chc.cable_event_queue_lock);
-
+        /* Initialize the wakelock */
+        wake_lock_init(&chc.wakelock, WAKE_LOCK_SUSPEND,
+                                                "pmic_ccsm_wakelock");
 	ret = pmic_check_initial_events();
 	if (ret)
 		goto otg_req_fail;
@@ -2163,6 +2173,7 @@ static int pmic_chrgr_remove(struct platform_device *pdev)
 			extcon_unregister_interest(&chc->device_cable);
 			extcon_unregister_interest(&chc->host_cable);
 		}
+		wake_lock_destroy(&chc->wakelock);
 		kfree(chc->bcprof);
 		kfree(chc->actual_bcprof);
 		kfree(chc->runtime_bcprof);
