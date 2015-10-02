@@ -521,6 +521,7 @@ static int silead_ts_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 
+	disable_irq(client->irq);
 	silead_ts_set_power(client, SILEAD_POWER_OFF);
 	msleep(20);
 	return 0;
@@ -531,6 +532,9 @@ static int silead_ts_resume(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	int ret, status;
 
+	enable_irq(client->irq);
+	/* send power off again, to handle some hardware reset issue */
+	silead_ts_set_power(client, SILEAD_POWER_OFF);
 	silead_ts_set_power(client, SILEAD_POWER_ON);
 	msleep(20);
 
