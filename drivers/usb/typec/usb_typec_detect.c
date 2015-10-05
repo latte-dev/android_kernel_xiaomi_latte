@@ -513,7 +513,6 @@ static void detect_dfp_work(struct work_struct *work)
 	if (detect_src_attached(&phy->cc1, &phy->cc2)) {
 		use_cc = get_active_cc(phy->cc1.rd, phy->cc2.rd);
 		typec_setup_cc(phy, use_cc, TYPEC_STATE_ATTACHED_DFP);
-		typec_enable_autocrc(detect->phy, true);
 		/* enable VBUS */
 	} else if (detect_audio_attached(&phy->cc1, &phy->cc2)) {
 		dev_info(detect->phy->dev, "Audio Accessory Detected");
@@ -605,8 +604,6 @@ static void detect_update_ufp_state(struct typec_detect *detect)
 	mutex_lock(&detect->lock);
 	detect->state = DETECT_STATE_ATTACHED_UFP;
 	mutex_unlock(&detect->lock);
-
-	typec_enable_autocrc(detect->phy, true);
 
 	typec_detect_notify_extcon(detect,
 				TYPEC_CABLE_USB_SNK, true);

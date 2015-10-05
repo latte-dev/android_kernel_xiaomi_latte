@@ -654,6 +654,10 @@ static void dpm_handle_ext_cable_event(struct devpolicy_mgr *dpm,
 			mutex_unlock(&dpm->role_lock);
 
 			dpm_notify_policy_evt(dpm, dpm_evt);
+			typec_enable_autocrc(dpm->phy,
+				dpm_evt == DEVMGR_EVENT_UFP_CONNECTED
+				|| dpm_evt == DEVMGR_EVENT_DFP_CONNECTED);
+
 		} else
 			mutex_unlock(&dpm->role_lock);
 
