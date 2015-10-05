@@ -544,6 +544,13 @@ void i915_scheduler_kill_all(struct drm_device *dev)
 				/* Wot no state?! */
 				BUG();
 			}
+
+			/*
+			 * Signal the fences of all pending work (it is
+			 * harmless to signal work that has already been
+			 * signalled)
+			 */
+			i915_sync_hung_request(node->params.request);
 		}
 	}
 
@@ -1242,18 +1249,8 @@ static void i915_scheduler_wait_fence_signaled(struct sync_fence *fence,
 	 * NB: The callback is executed at interrupt time, thus it can not
 	 * call _submit() directly. It must go via the delayed work handler.
 	 */
-	if (dev_priv) {
-		struct i915_scheduler   *scheduler;
-		unsigned long           flags;
-
-		scheduler = dev_priv->scheduler;
-
-		spin_lock_irqsave(&scheduler->lock, flags);
-		i915_waiter->node->flags &= ~i915_qef_fence_waiting;
-		spin_unlock_irqrestore(&scheduler->lock, flags);
-
+	if (dev_priv)
 		queue_work(dev_priv->wq, &dev_priv->mm.scheduler_work);
-	}
 
 	kfree(waiter);
 }

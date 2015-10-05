@@ -79,6 +79,8 @@ void i915_sync_timeline_advance(struct intel_context *ctx,
 				uint32_t value);
 void i915_sync_hung_ring(struct intel_engine_cs *ring);
 
+void i915_sync_hung_request(struct drm_i915_gem_request *req);
+
 #else
 
 static inline
@@ -116,6 +118,11 @@ void i915_sync_hung_ring(struct intel_engine_cs *ring)
 
 }
 
+static inline
+void i915_sync_hung_request(struct drm_i915_gem_request *req)
+{
+
+}
 #endif /* CONFIG_DRM_I915_SYNC */
 
 #endif /* _INTEL_SYNC_H_ */
