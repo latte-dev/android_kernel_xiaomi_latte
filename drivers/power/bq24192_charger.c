@@ -48,7 +48,6 @@
 
 #include <asm/intel_em_config.h>
 
-
 #define DRV_NAME "bq24192_charger"
 #define DEV_NAME "bq24192"
 #define VBUS_CTRL_CDEV_NAME	"vbus_control"
@@ -298,6 +297,7 @@ struct bq24192_chip {
 	bool online;
 	bool present;
 	bool chrg_usb_compliance;
+	bool dpdm_trig;
 };
 
 enum vbus_states {
@@ -1781,6 +1781,26 @@ static void bq24192_irq_worker(struct work_struct *work)
 						    struct bq24192_chip,
 						    irq_wrkr.work);
 
+	/*
+	 * VBUS status updation in the Status Register of BQ24297 chip
+	 * is bit delayed, which is causing a wrong VBUS status
+	 * notification to USB and power_supply. So a delay of 10 milli
+	 * seconds is added before reading Status Register.
+	 * However, during the booup, in probe, we force set the DPDM
+	 * detection in order to get the cable status if any charger
+	 * cable is connected prior to the device boot up. Hence if
+	 * DPDM is force triggered, as per the Data sheet, the DPDM
+	 * detect operation will take 50ms to complete. Hence imparting
+	 * Sleep for 50ms if dpdm is force triggered.
+	 */
+	if (chip->chip_type == BQ24297) {
+		if (chip->dpdm_trig) {
+			msleep(50);
+			chip->dpdm_trig = false;
+		} else
+			msleep(10);
+	}
+
 	/**
 	 * check the bq24192 status/fault registers to see what is the
 	 * source of the interrupt
@@ -2495,6 +2515,7 @@ static int bq24192_probe(struct i2c_client *client,
 		 * charger cable connected before hand and will trigger
 		 * an interrupt accordingly.
 		 */
+		chip->dpdm_trig = true;
 		ret = bq24192_reg_read_modify(chip->client,
 			BQ24192_MISC_OP_CNTL_REG, MISC_OP_CNTL_DPDM_EN, true);
 		if (ret < 0)
