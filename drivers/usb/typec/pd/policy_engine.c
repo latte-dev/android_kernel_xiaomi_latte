@@ -356,10 +356,10 @@ static int pe_set_charger_mode(struct policy_engine *pe, enum charger_mode mode)
 	return -ENODEV;
 }
 
-static int pe_update_charger_ilim(struct policy_engine *pe, int ilim)
+static int pe_update_charger(struct policy_engine *pe, int ilim, int query)
 {
 	if (pe && pe->dpm)
-		return devpolicy_update_current_limit(pe->dpm, ilim);
+		return devpolicy_update_charger(pe->dpm, ilim, query);
 
 	return -ENODEV;
 }
@@ -808,7 +808,7 @@ static struct pe_operations ops = {
 	.set_data_role = pe_set_data_role,
 	.set_power_role = pe_set_power_role,
 	.set_charger_mode = pe_set_charger_mode,
-	.update_charger_ilim = pe_update_charger_ilim,
+	.update_charger = pe_update_charger,
 	.get_min_snk_current = pe_get_min_snk_current,
 	.is_pr_swap_support = pe_is_pr_swap_support,
 	.send_packet = pe_send_packet,

@@ -360,8 +360,8 @@ struct pe_operations {
 	int (*set_power_role)(struct policy_engine *pe, enum pwr_role role);
 	int (*set_charger_mode)(struct policy_engine *pe,
 					enum charger_mode mode);
-	int (*update_charger_ilim)(struct policy_engine *pe,
-					int ilim);
+	int (*update_charger)(struct policy_engine *pe,
+					int ilim, int query);
 	int (*get_min_snk_current)(struct policy_engine *pe,
 					int *ma);
 	int (*is_pr_swap_support)(struct policy_engine *pe,
@@ -477,11 +477,11 @@ static inline int policy_set_charger_mode(struct policy *p,
 	return -ENOTSUPP;
 }
 
-static inline int policy_update_charger_ilim(struct policy *p,
-						int ilim)
+static inline int policy_update_charger(struct policy *p,
+						int ilim, int query)
 {
-	if (p && p->pe && p->pe->ops && p->pe->ops->update_charger_ilim)
-		return p->pe->ops->update_charger_ilim(p->pe, ilim);
+	if (p && p->pe && p->pe->ops && p->pe->ops->update_charger)
+		return p->pe->ops->update_charger(p->pe, ilim, query);
 
 	return -ENOTSUPP;
 }

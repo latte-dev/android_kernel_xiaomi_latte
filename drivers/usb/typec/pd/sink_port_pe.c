@@ -379,6 +379,7 @@ static int snkpe_handle_trigger_dr_swap(struct sink_port_pe *sink)
 		snkpe_update_state(sink, PE_DRS_DFP_UFP_SEND_DR_SWAP);
 	else
 		snkpe_update_state(sink, PE_DRS_UFP_DFP_SEND_DR_SWAP);
+
 	schedule_work(&sink->timer_work);
 
 	policy_send_packet(&sink->p, NULL, 0,
@@ -546,20 +547,8 @@ static int snkpe_setup_charging(struct sink_port_pe *sink)
 	int ret = 0;
 
 	pr_debug("SNKPE:%s In\n", __func__);
-	/* Update the charger input current limit */
-	ret = policy_update_charger_ilim(&sink->p, sink->rcap.op_ma);
-	if (ret < 0) {
-		pr_err("SNKPE: Error in updating charger ilim (%d)\n",
-				ret);
-		return ret;
-	}
-
-	/* Enable charger */
-	ret = policy_set_charger_mode(&sink->p, CHRGR_ENABLE);
-	if (ret < 0)
-		pr_err("SNKPE: Error in enabling charger (%d)\n", ret);
-	else
-		pr_info("SNKPE: Consumer Policy Negotiation Success!\n");
+	policy_update_charger(&sink->p, sink->rcap.op_ma, 0);
+	pr_info("SNKPE: Consumer Policy Negotiation Success!\n");
 	return ret;
 }
 
@@ -793,13 +782,13 @@ static void sink_handle_transition_sink(struct sink_port_pe *sink)
 	int ret;
 
 	pr_debug("SNKPE:%s: in\n", __func__);
-	policy_set_charger_mode(&sink->p, CHRGR_SET_HZ);
+	policy_update_charger(&sink->p, 0, true);
 	ret = wait_for_completion_timeout(&sink->pstt_complete,
 				msecs_to_jiffies(TYPEC_PS_TRANSITION_TIMER));
 
 	if (ret == 0) {
 		pr_warn("SNKPE: %s PSTransition expired\n", __func__);
-		policy_set_charger_mode(&sink->p, CHRGR_ENABLE);
+		policy_update_charger(&sink->p, 0, true);
 		snkpe_update_state(sink, PE_SNK_HARD_RESET);
 		schedule_work(&sink->timer_work);
 		goto trans_sink_end;

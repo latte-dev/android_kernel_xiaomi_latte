@@ -75,34 +75,50 @@ struct dpm_cable_state {
 	bool cbl_state;
 };
 
-static inline struct power_supply *dpm_get_psy(enum psy_type type)
+static struct power_supply *dpm_get_psy(struct devpolicy_mgr *dpm,
+							enum psy_type type)
 {
 	struct class_dev_iter iter;
 	struct device *dev;
-	static struct power_supply *psy;
+	struct power_supply *psy;
+	bool found = false;
+
+	if (type == PSY_TYPE_CHARGER && dpm->charger_psy)
+		return dpm->charger_psy;
+
+	if (type == PSY_TYPE_BATTERY && dpm->battery_psy)
+		return dpm->battery_psy;
 
 	class_dev_iter_init(&iter, power_supply_class, NULL, NULL);
 	while ((dev = class_dev_iter_next(&iter))) {
 		psy = (struct power_supply *)dev_get_drvdata(dev);
-		if ((type == PSY_TYPE_BATTERY && IS_BATTERY(psy)) ||
-			(type == PSY_TYPE_CHARGER && IS_CHARGER(psy))) {
-			class_dev_iter_exit(&iter);
-			return psy;
+		if (type == PSY_TYPE_BATTERY && IS_BATTERY(psy)) {
+			dpm->battery_psy = psy;
+			found = true;
+			break;
+		}
+		if (type == PSY_TYPE_CHARGER && IS_CHARGER(psy)) {
+			dpm->charger_psy = psy;
+			found = true;
+			break;
 		}
 	}
 	class_dev_iter_exit(&iter);
+
+	if (found)
+		return psy;
 
 	return NULL;
 }
 
 /* Reading the state of charge value of the battery */
-static inline int dpm_read_soc(int *soc)
+static int dpm_read_soc(struct devpolicy_mgr *dpm, int *soc)
 {
 	struct power_supply *psy;
 	union power_supply_propval val;
 	int ret;
 
-	psy = dpm_get_psy(PSY_TYPE_BATTERY);
+	psy = dpm_get_psy(dpm, PSY_TYPE_BATTERY);
 	if (!psy)
 		return -EINVAL;
 
@@ -156,7 +172,7 @@ static enum batt_soc_status dpm_get_batt_status(struct devpolicy_mgr *dpm)
 {
 	int soc;
 
-	if (dpm_read_soc(&soc)) {
+	if (dpm_read_soc(dpm, &soc)) {
 		pr_err("DPM: Error in getting soc\n");
 		return -ENODATA;
 	} else {
@@ -231,7 +247,6 @@ static int dpm_set_charger_state(struct power_supply *psy, bool state)
 	if (ret < 0)
 		return ret;
 
-	power_supply_changed(psy);
 	return 0;
 }
 
@@ -243,7 +258,7 @@ static int dpm_set_charger_mode(struct devpolicy_mgr *dpm,
 
 	mutex_lock(&dpm->charger_lock);
 
-	psy = dpm_get_psy(PSY_TYPE_CHARGER);
+	psy = dpm_get_psy(dpm, PSY_TYPE_CHARGER);
 	if (!psy) {
 		mutex_unlock(&dpm->charger_lock);
 		return -EINVAL;
@@ -265,45 +280,39 @@ static int dpm_set_charger_mode(struct devpolicy_mgr *dpm,
 	return ret;
 }
 
-static int dpm_update_current_lim(struct devpolicy_mgr *dpm,
-					int ilim)
+static int dpm_update_charger(struct devpolicy_mgr *dpm,
+					int ilim, int query)
 {
-	int ret = 0;
-	struct power_supply *psy;
-	union power_supply_propval val;
+	struct power_supply_cable_props cable_props = {0};
+	int evt;
+	int ma;
 
-	mutex_lock(&dpm->charger_lock);
+	evt = (ilim != 0) ? POWER_SUPPLY_CHARGER_EVENT_CONNECT :
+				POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
 
-	psy = dpm_get_psy(PSY_TYPE_CHARGER);
-	if (!psy) {
-		mutex_unlock(&dpm->charger_lock);
-		return -EINVAL;
-	}
 
-	/* reading current inlimit value */
-	ret = psy->get_property(psy, POWER_SUPPLY_PROP_INLMT, &val);
-	if (ret < 0) {
-		pr_err("DPM: Unable to get the current limit (%d)\n", ret);
-		goto error;
-	}
+	if (query) {
+		ma = typec_get_host_current(dpm->phy);
 
-	if (val.intval != ilim) {
-		val.intval = ilim;
-		ret = psy->set_property(psy, POWER_SUPPLY_PROP_INLMT, &val);
-		if (ret < 0) {
-			pr_err("DPM: Unable to set the current limit (%d)\n",
-					ret);
-			goto error;
-		}
-		power_supply_changed(psy);
-	}
+		if (ma < 0 || ma == TYPEC_CURRENT_USB)
+			/* setting 900mA source current in case of USB, as
+			 * typec connector is capable of supporting USB3.0 */
+			ma = IBUS_0P9A;
+	} else
+		ma = ilim;
 
-error:
-	mutex_unlock(&dpm->charger_lock);
-	return ret;
+	cable_props.ma = ma;
+	cable_props.chrg_evt = evt;
+	cable_props.chrg_type =
+			POWER_SUPPLY_CHARGER_TYPE_USB_TYPEC;
 
+	pr_debug("DPM: calling psy with evt %d cur %d\n", evt, ma);
+
+	atomic_notifier_call_chain(&power_supply_notifier,
+						PSY_CABLE_EVENT,
+						&cable_props);
+	return 0;
 }
-
 static int dpm_get_sink_pr_swap_status(struct devpolicy_mgr *dpm)
 {
 	enum batt_soc_status sts;
@@ -1124,7 +1133,7 @@ static struct dpm_interface interface = {
 	.get_sink_power_caps = dpm_get_sink_power_caps,
 	.get_cable_state = dpm_get_cable_state,
 	.set_charger_mode = dpm_set_charger_mode,
-	.update_current_lim = dpm_update_current_lim,
+	.update_charger = dpm_update_charger,
 	.get_min_current = dpm_get_min_current,
 	.update_data_role = dpm_update_data_role,
 	.update_power_role = dpm_update_power_role,
