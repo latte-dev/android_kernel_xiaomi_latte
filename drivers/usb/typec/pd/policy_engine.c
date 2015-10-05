@@ -720,6 +720,7 @@ static void pe_handle_dpm_event(struct policy_engine *pe,
 {
 	struct policy *p;
 	enum pe_event pevt = PE_EVT_SEND_NONE;
+	int ret;
 
 	pr_info("PE: %s event - %d\n", __func__, evt);
 	switch (evt) {
@@ -736,6 +737,13 @@ static void pe_handle_dpm_event(struct policy_engine *pe,
 			p->start(p);
 		else
 			pr_warn("PE: SINK policy is already active!!!\n");
+
+		/* Start display pe on connect in UFP mode as NAK the
+		 * port partner's DI irrespective of PD status.*/
+		ret = pe_start_policy(pe, POLICY_TYPE_DISPLAY);
+		if (ret)
+			pr_warn("PE:%s: Failed to start disp policy\n",
+					__func__);
 		break;
 	case DEVMGR_EVENT_DFP_CONNECTED:
 		pe_set_power_role(pe, POWER_ROLE_SOURCE);
