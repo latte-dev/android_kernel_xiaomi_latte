@@ -4750,7 +4750,7 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	u8 sink_irq_vector;
 	enum intel_display_power_domain power_domain;
 	struct edid *edid = NULL;
-	struct intel_crtc *intel_crtc = NULL;
+	struct intel_crtc *intel_crtc = crtc ? to_intel_crtc(crtc) : NULL;
 #ifdef CONFIG_EXTCON
 	struct intel_connector *intel_connector = to_intel_connector(connector);
 #endif
@@ -4800,7 +4800,6 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 		 */
 		if (intel_encoder->connectors_active &&
 						crtc && crtc->enabled) {
-			intel_crtc = to_intel_crtc(crtc);
 			DRM_DEBUG_KMS("Disabling crtc %c for upfront link training\n",
 					pipe_name(intel_crtc->pipe));
 			intel_crtc_control(crtc, false);
