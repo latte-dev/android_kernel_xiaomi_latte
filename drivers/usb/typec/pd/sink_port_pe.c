@@ -168,43 +168,38 @@ error:
 	return ret;
 }
 
-static int snkpe_send_pr_swap_accept(struct sink_port_pe *sink)
-{
-	snkpe_update_state(sink, PE_PRS_SNK_SRC_ACCEPT_PR_SWAP);
-	return policy_send_packet(&sink->p, NULL, 0,
-					PD_CTRL_MSG_ACCEPT, PE_EVT_SEND_ACCEPT);
-}
-
-static int snkpe_send_pr_swap_reject(struct sink_port_pe *sink)
-{
-	snkpe_update_state(sink, PE_SNK_READY);
-	return policy_send_packet(&sink->p, NULL, 0,
-				PD_CTRL_MSG_REJECT, PE_EVT_SEND_REJECT);
-}
-
-static int snkpe_handle_pr_swap(struct sink_port_pe *sink)
+static int snkpe_handle_rcv_pr_swap(struct sink_port_pe *sink)
 {
 	enum pwr_role prole;
 	int ret = 0;
 
-	snkpe_update_state(sink, PE_PRS_SNK_SRC_EVALUATE_PR_SWAP);
+	/* If not SNK_READY dont send accept or wait*/
+	if (sink->cur_state != PE_SNK_READY) {
+		pr_debug("SNKPE:%s: PR_Swap rcvd in worng state=%d\n",
+					__func__, sink->cur_state);
+		goto pr_swap_wait;
+	}
+
 	/* If port partner is externally powered, power role swap from
 	 * sink to source can be rejected.
 	 */
-	if (sink->pp_is_ext_pwrd || (!sink->pp_is_dual_prole)) {
-		pr_info("SNKPE:%s: Not processing PR_SWAP Req\n",
+	if (sink->pp_is_ext_pwrd) {
+		pr_info("SNKPE:%s: Port partner is ext pwrd\n",
 				__func__);
 		goto pr_swap_reject;
 	}
+
+	snkpe_update_state(sink, PE_PRS_SNK_SRC_EVALUATE_PR_SWAP);
+
 	prole = policy_get_power_role(&sink->p);
 	if (prole <= 0) {
 		pr_err("SINKPE: Error in getting power role\n");
-		goto pr_swap_reject;
+		goto pr_swap_reject_state_chng;
 	}
 
 	if (prole != POWER_ROLE_SINK) {
 		pr_warn("SNKPE: Current Power Role - %d\n", prole);
-		goto pr_swap_reject;
+		goto pr_swap_reject_state_chng;
 	}
 	/* As the request to transition to provider mode, It
 	 * will be accepted only if VBAT >= 50% else reject.
@@ -213,15 +208,25 @@ static int snkpe_handle_pr_swap(struct sink_port_pe *sink)
 	ret = policy_is_pr_swap_support(&sink->p, prole);
 	if (ret == 0) {
 		pr_warn("SNKPE: Batt cap < 50\n");
-		goto pr_swap_reject;
+		goto pr_swap_reject_state_chng;
 	}
 
 	pr_debug("SNKPE:%s: Accepting pr_swap\n", __func__);
-	return snkpe_send_pr_swap_accept(sink);
+	snkpe_update_state(sink, PE_PRS_SNK_SRC_ACCEPT_PR_SWAP);
+	return policy_send_packet(&sink->p, NULL, 0,
+					PD_CTRL_MSG_ACCEPT, PE_EVT_SEND_ACCEPT);
 
+pr_swap_reject_state_chng:
+	snkpe_update_state(sink, PE_SNK_READY);
 pr_swap_reject:
 	pr_debug("SNKPE:%s: Rejecting pr_swap\n", __func__);
-	return snkpe_send_pr_swap_reject(sink);
+	return policy_send_packet(&sink->p, NULL, 0,
+				PD_CTRL_MSG_REJECT, PE_EVT_SEND_REJECT);
+
+pr_swap_wait:
+	pr_debug("SNKPE:%s: Wait pr_swap\n", __func__);
+	return policy_send_packet(&sink->p, NULL, 0,
+				PD_CTRL_MSG_WAIT, PE_EVT_SEND_WAIT);
 }
 
 static inline int snkpe_do_prot_reset(struct sink_port_pe *sink)
@@ -369,7 +374,8 @@ static int snkpe_handle_trigger_dr_swap(struct sink_port_pe *sink)
 	drole = policy_get_data_role(&sink->p);
 
 	if (sink->cur_state != PE_SNK_READY
-		|| (drole != DATA_ROLE_UFP && drole != DATA_ROLE_DFP)) {
+		|| (drole != DATA_ROLE_UFP && drole != DATA_ROLE_DFP)
+		|| !sink->pp_is_dual_drole) {
 		pr_warn("SNKPE:%s:Not processing DR_SWAP request in state=%d",
 				__func__, sink->cur_state);
 		return -EINVAL;
@@ -428,8 +434,11 @@ static void snkpe_handle_rcv_dr_swap(struct sink_port_pe *sink)
 		|| (drole != DATA_ROLE_UFP && drole != DATA_ROLE_DFP)) {
 		pr_debug("SNKPE:%s:Not processing DR_SWAP request in state=%d",
 				__func__, sink->cur_state);
+		/* As platform supports dual data role, sending wait will be
+		 * more appropriate than sending reject.
+		 */
 		policy_send_packet(&sink->p, NULL, 0,
-			PD_CTRL_MSG_REJECT, PE_EVT_SEND_REJECT);
+			PD_CTRL_MSG_WAIT, PE_EVT_SEND_WAIT);
 		return;
 	}
 
@@ -1056,12 +1065,7 @@ static int sink_port_policy_rcv_pkt(struct policy *p, struct pd_packet *pkt,
 		snkpe_received_msg_good_crc(sink);
 		break;
 	case PE_EVT_RCVD_PR_SWAP:
-		/* If not SNK_READY dont send accept or reject*/
-		if (sink->cur_state == PE_SNK_READY)
-			snkpe_handle_pr_swap(sink);
-		else
-			pr_debug("SNKPE:%s: PR_Swap rcvd in worng state=%d\n",
-					__func__, sink->cur_state);
+		snkpe_handle_rcv_pr_swap(sink);
 		break;
 	case PE_EVT_RCVD_DR_SWAP:
 		snkpe_handle_rcv_dr_swap(sink);

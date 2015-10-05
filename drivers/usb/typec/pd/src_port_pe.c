@@ -84,6 +84,15 @@ static inline int src_pe_get_power_cap(struct src_port_pe *src_pe,
 	return policy_get_srcpwr_cap(&src_pe->p, pcap);
 }
 
+static void src_pe_reset_timers(struct src_port_pe *src_pe)
+{
+	complete(&src_pe->srt_complete);
+	complete(&src_pe->psso_complete);
+	reinit_completion(&src_pe->srt_complete);
+	reinit_completion(&src_pe->psso_complete);
+
+}
+
 static void src_pe_reset_policy_engine(struct src_port_pe *src_pe)
 {
 	src_pe->state = SRC_PE_STATE_NONE;
@@ -97,6 +106,7 @@ static void src_pe_reset_policy_engine(struct src_port_pe *src_pe)
 	src_pe->pp_is_ext_pwrd = 0;
 	src_pe->got_snk_caps = 0;
 	src_pe->is_pd_configured = 0;
+	src_pe_reset_timers(src_pe);
 }
 
 static void src_pe_do_pe_reset_on_error(struct src_port_pe *src_pe)
@@ -315,11 +325,15 @@ static int src_pe_handle_trigger_dr_swap(struct src_port_pe *src_pe)
 {
 	enum data_role drole;
 
+	if (!src_pe->pp_is_dual_drole) {
+		log_dbg("Port partner doesn't support dual data role");
+		return -EINVAL;
+	}
+
 	drole = policy_get_data_role(&src_pe->p);
 
 	if ((src_pe->state != SRC_PE_STATE_PD_CONFIGURED)
-		|| ((drole != DATA_ROLE_UFP)
-		&& (drole != DATA_ROLE_DFP))) {
+		|| (drole != DATA_ROLE_UFP && drole != DATA_ROLE_DFP)) {
 		log_dbg("Not processing DR_SWAP request in state=%d",
 				src_pe->state);
 		return -EINVAL;
@@ -381,10 +395,13 @@ static void src_pe_handle_rcv_dr_swap(struct src_port_pe *src_pe)
 	if ((src_pe->state != SRC_PE_STATE_PD_CONFIGURED)
 		|| ((drole != DATA_ROLE_UFP)
 		&& (drole != DATA_ROLE_DFP))) {
-		log_dbg("Not processing DR_SWAP request in state=%d",
+		log_dbg("Not accepting DR_SWAP request in state=%d",
 				src_pe->state);
+		/* As we are dual data role, donot reject the dr_swap
+		 * request but send wait.
+		 */
 		policy_send_packet(&src_pe->p, NULL, 0,
-			PD_CTRL_MSG_REJECT, PE_EVT_SEND_REJECT);
+			PD_CTRL_MSG_WAIT, PE_EVT_SEND_WAIT);
 		return;
 	}
 
@@ -492,28 +509,37 @@ swap_ok_error:
 static int src_pe_handle_pr_swap(struct src_port_pe *src_pe)
 {
 	enum pwr_role prole;
-	int ret;
 
+	if (src_pe->state != SRC_PE_STATE_PD_CONFIGURED) {
+		log_err("PR_SWAP cannot process in state =%d",
+					src_pe->state);
+		goto pr_swap_wait;
+	}
 	prole = policy_get_power_role(&src_pe->p);
 	if (prole <= 0) {
 		log_err("Error in getting power role\n");
-		return -EINVAL;
+		goto pr_swap_wait;
 	}
 
-	if (prole == POWER_ROLE_SOURCE) {
-		/* As the request is to transition into consumer mode
-		 * should be accepted by default.
-		 */
-		mutex_lock(&src_pe->pe_lock);
-		src_pe->state = PE_PRS_SRC_SNK_EVALUATE_PR_SWAP;
-		mutex_unlock(&src_pe->pe_lock);
-		ret = src_pe_pr_swap_ok(src_pe);
-	} else {
+	if (prole != POWER_ROLE_SOURCE) {
 		log_info("Current Power Role - %d\n", prole);
-		ret = -ENOTSUPP;
+		goto pr_swap_wait;
 	}
+	/* As the request is to transition into consumer mode
+	 * should be accepted by default.
+	 */
+	mutex_lock(&src_pe->pe_lock);
+	src_pe->state = PE_PRS_SRC_SNK_EVALUATE_PR_SWAP;
+	mutex_unlock(&src_pe->pe_lock);
+	return src_pe_pr_swap_ok(src_pe);
 
-	return ret;
+	/* Wait will be more appropriate than rejecting the pr_swap
+	 * as the current power role is source.
+	 */
+pr_swap_wait:
+	return policy_send_packet(&src_pe->p, NULL, 0,
+				PD_CTRL_MSG_WAIT, PE_EVT_SEND_WAIT);
+
 }
 
 static int src_pe_rcv_request(struct policy *srcp, enum pe_event evt)
@@ -591,16 +617,11 @@ src_pe_rcv_pkt(struct policy *srcp, struct pd_packet *pkt, enum pe_event evt)
 		ret = src_pe_handle_request_cmd(src_pe);
 		break;
 	case PE_EVT_RCVD_PR_SWAP:
-		if (src_pe->state == SRC_PE_STATE_PD_CONFIGURED) {
-			ret = src_pe_handle_pr_swap(src_pe);
-		} else {
-			log_err("PR_SWAP cannot process in state =%d",
-					src_pe->state);
-			ret = -EINVAL;
-		}
+		ret = src_pe_handle_pr_swap(src_pe);
 		break;
 	case PE_EVT_RCVD_ACCEPT:
 	case PE_EVT_RCVD_REJECT:
+	case PE_EVT_RCVD_WAIT:
 		if ((src_pe->state == PE_PRS_SRC_SNK_SEND_PR_SWAP)
 			|| (src_pe->state == PE_DRS_UFP_DFP_SEND_DR_SWAP)
 			|| (src_pe->state == PE_DRS_DFP_UFP_SEND_DR_SWAP)) {
@@ -869,8 +890,6 @@ static int src_pe_stop_policy_engine(struct policy *p)
 	p->status = POLICY_STATUS_UNKNOWN;
 	src_pe_reset_policy_engine(src_pe);
 	cancel_delayed_work_sync(&src_pe->start_comm);
-	reinit_completion(&src_pe->srt_complete);
-	reinit_completion(&src_pe->psso_complete);
 	policy_set_pd_state(p, false);
 	src_pe->cmd_retry = 0;
 	src_pe->got_snk_caps = 0;
