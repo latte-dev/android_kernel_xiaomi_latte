@@ -1025,9 +1025,8 @@ static int sink_port_policy_rcv_pkt(struct policy *p, struct pd_packet *pkt,
 			sink_handle_src_cap(sink, pkt);
 		break;
 	case PE_EVT_RCVD_GET_SINK_CAP:
-		if (sink->cur_state == PE_SNK_READY)
-			return snkpe_handle_give_snk_cap_state(sink);
-		break;
+		return snkpe_handle_give_snk_cap_state(sink);
+
 	case PE_EVT_RCVD_ACCEPT:
 	case PE_EVT_RCVD_REJECT:
 	case PE_EVT_RCVD_WAIT:
