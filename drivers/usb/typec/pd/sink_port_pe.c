@@ -1019,9 +1019,11 @@ static int sink_port_policy_rcv_pkt(struct policy *p, struct pd_packet *pkt,
 
 	switch (evt) {
 	case PE_EVT_RCVD_SRC_CAP:
-		complete(&sink->wct_complete);
+		if (!completion_done(&sink->wct_complete))
+			complete(&sink->wct_complete);
 		/* Process ScrcCap if sink pe is waiting for caps */
-		if (sink->cur_state == PE_SNK_WAIT_FOR_CAPABILITIES)
+		if (sink->cur_state != PE_SNK_HARD_RESET ||
+			sink->cur_state != PE_SNK_TRANSITION_TO_DEFAULT)
 			sink_handle_src_cap(sink, pkt);
 		break;
 	case PE_EVT_RCVD_GET_SINK_CAP:
