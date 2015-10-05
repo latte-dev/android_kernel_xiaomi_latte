@@ -617,11 +617,11 @@ src_pe_rcv_pkt(struct policy *srcp, struct pd_packet *pkt, enum pe_event evt)
 		if (src_pe->state == PE_SRC_GET_SINK_CAP) {
 			mutex_lock(&src_pe->pe_lock);
 			src_pe->state = SRC_PE_STATE_PD_CONFIGURED;
-			src_pe->got_snk_caps = 1;
 			mutex_unlock(&src_pe->pe_lock);
 			complete(&src_pe->srt_complete);
-			src_pe_handle_snk_cap_rcv(src_pe, pkt);
 		}
+		src_pe->got_snk_caps = 1;
+		src_pe_handle_snk_cap_rcv(src_pe, pkt);
 		break;
 	case PE_EVT_RCVD_DR_SWAP:
 		src_pe_handle_rcv_dr_swap(src_pe);
