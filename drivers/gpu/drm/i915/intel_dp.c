@@ -1093,6 +1093,13 @@ found:
 	if (intel_dp->color_range)
 		pipe_config->limited_color_range = true;
 
+	/*
+	 * compliance tests expect same lane count as reported, so
+	 * avoid any optimization during tests
+	 */
+	if (intel_dp->compliance_test_type == DP_TEST_LINK_TRAINING)
+		lane_count = max_lane_count;
+
 	intel_dp->link_bw = bws[clock];
 	intel_dp->lane_count = lane_count;
 	pipe_config->pipe_bpp = bpp;
