@@ -3528,8 +3528,6 @@ static int rt5670_probe(struct snd_soc_codec *codec)
 			RT5670_GP9_OUT_MASK | RT5670_GP8_OUT_MASK,
 			RT5670_GP9_OUT_LO | RT5670_GP8_OUT_HI);
 
-	snd_soc_update_bits(codec, RT5670_CJ_CTRL1,
-			RT5670_CBJ_BST1_EN, RT5670_CBJ_BST1_EN);
 #ifdef JD1_FUNC
 	snd_soc_update_bits(codec, RT5670_PWR_ANLG1,
 			RT5670_PWR_MB | RT5670_PWR_BG,
