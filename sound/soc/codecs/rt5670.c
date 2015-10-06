@@ -3525,6 +3525,14 @@ static int rt5670_probe(struct snd_soc_codec *codec)
 	}
 
 	rt5670_reg_init(codec);
+
+	/* Swap SPK L/R channel if codec version is more than 4 */
+	if ((snd_soc_read(codec, RT5670_VENDOR_ID) & 0xff) >= 4)
+		snd_soc_update_bits(codec, RT5670_GPIO_CTRL3,
+			RT5670_GP9_OUT_MASK | RT5670_GP8_OUT_MASK,
+			RT5670_GP9_OUT_LO | RT5670_GP8_OUT_HI);
+
+
 #ifdef JD1_FUNC
 	snd_soc_update_bits(codec, RT5670_PWR_ANLG1,
 			RT5670_PWR_MB | RT5670_PWR_BG,

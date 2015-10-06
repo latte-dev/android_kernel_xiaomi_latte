@@ -1616,6 +1616,16 @@
 #define RT5670_GP1_P_NOR			(0x0)
 #define RT5670_GP1_P_INV			(0x1)
 
+/* GPIO Control 3 (0xc2) */
+#define RT5670_GP9_OUT_MASK			(0x1 << 10)
+#define RT5670_GP9_OUT_SFT			10
+#define RT5670_GP9_OUT_LO			(0x0 << 10)
+#define RT5670_GP9_OUT_HI			(0x1 << 10)
+#define RT5670_GP8_OUT_MASK			(0x1 << 7)
+#define RT5670_GP8_OUT_SFT			7
+#define RT5670_GP8_OUT_LO			(0x0 << 7)
+#define RT5670_GP8_OUT_HI			(0x1 << 7)
+
 /* Scramble Function (0xcd) */
 #define RT5670_SCB_KEY_MASK			(0xff)
 #define RT5670_SCB_KEY_SFT			0
