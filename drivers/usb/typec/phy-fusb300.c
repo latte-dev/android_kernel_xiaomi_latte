@@ -155,8 +155,8 @@
 #define FUSB300_SWITCH0_PD_SHIFT	0
 #define FUSB300_SWITCH0_MEASURE_CC1	BIT(2)
 #define FUSB300_SWITCH0_MEASURE_CC2	BIT(3)
-#define FUSB300_VCONN_CC1_EN		BIT(4)
-#define FUSB300_VCONN_CC2_EN		BIT(5)
+#define FUSB300_SWITCH0_VCONN_CC1_EN	BIT(4)
+#define FUSB300_SWITCH0_VCONN_CC2_EN	BIT(5)
 
 #define FUSB300_SWITCH1_REG		0x3
 #define FUSB300_SWITCH1_TXCC1		BIT(0)
@@ -430,8 +430,8 @@ static int fusb300_en_pd(struct fusb300_chip *chip, bool en_pd)
 		val |= FUSB300_SWITCH0_PD_EN;
 		val &= ~FUSB300_SWITCH0_PU_EN;
 		/* disable vcon */
-		val &= ~FUSB300_VCONN_CC1_EN;
-		val &= ~FUSB300_VCONN_CC2_EN;
+		val &= ~FUSB300_SWITCH0_VCONN_CC1_EN;
+		val &= ~FUSB300_SWITCH0_VCONN_CC2_EN;
 	} else {
 		val &= ~FUSB300_SWITCH0_PD_EN;
 	}
@@ -480,8 +480,11 @@ static int fusb300_switch_mode(struct typec_phy *phy, enum typec_mode mode)
 		}
 		mutex_unlock(&chip->lock);
 		fusb300_en_pu(chip, true, cur);
-	} else if (mode == TYPEC_MODE_DRP)
+	} else if (mode == TYPEC_MODE_DRP) {
+		/* In DRP mode, clear vconn, pu and pd */
+		regmap_write(chip->map, FUSB300_SWITCH0_REG, 0);
 		fusb300_wake_on_cc_change(chip);
+	}
 
 	return 0;
 }
@@ -570,7 +573,7 @@ static int fusb300_setup_cc(struct typec_phy *phy, enum typec_cc_pin cc,
 			val |= FUSB300_SWITCH0_PD_CC1_EN;
 		else if (phy->state == TYPEC_STATE_ATTACHED_DFP) {
 			val |= FUSB300_SWITCH0_PU_CC1_EN;
-			val |= FUSB300_VCONN_CC2_EN;
+			val |= FUSB300_SWITCH0_VCONN_CC2_EN;
 		}
 	} else if (cc == TYPEC_PIN_CC2) {
 		val |= FUSB300_SWITCH0_MEASURE_CC2;
@@ -579,7 +582,7 @@ static int fusb300_setup_cc(struct typec_phy *phy, enum typec_cc_pin cc,
 			val |= FUSB300_SWITCH0_PD_CC2_EN;
 		else if (phy->state == TYPEC_STATE_ATTACHED_DFP) {
 			val |= FUSB300_SWITCH0_PU_CC2_EN;
-			val |= FUSB300_VCONN_CC1_EN;
+			val |= FUSB300_SWITCH0_VCONN_CC1_EN;
 		}
 	} else { /* cc removal */
 		goto end;
@@ -1092,6 +1095,51 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 	return IRQ_HANDLED;
 }
 
+static bool fusb300_is_vconn_enabled(struct typec_phy *phy)
+{
+	struct fusb300_chip *chip = dev_get_drvdata(phy->dev);
+	unsigned int val;
+	int ret;
+
+	mutex_lock(&chip->lock);
+	ret = regmap_read(chip->map, FUSB300_SWITCH0_REG, &val);
+	mutex_unlock(&chip->lock);
+
+	if (ret) {
+		dev_err(phy->dev, "%s: Failed to SWITCH0_REG\n", __func__);
+		return false;
+	}
+
+	return val & (FUSB300_SWITCH0_VCONN_CC1_EN
+			| FUSB300_SWITCH0_VCONN_CC2_EN);
+}
+
+static int fusb300_enable_vconn(struct typec_phy *phy, bool en)
+{
+	struct fusb300_chip *chip = dev_get_drvdata(phy->dev);
+	int ret;
+	unsigned int val = 0;
+
+
+	mutex_lock(&chip->lock);
+	if (en) {
+		if (phy->valid_cc == TYPEC_PIN_CC1)
+			val = FUSB300_SWITCH0_VCONN_CC1_EN;
+		else if (phy->valid_cc == TYPEC_PIN_CC2)
+			val = FUSB300_SWITCH0_VCONN_CC2_EN;
+	}
+
+	ret = regmap_update_bits(chip->map, FUSB300_SWITCH0_REG,
+		FUSB300_SWITCH0_VCONN_CC1_EN | FUSB300_SWITCH0_VCONN_CC2_EN,
+		val);
+	mutex_unlock(&chip->lock);
+
+	if (ret)
+		dev_err(phy->dev, "%s: Failed to SWITCH0_REG\n", __func__);
+
+	return ret;
+}
+
 static bool fusb300_is_vbus_on(struct typec_phy *phy)
 {
 	struct fusb300_chip *chip = dev_get_drvdata(phy->dev);
@@ -1337,20 +1385,27 @@ static int fusb300_measure_cc(struct typec_phy *phy, struct cc_pin *pin)
 
 	mutex_lock(&chip->lock);
 
+	/* Retain vconn status while measuring */
+	ret = regmap_read(chip->map, FUSB300_SWITCH0_REG, &val);
+	if (ret < 0) {
+		mutex_unlock(&chip->lock);
+		goto err_measure;
+	}
+
+	val &= FUSB300_SWITCH0_VCONN_CC1_EN | FUSB300_SWITCH0_VCONN_CC2_EN;
+
 	if (pin->id == TYPEC_PIN_CC1) {
-		val = FUSB300_SWITCH0_MEASURE_CC1;
+		val |= FUSB300_SWITCH0_MEASURE_CC1;
 		if (phy->state == TYPEC_STATE_UNATTACHED_DFP)
 			val |= FUSB300_SWITCH0_PU_CC1_EN;
 		else
-			val |= (FUSB300_SWITCH0_PD_CC1_EN |
-				FUSB300_SWITCH0_PD_CC2_EN);
+			val |= FUSB300_SWITCH0_PD_CC1_EN;
 	} else {
-		val = FUSB300_SWITCH0_MEASURE_CC2;
+		val |= FUSB300_SWITCH0_MEASURE_CC2;
 		if (phy->state == TYPEC_STATE_UNATTACHED_DFP)
 			val |= FUSB300_SWITCH0_PU_CC2_EN;
 		else
-			val |= (FUSB300_SWITCH0_PD_CC1_EN |
-				FUSB300_SWITCH0_PD_CC2_EN);
+			val |= FUSB300_SWITCH0_PD_CC2_EN;
 	}
 
 	dev_dbg(phy->dev,
@@ -1706,6 +1761,8 @@ static int fusb300_probe(struct i2c_client *client,
 	chip->phy.recv_packet = fusb300_recv_pkt;
 	chip->phy.is_vbus_on = fusb300_is_vbus_on;
 	chip->phy.set_pu_pd = fusb300_set_pu_pd;
+	chip->phy.is_vconn_enabled = fusb300_is_vconn_enabled;
+	chip->phy.enable_vconn = fusb300_enable_vconn;
 	if (!chip->is_fusb300) {
 		chip->phy.setup_role = fusb300_setup_role;
 		chip->phy.enable_autocrc = fusb300_enable_autocrc;
