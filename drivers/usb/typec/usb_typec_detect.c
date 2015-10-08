@@ -474,6 +474,13 @@ static void detect_dfp_work(struct work_struct *work)
 	enum typec_cc_pin use_cc = 0;
 	struct typec_phy *phy = detect->phy;
 
+	/**
+	 * when processing cable event if phy goes to suspend, there is an i2c
+	 * failure happening in pmic driver during charger detection. To avoid
+	 * the i2c transfer failure, not allowing the phy to enter suspend when
+	 * processing events.
+	 */
+	pm_runtime_get_sync(detect->phy->dev);
 	vbus_on = phy->is_vbus_on(phy);
 	dev_dbg(detect->phy->dev, "%s: %d vbus = %d", __func__,
 				detect->state, vbus_on);
@@ -499,6 +506,7 @@ static void detect_dfp_work(struct work_struct *work)
 	if (detect->state != DETECT_STATE_ATTACH_DFP_DRP_WAIT) {
 		dev_dbg(detect->phy->dev, "detect state %d", detect->state);
 		mutex_unlock(&detect->lock);
+		pm_runtime_put(detect->phy->dev);
 		return;
 	}
 	mutex_unlock(&detect->lock);
@@ -530,6 +538,7 @@ static void detect_dfp_work(struct work_struct *work)
 				TYPEC_CABLE_USB_SRC, true);
 	typec_detect_notify_extcon(detect,
 				TYPEC_CABLE_USB_HOST, true);
+	pm_runtime_put(detect->phy->dev);
 
 	return;
 
@@ -545,6 +554,7 @@ end:
 		mutex_unlock(&detect->lock);
 		typec_switch_mode(phy, TYPEC_MODE_DRP);
 	}
+	pm_runtime_put(detect->phy->dev);
 }
 
 static void detect_drp_timer(unsigned long data)
@@ -694,6 +704,13 @@ static void detect_ufp_work(struct work_struct *work)
 	 * emit notifications
 	 */
 
+	/**
+	 * when processing cable event if phy goes to suspend, there is an i2c
+	 * failure happening in pmic driver during charger detection. To avoid
+	 * the i2c transfer failure, not allowing the phy to enter suspend when
+	 * processing events.
+	 */
+	pm_runtime_get_sync(detect->phy->dev);
 	if (phy->cc1.valid && CC_RD(phy->cc1.rd)) {
 		detect_measure_cc(detect, TYPEC_PIN_CC1);
 		if (CC_RD(phy->cc1.rd))
@@ -719,9 +736,11 @@ static void detect_ufp_work(struct work_struct *work)
 	}
 	typec_setup_cc(phy, use_cc, TYPEC_STATE_ATTACHED_UFP);
 	detect_update_ufp_state(detect);
+	pm_runtime_put(detect->phy->dev);
 	return;
 end:
 	typec_switch_mode(phy, TYPEC_MODE_DRP);
+	pm_runtime_put(detect->phy->dev);
 }
 
 static void update_phy_state(struct work_struct *work)
