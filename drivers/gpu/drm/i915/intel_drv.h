@@ -993,7 +993,7 @@ void intel_dp_init(struct drm_device *dev, int output_reg, enum port port);
 bool intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 			     struct intel_connector *intel_connector);
 bool intel_dp_start_link_train(struct intel_dp *intel_dp);
-void intel_dp_complete_link_train(struct intel_dp *intel_dp);
+bool intel_dp_complete_link_train(struct intel_dp *intel_dp);
 void intel_dp_stop_link_train(struct intel_dp *intel_dp);
 bool intel_dp_fast_link_train(struct intel_dp *intel_dp);
 bool chv_upfront_link_train(struct drm_device *dev,

@@ -3956,7 +3956,7 @@ intel_dp_start_link_train(struct intel_dp *intel_dp)
 	return ret;
 }
 
-void
+bool
 intel_dp_complete_link_train(struct intel_dp *intel_dp)
 {
 	bool channel_eq = false;
@@ -3973,7 +3973,7 @@ intel_dp_complete_link_train(struct intel_dp *intel_dp)
 				     training_pattern |
 				     DP_LINK_SCRAMBLING_DISABLE)) {
 		DRM_ERROR("failed to start channel equalization\n");
-		return;
+		return channel_eq;
 	}
 
 	tries = 0;
@@ -3996,12 +3996,8 @@ intel_dp_complete_link_train(struct intel_dp *intel_dp)
 
 		/* Make sure clock is still ok */
 		if (!drm_dp_clock_recovery_ok(link_status, intel_dp->lane_count)) {
-			intel_dp_start_link_train(intel_dp);
-			intel_dp_set_link_train(intel_dp, &DP,
-						training_pattern |
-						DP_LINK_SCRAMBLING_DISABLE);
-			++tries;
-			continue;
+			DRM_ERROR("CR Failed inside EQ check\n");
+			break;
 		}
 
 		if (drm_dp_channel_eq_ok(link_status, intel_dp->lane_count)) {
@@ -4026,6 +4022,7 @@ intel_dp_complete_link_train(struct intel_dp *intel_dp)
 		DRM_DEBUG_KMS("Channel EQ done. DP Training successful\n");
 	}
 
+	return channel_eq;
 }
 
 void intel_dp_stop_link_train(struct intel_dp *intel_dp)
