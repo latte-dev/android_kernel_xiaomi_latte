@@ -3858,16 +3858,17 @@ static void intel_dp_set_idle_link_train(struct intel_dp *intel_dp)
 }
 
 /* Enable corresponding port and start training pattern 1 */
-void
+bool
 intel_dp_start_link_train(struct intel_dp *intel_dp)
 {
 	struct drm_encoder *encoder = &dp_to_dig_port(intel_dp)->base.base;
 	struct drm_device *dev = encoder->dev;
 	int i;
 	uint8_t voltage;
-	int voltage_tries, loop_tries;
+	int voltage_tries;
 	uint32_t DP = intel_dp->DP;
 	uint8_t link_config[2];
+	bool ret = false;
 
 	intel_dp->do_fast_link_train = false;
 
@@ -3902,12 +3903,11 @@ intel_dp_start_link_train(struct intel_dp *intel_dp)
 				       DP_TRAINING_PATTERN_1 |
 				       DP_LINK_SCRAMBLING_DISABLE)) {
 		DRM_ERROR("failed to enable link training\n");
-		return;
+		return ret;
 	}
 
 	voltage = 0xff;
-	voltage_tries = 0;
-	loop_tries = 0;
+	voltage_tries = 1;
 	for (;;) {
 		uint8_t link_status[DP_LINK_STATUS_SIZE];
 
@@ -3918,7 +3918,8 @@ intel_dp_start_link_train(struct intel_dp *intel_dp)
 		}
 
 		if (drm_dp_clock_recovery_ok(link_status, intel_dp->lane_count)) {
-			DRM_DEBUG_KMS("clock recovery OK\n");
+			DRM_DEBUG_KMS("clock recovery Done\n");
+			ret = true;
 			break;
 		}
 
@@ -3926,17 +3927,10 @@ intel_dp_start_link_train(struct intel_dp *intel_dp)
 		for (i = 0; i < intel_dp->lane_count; i++)
 			if ((intel_dp->train_set[i] & DP_TRAIN_MAX_SWING_REACHED) == 0)
 				break;
+
 		if (i == intel_dp->lane_count) {
-			++loop_tries;
-			if (loop_tries == 5) {
-				DRM_ERROR("too many full retries, give up\n");
-				break;
-			}
-			intel_dp_reset_link_train(intel_dp, &DP,
-						  DP_TRAINING_PATTERN_1 |
-						  DP_LINK_SCRAMBLING_DISABLE);
-			voltage_tries = 0;
-			continue;
+			DRM_ERROR("Max voltage reached, exiting\n");
+			break;
 		}
 
 		/* Check to see if we've tried the same voltage 5 times */
@@ -3947,7 +3941,7 @@ intel_dp_start_link_train(struct intel_dp *intel_dp)
 				break;
 			}
 		} else
-			voltage_tries = 0;
+			voltage_tries = 1;
 		voltage = intel_dp->train_set[0] & DP_TRAIN_VOLTAGE_SWING_MASK;
 
 		/* Update training set as requested by target */
@@ -3958,6 +3952,8 @@ intel_dp_start_link_train(struct intel_dp *intel_dp)
 	}
 
 	intel_dp->DP = DP;
+
+	return ret;
 }
 
 void
