@@ -1021,6 +1021,21 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 	if (adjusted_mode->flags & DRM_MODE_FLAG_DBLCLK)
 		return false;
 
+	/*
+	 * port_clock is 0 for the very first call, hence
+	 * using it to differentiate from further calls.
+	 * further calls indicate link training failed
+	 * at last link rate and so retry with next lower rate.
+	 */
+	if (intel_dp->link_bw && pipe_config->port_clock) {
+		if (intel_dp->link_bw == DP_LINK_BW_2_7)
+			intel_dp->link_bw = DP_LINK_BW_1_62;
+		else if (intel_dp->link_bw == DP_LINK_BW_1_62)
+			return false;
+
+		max_clock = (intel_dp->link_bw >> 3);
+	}
+
 	DRM_DEBUG_KMS("DP link computation with max lane count %i "
 		      "max bw %02x pixel clock %iKHz\n",
 		      max_lane_count, bws[max_clock],
@@ -4110,6 +4125,7 @@ intel_dp_link_down(struct intel_dp *intel_dp)
 
 	DRM_DEBUG_KMS("\n");
 
+	intel_dp_stop_link_train(intel_dp);
 	intel_dp->has_fast_link_train = false;
 
 	if (HAS_PCH_CPT(dev) && (IS_GEN7(dev) || port != PORT_A)) {

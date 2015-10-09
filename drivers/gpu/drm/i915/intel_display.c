@@ -5544,6 +5544,21 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 			}
 			encoder->pre_enable(encoder);
 		}
+
+		/* check if link training succeeded */
+		if ((encoder->type == INTEL_OUTPUT_EDP) ||
+		   (encoder->type == INTEL_OUTPUT_DISPLAYPORT)) {
+			struct intel_dp *intel_dp =
+			    &(enc_to_dig_port(&encoder->base)->dp);
+
+			if (!intel_dp->has_fast_link_train) {
+				/* failed */
+				dev_priv->display.crtc_disable(crtc);
+
+				return;
+			}
+
+		}
 	}
 
 	i9xx_pfit_enable(intel_crtc);
@@ -12511,6 +12526,57 @@ static void update_scanline_offset(struct intel_crtc *crtc)
 		crtc->scanline_offset = 1;
 }
 
+/*
+ * This function implements support for retrying modeset
+ * with lower link rate/lane count if previous crtc_enable
+ * failed. This is done as per below logic.
+ *
+ * This function performs simple task of checking if
+ * DP/edp is active or not. if it is not active, we call
+ * compute_config to update the link rate and lane count
+ * and try crtc_enable again.
+ * This will continue as long as compute_config succeeds.
+ * if there is no more combinations to try then it will
+ * fail resulting in exiting the function.
+ */
+static void intel_set_mode_dp(struct intel_crtc *intel_crtc)
+{
+	struct drm_device *dev = intel_crtc->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_encoder *encoder;
+	bool found = false;
+
+	/* get the encoder first */
+	for_each_encoder_on_crtc(dev, &intel_crtc->base, encoder) {
+		if ((encoder->type == INTEL_OUTPUT_EDP) ||
+		   (encoder->type == INTEL_OUTPUT_DISPLAYPORT)) {
+			found = true;
+			break;
+		}
+	}
+
+	if (!found)
+		return;
+
+	/*
+	 * compute config for DP decrements the link_rate every time
+	 * it is called. This will result in each crtc_enable
+	 * retried with different link_rates and when called with
+	 * lowest link rate it will return false and exit the loop
+	 */
+	while ((!intel_crtc->active) &&
+		(encoder->compute_config(encoder, &intel_crtc->config))) {
+		DRM_DEBUG_KMS("Display not up, retrying\n");
+
+		/* retry enable */
+		dev_priv->display.crtc_enable(&intel_crtc->base);
+
+		/* TBD: need to update pipe_config->dither */
+	}
+
+
+}
+
 static int __intel_set_mode(struct drm_crtc *crtc,
 			    struct drm_display_mode *mode,
 			    int x, int y, struct drm_framebuffer *fb)
@@ -12682,6 +12748,16 @@ static int __intel_set_mode(struct drm_crtc *crtc,
 			update_scanline_offset(intel_crtc);
 			to_intel_encoder(connector->encoder)->connectors_active = true;
 			dev_priv->display.crtc_enable(&intel_crtc->base);
+
+			/*
+			 * if DP display was used might have to retry if
+			 * link training failed
+			 */
+			if (!intel_crtc->active &&
+			   (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT)
+			   || intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))) {
+				intel_set_mode_dp(intel_crtc);
+			}
 
 			/*
 			 * As we are updating crtc active state before
