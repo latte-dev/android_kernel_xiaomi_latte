@@ -662,8 +662,8 @@ struct imx_vcm imx_vcms[] = {
 		.t_vcm_timing = dw9718_t_vcm_timing,
 	},
 	[IMX_ID_DEFAULT] = {
-		.power_up = vcm_power_up,
-		.power_down = vcm_power_down,
+		.power_up = NULL,
+		.power_down = NULL,
 		.t_focus_abs_init = NULL,
 	},
 };
