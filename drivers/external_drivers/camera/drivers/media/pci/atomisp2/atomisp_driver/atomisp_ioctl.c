@@ -2755,6 +2755,7 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 	case ATOMISP_IOC_G_SENSOR_AE_BRACKETING_MODE:
 	case ATOMISP_IOC_S_SENSOR_AE_BRACKETING_LUT:
 	case ATOMISP_IOC_S_SENSOR_EE_CONFIG:
+	case ATOMISP_IOC_G_UPDATE_EXPOSURE:
 		/* we do not need take isp->mutex for these IOCTLs */
 		break;
 	default:
@@ -2934,6 +2935,7 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 	case ATOMISP_IOC_S_SENSOR_AE_BRACKETING_MODE:
 	case ATOMISP_IOC_G_SENSOR_AE_BRACKETING_MODE:
 	case ATOMISP_IOC_S_SENSOR_AE_BRACKETING_LUT:
+	case ATOMISP_IOC_G_UPDATE_EXPOSURE:
 		err = v4l2_subdev_call(isp->inputs[asd->input_curr].camera,
 					core, ioctl, cmd, arg);
 		break;
@@ -3048,6 +3050,7 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 	case ATOMISP_IOC_S_SENSOR_AE_BRACKETING_MODE:
 	case ATOMISP_IOC_G_SENSOR_AE_BRACKETING_MODE:
 	case ATOMISP_IOC_S_SENSOR_AE_BRACKETING_LUT:
+	case ATOMISP_IOC_G_UPDATE_EXPOSURE:
 		break;
 	default:
 		rt_mutex_unlock(&isp->mutex);

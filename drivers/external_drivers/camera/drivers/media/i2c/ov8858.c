@@ -457,6 +457,26 @@ static int ov8858_set_exposure(struct v4l2_subdev *sd, int exposure, int gain,
 	return ret;
 }
 
+/*
+   When exposure gain value set to sensor, the sensor changed value.
+   So we need the function to get real value
+ */
+static int ov8858_g_update_exposure(struct v4l2_subdev *sd,
+				struct atomisp_update_exposure *exposure)
+{
+	struct ov8858_device *dev = to_ov8858_sensor(sd);
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int gain = exposure->gain;
+
+	dev_dbg(&client->dev, "%s: gain: %d, digi_gain: %d\n", __func__,
+			exposure->gain, exposure->digi_gain);
+	exposure->update_digi_gain = dev->digital_gain;
+	/* This real gain value fetching function is provided by vendor */
+	exposure->update_gain = (((gain & 0x700) >> 8) + 1) * (gain & 0xFF);
+
+	return 0;
+}
+
 static int ov8858_s_exposure(struct v4l2_subdev *sd,
 			     struct atomisp_exposure *exposure)
 {
@@ -691,6 +711,7 @@ static int ov8858_g_comp_delay(struct v4l2_subdev *sd, unsigned int *usec)
 
 	return 0;
 }
+
 static long ov8858_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -701,6 +722,9 @@ static long ov8858_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 		return ov8858_g_priv_int_data(sd, arg);
 	case ATOMISP_IOC_G_DEPTH_SYNC_COMP:
 		return ov8858_g_comp_delay(sd, (unsigned int *)arg);
+	case ATOMISP_IOC_G_UPDATE_EXPOSURE:
+		return ov8858_g_update_exposure(sd,
+				(struct atomisp_update_exposure *)arg);
 	default:
 		dev_dbg(&client->dev, "Unhandled command 0x%X\n", cmd);
 		return -EINVAL;
