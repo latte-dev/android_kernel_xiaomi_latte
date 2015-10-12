@@ -38,31 +38,18 @@
 static struct power_cap spcaps[] = {
 	{
 		.mv = VIN_5V,
-		.ma = ICHRG_P5A,
-	},
-	{
-		.mv = VIN_5V,
-		.ma = ICHRG_1P5A,
-	},
-	{
-		.mv = VIN_5V,
 		.ma = ICHRG_3A,
-	},
-	{
-		.mv = VIN_9V,
-		.ma = ICHRG_1P5A,
-	},
-	{
-		.mv = VIN_9V,
-		.ma = ICHRG_3A,
+		.psy_type = DPM_PSY_TYPE_FIXED,
 	},
 	{
 		.mv = VIN_12V,
 		.ma = ICHRG_1A,
+		.psy_type = DPM_PSY_TYPE_FIXED,
 	},
 	{
 		.mv = VIN_12V,
 		.ma = ICHRG_3A,
+		.psy_type = DPM_PSY_TYPE_FIXED,
 	},
 };
 

@@ -617,6 +617,25 @@ error:
 	return ret;
 }
 
+static void snkpe_fill_default_cap(struct sink_port_pe *sink)
+{
+	struct pd_sink_fixed_pdo pdo = { 0 };
+
+	/* setting default pdo as vsafe5V with ma = 0 */
+	pdo.data_role_swap = 1;
+	pdo.usb_comm = 1;
+	pdo.ext_powered = 0;
+	pdo.higher_cap = 0;
+	pdo.dual_role_pwr = 1;
+	pdo.max_cur = CURRENT_TO_DATA_OBJ(0);
+	pdo.volt = (VOLT_TO_DATA_OBJ(5000) >>
+				SNK_FSPDO_VOLT_SHIFT);
+	pdo.supply_type = 0;
+	policy_send_packet(&sink->p, &pdo, 4,
+					PD_DATA_MSG_SINK_CAP,
+					PE_EVT_SEND_SNK_CAP);
+}
+
 static int snkpe_handle_give_snk_cap_state(struct sink_port_pe *sink)
 {
 	int ret = 0;
@@ -627,8 +646,28 @@ static int snkpe_handle_give_snk_cap_state(struct sink_port_pe *sink)
 	snkpe_update_state(sink, PE_SNK_GIVE_SINK_CAP);
 
 	ret = policy_get_snkpwr_caps(&sink->p, &pcaps);
-	if (ret < 0)
+	if (ret < 0) {
+		snkpe_fill_default_cap(sink);
 		goto error;
+	}
+
+	/**
+	 * As per PD v1.1 spec except first pdo, all other Fixed Supply Power
+	 * Data Objects shall set bits 29...20 to zero.
+	 */
+	if (pcaps.n_cap > 0) {
+		/* FIXME: DPM should provide info on USB capable and
+		 * higher power support required */
+		pdo[0].data_role_swap = 1;
+		pdo[0].usb_comm = 1;
+		pdo[0].ext_powered = 0;
+		pdo[0].higher_cap = 1;
+		pdo[0].dual_role_pwr = 1;
+	} else {
+		pr_debug("SNKPE: No PDO's from dpm setting default vasafe5v\n");
+		snkpe_fill_default_cap(sink);
+		goto error;
+	}
 
 	for (i = 0; i < MAX_NUM_DATA_OBJ; i++) {
 		if (i >= pcaps.n_cap)
@@ -637,13 +676,7 @@ static int snkpe_handle_give_snk_cap_state(struct sink_port_pe *sink)
 		pdo[i].max_cur = CURRENT_TO_DATA_OBJ(pcaps.pcap[i].ma);
 		pdo[i].volt = (VOLT_TO_DATA_OBJ(pcaps.pcap[i].mv) >>
 					SNK_FSPDO_VOLT_SHIFT);
-		/* FIXME: get it from dpm once the dpm provides the caps */
-		pdo[i].data_role_swap = 1;
-		pdo[i].usb_comm = 1;
-		pdo[i].ext_powered = 0;
-		pdo[i].higher_cap = 0;
-		pdo[i].dual_role_pwr = 1;
-		pdo[i].supply_type = 0;
+		pdo[i].supply_type = pcaps.pcap[i].psy_type;
 	}
 
 	ret = policy_send_packet(&sink->p, pdo, pcaps.n_cap * 4,

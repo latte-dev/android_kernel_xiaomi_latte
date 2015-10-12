@@ -79,6 +79,10 @@ enum batt_soc_status {
 #define ICHRG_1A	1000
 #define ICHRG_P5A	500
 
+#define DPM_PSY_TYPE_FIXED	0
+#define DPM_PSY_TYPE_VARIABLE	2
+#define DPM_PSY_TYPE_BATTERY	1
+
 enum devpolicy_mgr_events {
 	DEVMGR_EVENT_NONE,
 	DEVMGR_EVENT_DFP_CONNECTED,
@@ -120,6 +124,7 @@ enum data_role {
 struct power_cap {
 	int mv;
 	int ma;
+	int psy_type;
 };
 
 struct power_caps {
