@@ -2305,6 +2305,7 @@ static void intel_disable_pipe(struct drm_i915_private *dev_priv,
 	struct drm_crtc *crtc = dev_priv->pipe_to_crtc_mapping[pipe];
 	struct drm_device *dev = crtc->dev;
 	int reg;
+	bool cht_dsi_cmd_mode = false;
 	u32 val;
 
 	/*
@@ -2327,14 +2328,19 @@ static void intel_disable_pipe(struct drm_i915_private *dev_priv,
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		if (encoder->type == INTEL_OUTPUT_DSI) {
 			intel_dsi = enc_to_intel_dsi(&encoder->base);
-			if (intel_dsi && is_cmd_mode(intel_dsi))
+			if (intel_dsi && is_cmd_mode(intel_dsi)) {
+				cht_dsi_cmd_mode = IS_CHERRYVIEW(dev_priv->dev);
 				val = val & ~PIPECONF_MIPI_DSR_ENABLE;
+			}
 			break;
 		}
 	}
 
 	I915_WRITE(reg, val & ~PIPECONF_ENABLE);
-	intel_wait_for_pipe_off(dev_priv->dev, pipe);
+
+	/* Dont wait for pipe off, incase of CHT DSI CMD mode */
+	if (!cht_dsi_cmd_mode)
+		intel_wait_for_pipe_off(dev_priv->dev, pipe);
 }
 
 /*
