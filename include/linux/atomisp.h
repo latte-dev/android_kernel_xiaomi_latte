@@ -931,6 +931,13 @@ struct atomisp_acc_state {
 	unsigned int fw_handle;
 };
 
+struct atomisp_update_exposure {
+	unsigned int gain;
+	unsigned int digi_gain;
+	unsigned int update_gain;
+	unsigned int update_digi_gain;
+};
+
 /*
  * V4L2 private internal data interface.
  * -----------------------------------------------------------------------------
@@ -1220,6 +1227,10 @@ struct atomisp_sensor_ae_bracketing_lut {
 
 #define ATOMISP_IOC_S_SENSOR_RUNMODE \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 48, struct atomisp_s_runmode)
+
+#define ATOMISP_IOC_G_UPDATE_EXPOSURE \
+	_IOWR('v', BASE_VIDIOC_PRIVATE + 49, struct atomisp_update_exposure)
+
 /*
  * Reserved ioctls. We have customer implementing it internally.
  * We can't use both numbers to not cause ABI conflict.
