@@ -4296,7 +4296,7 @@ intel_dp_get_dpcd(struct intel_dp *intel_dp)
 	}
 
 	/* Training Pattern 3 support */
-	if (intel_dp->dpcd[DP_DPCD_REV] >= 0x12 &&
+	if (!IS_CHERRYVIEW(dev) && intel_dp->dpcd[DP_DPCD_REV] >= 0x12 &&
 	    intel_dp->dpcd[DP_MAX_LANE_COUNT] & DP_TPS3_SUPPORTED) {
 		intel_dp->use_tps3 = true;
 		DRM_DEBUG_KMS("Displayport TPS3 supported");
