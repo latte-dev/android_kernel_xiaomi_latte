@@ -1064,7 +1064,7 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 						   bpp);
 
 		for (lane_count = min_lane_count; lane_count <= max_lane_count; lane_count <<= 1) {
-			for (clock = min_clock; clock <= max_clock; clock++) {
+			for (clock = max_clock; clock >= min_clock; clock--) {
 				link_clock = drm_dp_bw_code_to_link_rate(bws[clock]);
 				link_avail = intel_dp_max_data_rate(link_clock,
 								    lane_count);
