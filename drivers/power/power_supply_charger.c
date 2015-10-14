@@ -973,8 +973,8 @@ int psy_charger_throttle_charger(struct power_supply *psy,
 {
 	int ret = 0;
 
-	if (!IS_PRESENT(psy))
-		return 0;
+	if (!psy)
+		return -EINVAL;
 
 	if (state < 0 || state >= MAX_THROTTLE_STATE(psy))
 		return -EINVAL;
