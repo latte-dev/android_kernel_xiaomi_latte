@@ -91,7 +91,7 @@ struct intel_bt_lpm {
 #endif
 	int gpio_host_wake;
 #ifdef CONFIG_SERIAL_XGOLD
-	int gpio_enable_bt;
+	unsigned int gpio_enable_bt;
 #endif
 	int host_wake;
 	int lpm_enable;
@@ -115,6 +115,7 @@ struct intel_bt_lpm {
 	int rx_refcount;
 	int port;
 };
+
 static struct intel_bt_lpm intel_lbf_lpm;
 
 
@@ -477,8 +478,6 @@ static inline void lbf_serial_get(void)
 	trace_lbf_func_start(__func__);
 	if (intel_lbf_lpm.tty_dev)
 		pm_runtime_get_sync(intel_lbf_lpm.tty_dev);
-	else
-		pr_err("%s: no tty device\n", __func__);
 }
 
 static void lbf_host_enable_work(struct work_struct *work)
@@ -1311,9 +1310,10 @@ struct sk_buff *lbf_dequeue(void)
  * txq needs protection since the other contexts
  * may be sending data, waking up chip.
  */
-static inline void lbf_enqueue(struct sk_buff *skb)
+inline void lbf_enqueue(struct sk_buff *skb)
 {
-	skb_queue_tail(&lbf_tx->txq, skb);
+	if (lbf_tx)
+		skb_queue_tail(&lbf_tx->txq, skb);
 }
 
 /* lbf_ldisc_free_skbuff()
@@ -1573,7 +1573,7 @@ static int lbf_ldisc_open(struct tty_struct *tty)
 			"Netlink receive handler registration succeded\n");
 	stack_pid = 0;
 
-	hrtimer_init(&(lbf_uart->hci_reset_timer), CLOCK_MONOTONIC,
+	hrtimer_init(&lbf_uart->hci_reset_timer, CLOCK_MONOTONIC,
 							HRTIMER_MODE_REL);
 	lbf_uart->hci_reset_delay = ktime_set(0, 10000000);  /* 1 sec */
 	lbf_uart->hci_reset_timer.function = lbf_hci_reset_expire;
@@ -1663,7 +1663,8 @@ static void lbf_ldisc_wakeup(struct tty_struct *tty)
 	trace_lbf_func_start(__func__);
 
 	clear_bit(TTY_DO_WRITE_WAKEUP, &lbf_uart->tty->flags);
-	schedule_work(&lbf_tx->tx_wakeup_work);
+	if (lbf_tx)
+		schedule_work(&lbf_tx->tx_wakeup_work);
 
 	trace_lbf_func_end(__func__);
 
@@ -1851,11 +1852,9 @@ static int st_send_frame(struct tty_struct *tty, struct lbf_uart *lbf_uart)
 			break;
 		/* Ignore the CCE for all Secure send command
 						during FW Download */
-#ifndef CONFIG_SERIAL_8250
 		case BT_SECURE_SEND:
 			ret = lbf_uart->rx_skb->len;
 			goto free_packet;
-#endif
 		case BT_HCI_RESET:
 			set_bit(HCI_RESET_COMPL_RCV, &lbf_uart->hci_reset);
 			clear_bit(HCI_RESET_SEND, &lbf_uart->hci_reset);
@@ -2028,7 +2027,9 @@ static int wait_d2_exit(void)
 			ret = FAILED;
 			pr_err("%s D2 time out\n", __func__);
 			break;
-		}
+		} else
+			ret = 0;
+
 		if (signal_pending(current))
 			return -ERESTARTSYS;
 	}
@@ -2063,7 +2064,9 @@ static int wait_dx_exit(void)
 			lbf_set_device_state(D2);
 			pr_err("%s D2_TO_D0 time out\n", __func__);
 			break;
-		}
+		} else
+			ret = 0;
+
 		if (signal_pending(current))
 			return -ERESTARTSYS;
 
@@ -2105,7 +2108,9 @@ static int wait_d0_exit(void)
 			lbf_set_device_state(D0);
 			pr_err("%s D0_TO_D2 time out\n", __func__);
 			break;
-		}
+		} else
+			ret = 0;
+
 		if (signal_pending(current))
 			return -ERESTARTSYS;
 
