@@ -901,14 +901,8 @@ static void fusb300_handle_vbus_int(struct fusb300_chip *chip, int vbus_on)
 				 TYPEC_EVENT_VBUS, phy);
 		/* TOG_DONE will be used with FUSB302 */
 	} else {
-		if (state == TYPEC_STATE_ATTACHED_UFP) {
-			mutex_lock(&chip->lock);
-			fusb300_reset_valid_cc(phy);
-			mutex_unlock(&chip->lock);
-
-			atomic_notifier_call_chain(&phy->notifier,
-					TYPEC_EVENT_NONE, phy);
-		}
+		if (state == TYPEC_STATE_ATTACHED_UFP)
+			schedule_work(&chip->dfp_disconn_work);
 	}
 }
 
@@ -1463,10 +1457,6 @@ static void fusb300_valid_disconnect(struct work_struct *work)
 	struct typec_phy *phy = &chip->phy;
 	unsigned int val, stat;
 
-	/* In UFP, VBUS drop is considered disconnect */
-	if (phy->state == TYPEC_STATE_ATTACHED_UFP)
-		return;
-
 	/*
 	 * According to TypeC Spec DFP transistion to unattached state
 	 * if CC open for tPDDebounce period (10ms)
@@ -1485,7 +1475,10 @@ static void fusb300_valid_disconnect(struct work_struct *work)
 	regmap_read(chip->map, FUSB300_STAT0_REG, &stat);
 
 	dev_dbg(chip->dev, "%s: stat0 %x", __func__, stat);
-	if (stat & FUSB300_STAT0_COMP) {
+	if ((stat & FUSB300_STAT0_COMP) ||
+		(phy->state == TYPEC_STATE_ATTACHED_UFP &&
+		!(stat & FUSB300_STAT0_VBUS_OK) &&
+		!(stat & FUSB300_STAT0_BC_LVL))) {
 		fusb300_reset_valid_cc(phy);
 		atomic_notifier_call_chain(&phy->notifier,
 						 TYPEC_EVENT_NONE, phy);
