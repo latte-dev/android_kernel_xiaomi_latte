@@ -965,11 +965,11 @@ static int bq24192_turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
 			bq24192_clear_hiz(chip);
 			/* Program the timers */
 			ret = program_timers(chip,
-						CHRG_TIMER_EXP_CNTL_WDT80SEC,
+						CHRG_TIMER_EXP_CNTL_WDTDISABLE,
 						false);
 			if (ret < 0) {
 				dev_warn(&chip->client->dev,
-					"TIMER enable failed %s\n", __func__);
+					"TIMER disable failed %s\n", __func__);
 				goto i2c_write_fail;
 			}
 
@@ -993,9 +993,6 @@ static int bq24192_turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
 				goto i2c_write_fail;
 			}
 			chip->boost_mode = true;
-			/* Schedule the charger task worker now */
-			schedule_delayed_work(&chip->chrg_task_wrkr,
-						0);
 	} else {
 			/* Clear the charger from the OTG mode */
 			if ((chip->chip_type == BQ24296) ||
@@ -1023,8 +1020,6 @@ static int bq24192_turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
 				goto i2c_write_fail;
 			}
 			chip->boost_mode = false;
-			/* Cancel the charger task worker now */
-			cancel_delayed_work_sync(&chip->chrg_task_wrkr);
 	}
 
 	/*
