@@ -372,6 +372,9 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	u32 val;
 	u32 count = 1;
 	int ret;
+	int i = 0;
+	struct sg_page_iter sg_iter;
+	struct scatterlist *sg_temp;
 
 	DRM_DEBUG_KMS("\n");
 
@@ -396,6 +399,49 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 		intel_dsi->cmd_buff_phy_addr = page_to_phys(
 				sg_page(intel_dsi->gem_obj->pages->sgl));
 	}
+	if (intel_dsi->cursor_obj == NULL && is_cmd_mode(intel_dsi)) {
+		mutex_lock(&dev->struct_mutex);
+		intel_dsi->cursor_obj = i915_gem_alloc_object(dev, 64 * 64 * 4);
+		if (intel_dsi->cursor_obj == NULL) {
+			DRM_ERROR("Failed to allocate seqno page\n");
+			return;
+		}
+
+		ret = i915_gem_object_set_cache_level(intel_dsi->cursor_obj,
+				HAS_WT(intel_dsi->cursor_obj->base.dev) ?
+					I915_CACHE_WT : I915_CACHE_NONE);
+		if (ret)
+			goto err_unref_cursor;
+
+		ret =  i915_gem_obj_ggtt_pin(intel_dsi->cursor_obj,
+						PAGE_SIZE, PIN_MAPPABLE);
+		if (ret) {
+			ret = i915_gem_obj_ggtt_pin(intel_dsi->cursor_obj,
+								PAGE_SIZE, 0);
+			if (ret)
+				goto err_unref_cursor;
+	       }
+
+		ret = i915_gem_object_set_to_gtt_domain(intel_dsi->cursor_obj,
+									true);
+		if (ret) {
+			DRM_ERROR("failed to move cursor obj into the GTT\n");
+			goto err_unref_cursor;
+		}
+
+		sg_temp = intel_dsi->cursor_obj->pages->sgl;
+		for_each_sg_page(intel_dsi->cursor_obj->pages->sgl, &sg_iter,
+				intel_dsi->cursor_obj->pages->nents, 0) {
+			if (sg_temp != NULL) {
+				intel_dsi->cursor_buff[i] =
+							kmap(sg_page(sg_temp));
+				sg_temp = sg_next(sg_temp);
+			}
+			i++;
+		}
+		mutex_unlock(&dev->struct_mutex);
+	}
+
 
 	/* Panel Enable */
 	if (intel_dsi->dev.dev_ops->power_on)
@@ -503,6 +549,10 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 
 err_unref:
 	drm_gem_object_unreference(&intel_dsi->gem_obj->base);
+	return;
+
+err_unref_cursor:
+	drm_gem_object_unreference(&intel_dsi->cursor_obj->base);
 	return;
 }
 
@@ -764,6 +814,25 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 		drm_gem_object_unreference(&intel_dsi->gem_obj->base);
 		mutex_unlock(&dev->struct_mutex);
 		intel_dsi->gem_obj = NULL;
+	}
+	if (intel_dsi->cursor_obj != NULL) {
+		if (intel_dsi->cursor_buff[3] != NULL)
+			kunmap(intel_dsi->cursor_buff[3]);
+		 if (intel_dsi->cursor_buff[2] != NULL)
+			kunmap(intel_dsi->cursor_buff[2]);
+		 if (intel_dsi->cursor_buff[1] != NULL)
+			kunmap(intel_dsi->cursor_buff[1]);
+		 if (intel_dsi->cursor_buff[0] != NULL)
+			kunmap(intel_dsi->cursor_buff[0]);
+		intel_dsi->cursor_buff[0] = NULL;
+		intel_dsi->cursor_buff[1] = NULL;
+		intel_dsi->cursor_buff[2] = NULL;
+		intel_dsi->cursor_buff[3] = NULL;
+		i915_gem_object_ggtt_unpin(intel_dsi->cursor_obj);
+		mutex_lock(&dev->struct_mutex);
+		drm_gem_object_unreference(&intel_dsi->cursor_obj->base);
+		mutex_unlock(&dev->struct_mutex);
+		intel_dsi->cursor_obj = NULL;
 	}
 }
 
@@ -1399,6 +1468,13 @@ bool intel_dsi_init(struct drm_device *dev)
 	intel_dsi->cmd_buff = NULL;
 	intel_dsi->cmd_buff_phy_addr = 0;
 	intel_dsi->gem_obj = NULL;
+
+	intel_dsi->cursor_buff[0] = NULL;
+	intel_dsi->cursor_buff[1] = NULL;
+	intel_dsi->cursor_buff[2] = NULL;
+	intel_dsi->cursor_buff[3] = NULL;
+	intel_dsi->cursor_obj = NULL;
+
 
 	intel_encoder->cloneable = 0;
 	drm_connector_init(dev, connector, &intel_dsi_connector_funcs,

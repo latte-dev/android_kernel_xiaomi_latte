@@ -522,6 +522,9 @@ struct intel_dsi {
 	struct drm_i915_gem_object *gem_obj;
 	void *cmd_buff;
 	dma_addr_t cmd_buff_phy_addr;
+
+	struct drm_i915_gem_object *cursor_obj;
+	void *cursor_buff[4];
 };
 
 static inline struct intel_dsi *enc_to_intel_dsi(struct drm_encoder *encoder)

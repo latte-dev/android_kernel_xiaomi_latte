@@ -5572,6 +5572,30 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 		if (encoder->type != INTEL_OUTPUT_DSI)
 			encoder->enable(encoder);
 
+	/* If Intel DSI and CMd mode create buffer for cursor plane */
+	for_each_encoder_on_crtc(dev, crtc, encoder) {
+		if (encoder->pre_enable) {
+			intel_dsi = enc_to_intel_dsi(&encoder->base);
+			if (encoder->type == INTEL_OUTPUT_DSI &&
+						is_cmd_mode(intel_dsi)) {
+				intel_crtc->cursor_x = 0;
+				intel_crtc->cursor_y = 0;
+				intel_crtc->cursor_height = 64;
+				intel_crtc->cursor_width = 64;
+
+				if (intel_dsi->cursor_buff[0] != NULL) {
+					intel_crtc->cursor_bo =
+							intel_dsi->cursor_obj;
+					intel_crtc->cursor_addr =
+						i915_gem_obj_ggtt_offset(
+							intel_dsi->cursor_obj);
+					DRM_DEBUG("Cursor base address 0x%x\n",
+						intel_crtc->cursor_addr);
+				}
+			}
+		}
+	}
+
 	intel_crtc_enable_planes(crtc);
 
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
@@ -5618,6 +5642,7 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 		}
 		break;
 	}
+
 }
 
 static void i9xx_set_pll_dividers(struct intel_crtc *crtc)
@@ -5781,12 +5806,10 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 			 * frame.
 			 */
 			msleep(40);
-
 			if (intel_crtc->hw_frm_cnt_at_enable ==
 					I915_READ(PIPEFRAME(pipe)))
 				DRM_ERROR("Pipe is stuck for DSI cmd mode.");
 		}
-
 		break;
 	}
 
