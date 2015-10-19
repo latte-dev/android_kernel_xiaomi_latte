@@ -11199,8 +11199,8 @@ int intel_set_disp_calc_flip(struct drm_mode_set_display *disp,
 			intel_crtc->scaling_src_size =
 				(((disp->panel_fitter.src_w - 1) << 16) |
 						(disp->panel_fitter.src_h - 1));
-
-			if (((mode->hdisplay * disp->panel_fitter.src_h) /
+			if (disp->panel_fitter.mode == PFIT_OFF);
+			else if (((mode->hdisplay * disp->panel_fitter.src_h) /
 						disp->panel_fitter.src_w) < mode->vdisplay)
 				pfit_mode |= PFIT_SCALING_LETTER;
 			else if (((mode->vdisplay * disp->panel_fitter.src_w) /
