@@ -11445,6 +11445,12 @@ static int intel_crtc_set_display(struct drm_crtc *crtc,
 		DRM_ERROR("Atomicity version or struct size mismatch");
 		return -EINVAL;
 	}
+
+	if (!intel_crtc_active(crtc)) {
+		DRM_ERROR("CRTC not active\n");
+		return -EINVAL;
+	}
+
 	intel_crtc->atomic_update = true;
 
 	intel_runtime_pm_get(dev_priv);
@@ -12748,6 +12754,11 @@ static int __intel_set_mode(struct drm_crtc *crtc,
 			update_scanline_offset(intel_crtc);
 			to_intel_encoder(connector->encoder)->connectors_active = true;
 			dev_priv->display.crtc_enable(&intel_crtc->base);
+
+			if (!intel_crtc->active) {
+				ret = -EINVAL;
+				intel_crtc->skip_check_state = true;
+			}
 
 			/*
 			 * if DP display was used might have to retry if
