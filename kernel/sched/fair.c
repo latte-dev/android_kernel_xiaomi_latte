@@ -6351,6 +6351,8 @@ out:
 	return ld_moved;
 }
 
+static DEFINE_PER_CPU(cpumask_var_t, local_cpu_mask);
+
 /*
  * idle_balance is called by schedule() if this_cpu is about to become
  * idle. Attempts to pull tasks from other CPUs.
@@ -7350,8 +7352,13 @@ void print_cfs_stats(struct seq_file *m, int cpu)
 __init void init_sched_fair_class(void)
 {
 #ifdef CONFIG_SMP
-	open_softirq(SCHED_SOFTIRQ, run_rebalance_domains);
+	unsigned int i;
+	for_each_possible_cpu(i) {
+		zalloc_cpumask_var_node(&per_cpu(local_cpu_mask, i),
+					GFP_KERNEL, cpu_to_node(i));
+	}
 
+	open_softirq(SCHED_SOFTIRQ, run_rebalance_domains);
 #ifdef CONFIG_NO_HZ_COMMON
 	nohz.next_balance = jiffies;
 	zalloc_cpumask_var(&nohz.idle_cpus_mask, GFP_NOWAIT);
@@ -7374,6 +7381,11 @@ __init void init_sched_fair_class(void)
  */
 
 /*
+ * Aggressively push the task even it is hot
+ */
+static int wc_push_hot_task = 1;
+
+/*
  * We update cpu concurrency at:
  * - enqueue task
  * - dequeue task
@@ -7381,7 +7393,6 @@ __init void init_sched_fair_class(void)
  * - enter and exit idle
  * - update_blocked_averages
  */
-
 void update_cpu_concurrency(struct rq *rq)
 {
 	struct sched_avg *sa = &rq->concurrency.avg;
@@ -7394,6 +7405,464 @@ void update_cpu_concurrency(struct rq *rq)
 void init_workload_consolidation(struct rq *rq)
 {
 	rq->concurrency.unload = 0;
+}
+
+static inline u32 cc_weight(unsigned int nr_running)
+{
+	return nr_running << NICE_0_SHIFT;
+}
+
+static inline unsigned long get_cpu_concurrency(int cpu)
+{
+	return cpu_rq(cpu)->concurrency.avg.load_avg_contrib;
+}
+
+static inline unsigned long sched_group_cc(struct sched_group *sg)
+{
+	unsigned long sg_cc = 0;
+	int i;
+
+	for_each_cpu(i, sched_group_cpus(sg))
+		sg_cc += get_cpu_concurrency(i) * cpu_rq(i)->cpu_power;
+
+	return sg_cc;
+}
+
+static inline unsigned long sched_domain_cc(struct sched_domain *sd)
+{
+	struct sched_group *sg = sd->groups;
+	unsigned long sd_cc = 0;
+
+	do {
+		sd_cc += sched_group_cc(sg);
+		sg = sg->next;
+	} while (sg != sd->groups);
+
+	return sd_cc;
+}
+
+static inline struct sched_group *
+find_lowest_cc_group(struct sched_group *sg, int span)
+{
+	unsigned long grp_cc, min = ULONG_MAX;
+	struct sched_group *lowest = NULL;
+	int i;
+
+	for (i = 0; i < span; ++i) {
+		grp_cc = sched_group_cc(sg);
+
+		if (grp_cc < min) {
+			min = grp_cc;
+			lowest = sg;
+		}
+
+		sg = sg->next;
+	}
+
+	return lowest;
+}
+
+static inline unsigned long __calc_cc_thr(int cpus, unsigned int asym_cc)
+{
+	unsigned long thr = cpus;
+
+	thr *= cc_weight(1);
+	thr *= asym_cc;
+	thr <<= SCHED_POWER_SHIFT;
+
+	return thr;
+}
+
+/*
+ * Can @src_cc of @src_nr CPUs be consolidated to @dst_cc of @dst_nr CPUs
+ *
+ * We use the following heuristic to calculate the system-wide CC to decide
+ * whether to consolidate m CPUs to n CPUs (m > n):
+ *
+ * (CC[0] + CC[1] + ... + CC[m-2] + CC[m-1]) * (n + log(m-n)) <= (1 *
+ * n) * n * consolidating_coefficient ?
+ *
+ * The consolidating_coefficient could be like 100% or more or less.
+ */
+static inline int
+__can_consolidate_cc(unsigned long src_cc, int src_nr, unsigned long dst_cc, int dst_nr)
+{
+	dst_cc *= dst_nr;
+	src_nr -= dst_nr;
+
+	if (unlikely(src_nr <= 0))
+		return 0;
+
+	src_nr = ilog2(src_nr);
+	src_nr += dst_nr;
+	src_cc *= src_nr;
+
+	if (src_cc > dst_cc)
+		return 0;
+
+	return 1;
+}
+
+struct sched_group *wc_find_group(struct sched_domain *sd,
+	struct task_struct *p, int this_cpu)
+{
+	int half, sg_weight, ns_half = 0;
+	struct sched_group *sg;
+	unsigned long sd_cc;
+
+	half = DIV_ROUND_CLOSEST(sd->total_groups, 2);
+	sg_weight = sd->groups->group_weight;
+
+	sd_cc = sched_domain_cc(sd);
+	sd_cc *= 100;
+
+	while (half) {
+		int allowed = 0, i;
+		int cpus = sg_weight * half;
+		unsigned long threshold = __calc_cc_thr(cpus,
+			sd->consolidating_coeff);
+
+		/*
+		 * We did not consider the added cc by this
+		 * wakeup (mostly from fork/exec)
+		 */
+		if (!__can_consolidate_cc(sd_cc, sd->span_weight,
+			threshold, cpus))
+			break;
+
+		sg = sd->first_group;
+		for (i = 0; i < half; ++i) {
+			if (!cpumask_intersects(sched_group_cpus(sg),
+						tsk_cpus_allowed(p)))
+				continue;
+
+			allowed = 1;
+			sg = sg->next;
+		}
+
+		if (!allowed)
+			break;
+
+		ns_half = half;
+		half /= 2;
+	}
+
+	if (!ns_half)
+		return NULL;
+
+	if (ns_half == 1)
+		return sd->first_group;
+
+	return find_lowest_cc_group(sd->first_group, ns_half);
+}
+
+/*
+ * wc_cpu_shielded - return whether @cpu is shielded or not
+ *
+ * Traverse downward the sched_domain tree when the sched_domain contains
+ * flag SD_WORKLOAD_CONSOLIDATION, each sd may have more than two groups.
+ *
+ * We assume (1) every sched_group has the same weight, and (2) SMP only
+ */
+int wc_cpu_shielded(struct sched_domain *sd)
+{
+	while (sd) {
+		int half, sg_weight, this_sg_nr;
+		unsigned long sd_cc;
+
+		if (!(sd->flags & SD_WORKLOAD_CONSOLIDATION)) {
+			sd = sd->child;
+			continue;
+		}
+
+		half = DIV_ROUND_CLOSEST(sd->total_groups, 2);
+		sg_weight = sd->groups->group_weight;
+		this_sg_nr = sd->group_number;
+
+		sd_cc = sched_domain_cc(sd);
+		sd_cc *= 100;
+
+		while (half) {
+			int cpus = sg_weight * half;
+			unsigned long threshold = __calc_cc_thr(cpus,
+				sd->consolidating_coeff);
+
+			if (!__can_consolidate_cc(sd_cc, sd->span_weight,
+				threshold, cpus))
+				return 0;
+
+			if (this_sg_nr >= half)
+				return 1;
+
+			half /= 2;
+		}
+
+		sd = sd->child;
+	}
+
+	return 0;
+}
+
+static inline int __nonshielded_groups(struct sched_domain *sd)
+{
+	int half, sg_weight, ret = 0;
+	unsigned long sd_cc;
+
+	half = DIV_ROUND_CLOSEST(sd->total_groups, 2);
+	sg_weight = sd->groups->group_weight;
+
+	sd_cc = sched_domain_cc(sd);
+	sd_cc *= 100;
+
+	while (half) {
+		int cpus = sg_weight * half;
+		unsigned long threshold =
+			__calc_cc_thr(cpus, sd->consolidating_coeff);
+
+		if (!__can_consolidate_cc(sd_cc, sd->span_weight,
+					  threshold, cpus))
+			return ret;
+
+		ret = half;
+		half /= 2;
+	}
+
+	return ret;
+}
+
+/*
+ * If we decide to move workload from CPUx to CPUy (consolidating workload
+ * to CPUy), then we call CPUx nonshielded and CPUy shielded in the following.
+ *
+ * wc_nonshielded_mask - return the nonshielded CPUs in the @mask.
+ *
+ * Traverse downward the sched_domain tree when the sched_domain contains
+ * flag SD_WORKLOAD_CONSOLIDATION, each sd may have more than two groups
+ */
+void wc_nonshielded_mask(struct sched_domain *sd, struct cpumask *mask)
+{
+	struct cpumask *nonshielded_cpus = __get_cpu_var(local_cpu_mask);
+	int i;
+
+	while (sd) {
+		struct sched_group *sg;
+		int this_sg_nr, ns_half;
+
+		if (!(sd->flags & SD_WORKLOAD_CONSOLIDATION)) {
+			sd = sd->child;
+			continue;
+		}
+
+		ns_half = __nonshielded_groups(sd);
+
+		if (!ns_half)
+			break;
+
+		cpumask_clear(nonshielded_cpus);
+		sg = sd->first_group;
+
+		for (i = 0; i < ns_half; ++i) {
+			cpumask_or(nonshielded_cpus, nonshielded_cpus,
+				   sched_group_cpus(sg));
+			sg = sg->next;
+		}
+
+		cpumask_and(mask, mask, nonshielded_cpus);
+
+		this_sg_nr = sd->group_number;
+		if (this_sg_nr)
+			break;
+
+		sd = sd->child;
+	}
+}
+
+static int cpu_task_hot(struct task_struct *p, u64 now)
+{
+	s64 delta;
+
+	if (p->sched_class != &fair_sched_class)
+		return 0;
+
+	if (unlikely(p->policy == SCHED_IDLE))
+		return 0;
+
+	if (sysctl_sched_migration_cost == -1)
+		return 1;
+
+	if (sysctl_sched_migration_cost == 0)
+		return 0;
+
+	if (wc_push_hot_task)
+		return 0;
+
+	/*
+	 * Buddy candidates are cache hot:
+	 */
+	if (sched_feat(CACHE_HOT_BUDDY) && this_rq()->nr_running &&
+			(&p->se == p->se.cfs_rq->next ||
+			 &p->se == p->se.cfs_rq->last)) {
+		return 1;
+	}
+
+	delta = now - p->se.exec_start;
+
+	if (delta < (s64)sysctl_sched_migration_cost)
+		return 1;
+
+	return 0;
+}
+
+static int
+cpu_move_task(struct task_struct *p, struct rq *src_rq, struct rq *dst_rq)
+{
+	/*
+	 * We do not migrate tasks that are:
+	 * (1) running (obviously), or
+	 * (2) cannot be migrated to this CPU due to cpus_allowed, or
+	 * (3) are cache-hot on their current CPU.
+	 */
+	if (!cpumask_test_cpu(dst_rq->cpu, tsk_cpus_allowed(p)))
+		return 0;
+
+	if (task_running(src_rq, p))
+		return 0;
+
+	/*
+	 * Aggressive migration if task is cache cold
+	 */
+	if (!cpu_task_hot(p, src_rq->clock_task)) {
+		/*
+		 * Move a task
+		 */
+		deactivate_task(src_rq, p, 0);
+		set_task_cpu(p, dst_rq->cpu);
+		activate_task(dst_rq, p, 0);
+		check_preempt_curr(dst_rq, p, 0);
+		return 1;
+	}
+
+	return 0;
+}
+
+static int __unload_cpu_work(void *data)
+{
+	struct rq *src_rq = data;
+	int src_cpu = cpu_of(src_rq);
+	struct cpu_concurrency_t *cc = &src_rq->concurrency;
+	struct rq *dst_rq = cpu_rq(cc->dst_cpu);
+
+	struct list_head *tasks = &src_rq->cfs_tasks;
+	struct task_struct *p, *n;
+	int pushed = 0;
+	int nr_migrate_break = 1;
+
+	raw_spin_lock_irq(&src_rq->lock);
+
+	/* Make sure the requested cpu hasn't gone down in the meantime */
+	if (unlikely(src_cpu != smp_processor_id() || !cc->unload))
+		goto out_unlock;
+
+	/* Is there any task to move? */
+	if (src_rq->nr_running <= 1)
+		goto out_unlock;
+
+	double_lock_balance(src_rq, dst_rq);
+
+	list_for_each_entry_safe(p, n, tasks, se.group_node) {
+
+		if (!cpu_move_task(p, src_rq, dst_rq))
+			continue;
+
+		pushed++;
+
+		if (pushed >= nr_migrate_break)
+			break;
+	}
+
+	double_unlock_balance(src_rq, dst_rq);
+out_unlock:
+	cc->unload = 0;
+	raw_spin_unlock_irq(&src_rq->lock);
+
+	return 0;
+}
+
+static void unload_cpu(int src_cpu, int dst_cpu)
+{
+	unsigned long flags;
+	struct rq *src_rq = cpu_rq(src_cpu);
+	struct cpu_concurrency_t *cc = &src_rq->concurrency;
+	int unload = 0;
+
+	raw_spin_lock_irqsave(&src_rq->lock, flags);
+
+	if (!cc->unload) {
+		cc->unload = 1;
+		cc->dst_cpu = dst_cpu;
+		unload = 1;
+	}
+
+	raw_spin_unlock_irqrestore(&src_rq->lock, flags);
+
+	if (unload)
+		stop_one_cpu_nowait(src_cpu, __unload_cpu_work, src_rq,
+			&cc->unload_work);
+}
+
+static inline int find_lowest_cc_cpu(struct cpumask *mask)
+{
+	unsigned long cpu_cc, min = ULONG_MAX;
+	int i, lowest = nr_cpu_ids;
+	struct rq *rq;
+
+	for_each_cpu(i, mask) {
+		rq = cpu_rq(i);
+		cpu_cc = get_cpu_concurrency(i) * rq->cpu_power;
+
+		if (cpu_cc < min) {
+			min = cpu_cc;
+			lowest = i;
+		}
+	}
+
+	return lowest;
+}
+
+/*
+ * Find the lowest cc cpu in shielded and nonshielded cpus,
+ * aggressively unload the shielded to the nonshielded
+ */
+void wc_unload(struct cpumask *nonshielded, struct sched_domain *sd)
+{
+	int src_cpu = nr_cpu_ids, dst_cpu, cpu = smp_processor_id();
+	struct cpumask *shielded_cpus = __get_cpu_var(local_cpu_mask);
+	unsigned long cpu_cc, min = ULONG_MAX;
+	struct rq *rq;
+
+	cpumask_andnot(shielded_cpus, sched_domain_span(sd), nonshielded);
+
+	for_each_cpu(cpu, shielded_cpus) {
+		if (cpu_rq(cpu)->nr_running <= 0)
+			continue;
+
+		rq = cpu_rq(cpu);
+		cpu_cc = get_cpu_concurrency(cpu) * rq->cpu_power;
+		if (cpu_cc < min) {
+			min = cpu_cc;
+			src_cpu = cpu;
+		}
+	}
+
+	if (src_cpu >= nr_cpu_ids)
+		return;
+
+	dst_cpu = find_lowest_cc_cpu(nonshielded);
+	if (dst_cpu >= nr_cpu_ids)
+		return;
+
+	if (src_cpu != dst_cpu)
+		unload_cpu(src_cpu, dst_cpu);
 }
 
 #endif /* SMP */
