@@ -11452,10 +11452,19 @@ static int intel_crtc_set_display(struct drm_crtc *crtc,
 				(pipe_stat & PIPE_ENABLE(PIPE_C) ||
 				(disp->update_flag &
 					DRM_MODE_SET_DISPLAY_UPDATE_ZORDER)))) {
+		int result;
 		intel_update_maxfifo(dev_priv, crtc, false);
 		dev_priv->wait_vbl = true;
+		/*
+		* Sometimes vblank is off at this time. Call
+		* drm_crtc_vblank_get to update vblcount to latest
+		* before vblcount is used, or wait_for_vblank may be missed.
+		*/
+		result = drm_crtc_vblank_get(crtc);
 		dev_priv->vblcount =
 			atomic_read(&dev->vblank[intel_crtc->pipe].count);
+		if (!result)
+			drm_crtc_vblank_put(crtc);
 	}
 
 
