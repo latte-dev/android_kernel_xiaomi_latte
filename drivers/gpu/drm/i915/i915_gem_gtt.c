@@ -24,6 +24,7 @@
  */
 
 #include <linux/seq_file.h>
+#include <linux/stop_machine.h>
 #include <drm/drmP.h>
 #include <drm/i915_drm.h>
 #include "i915_drv.h"
@@ -2196,6 +2197,27 @@ static void ggtt_bind_vma(struct i915_vma *vma,
 	}
 }
 
+struct ggtt_bind_vma__cb {
+	struct i915_vma *vma;
+	enum i915_cache_level cache_level;
+	u32 flags;
+};
+
+static int ggtt_bind_vma__cb(void *_arg)
+{
+	struct ggtt_bind_vma__cb *arg = _arg;
+	ggtt_bind_vma(arg->vma, arg->cache_level, arg->flags);
+	return 0;
+}
+
+static void ggtt_bind_vma__BKL(struct i915_vma *vma,
+			      enum i915_cache_level cache_level,
+			      u32 flags)
+{
+	struct ggtt_bind_vma__cb arg = { vma, cache_level, flags };
+	stop_machine(ggtt_bind_vma__cb, &arg, NULL);
+}
+
 static void ggtt_unbind_vma(struct i915_vma *vma)
 {
 	struct drm_device *dev = vma->vm->dev;
@@ -2748,6 +2770,9 @@ static struct i915_vma *__i915_gem_vma_create(struct drm_i915_gem_object *obj,
 		if (i915_is_ggtt(vm)) {
 			vma->unbind_vma = ggtt_unbind_vma;
 			vma->bind_vma = ggtt_bind_vma;
+
+			if (IS_CHERRYVIEW(vm->dev))
+				vma->bind_vma = ggtt_bind_vma__BKL;
 		} else {
 			vma->unbind_vma = ppgtt_unbind_vma;
 			vma->bind_vma = ppgtt_bind_vma;
