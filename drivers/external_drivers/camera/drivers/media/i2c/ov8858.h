@@ -337,8 +337,8 @@ static struct ov8858_vcm ov8858_vcms[] = {
 		.t_vcm_timing = dw9718_t_vcm_timing,
 	},
 	[OV8858_ID_DEFAULT] = {
-		.power_up = vcm_power_up,
-		.power_down = vcm_power_down,
+		.power_up = NULL,
+		.power_down = NULL,
 	},
 };
 

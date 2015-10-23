@@ -1672,7 +1672,11 @@ static int __update_ov8858_device_settings(struct ov8858_device *dev,
 					   u16 sensor_id)
 {
 	if (sensor_id == OV8858_CHIP_ID)
+#ifdef CONFIG_PLATFORM_BTNS
+		dev->vcm_driver = &ov8858_vcms[OV8858_ID_DEFAULT];
+#else
 		dev->vcm_driver = &ov8858_vcms[OV8858_SUNNY];
+#endif
 	else
 		return -ENODEV;
 
