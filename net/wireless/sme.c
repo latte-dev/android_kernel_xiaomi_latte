@@ -19,7 +19,6 @@
 #include "nl80211.h"
 #include "reg.h"
 #include "rdev-ops.h"
-
 /*
  * Software SME in cfg80211, using auth/assoc/deauth calls to the
  * driver. This is is for implementing nl80211's connect/disconnect
@@ -952,7 +951,10 @@ int cfg80211_connect(struct cfg80211_registered_device *rdev,
 	}
 
 	wdev->connect_keys = connkeys;
-	memcpy(wdev->ssid, connect->ssid, connect->ssid_len);
+	if (connect->ssid_len <= IEEE80211_MAX_SSID_LEN)
+		memcpy(wdev->ssid, connect->ssid, connect->ssid_len);
+	else
+		return -EINVAL;
 	wdev->ssid_len = connect->ssid_len;
 
 	if (!rdev->ops->connect)
