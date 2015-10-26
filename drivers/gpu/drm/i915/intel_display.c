@@ -10760,7 +10760,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 	/* If page flip event flag is set, primary should be enabled */
 	if (page_flip_flags & DRM_MODE_PAGE_FLIP_EVENT) {
 		intel_crtc->pri_update = true;
-		intel_crtc->reg.cntr = DISPLAY_PLANE_ENABLE;
+		intel_crtc->reg.cntr |= DISPLAY_PLANE_ENABLE;
 		dev_priv->pipe_plane_stat |=
 			VLV_UPDATEPLANE_STAT_PRIM_PER_PIPE(intel_crtc->pipe);
 	}
