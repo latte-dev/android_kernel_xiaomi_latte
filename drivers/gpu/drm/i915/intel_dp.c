@@ -4487,6 +4487,7 @@ void
 intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 {
 	struct intel_encoder *intel_encoder = &dp_to_dig_port(intel_dp)->base;
+	struct drm_device *dev = intel_dp_to_dev(intel_dp);
 	u8 sink_irq_vector;
 	u8 link_status[DP_LINK_STATUS_SIZE];
 	u8 old_sink_count = intel_dp->sink_count;
@@ -4567,10 +4568,16 @@ intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 	    (!drm_dp_channel_eq_ok(link_status, intel_dp->lane_count))) {
 		DRM_DEBUG_KMS("%s: channel EQ not ok, retraining\n",
 			      intel_encoder->base.name);
-		if (intel_dp_start_link_train(intel_dp))
-			intel_dp_complete_link_train(intel_dp);
 
-		intel_dp_stop_link_train(intel_dp);
+		if (IS_CHERRYVIEW(dev)) {
+			intel_dp_update_simulate_detach_info(intel_dp);
+			*perform_full_detect = true;
+		} else {
+			if (intel_dp_start_link_train(intel_dp))
+				intel_dp_complete_link_train(intel_dp);
+
+			intel_dp_stop_link_train(intel_dp);
+		}
 	}
 }
 
