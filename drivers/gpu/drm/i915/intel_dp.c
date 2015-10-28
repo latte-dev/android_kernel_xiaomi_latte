@@ -144,8 +144,7 @@ static struct edid *
 intel_dp_get_edid(struct drm_connector *connector, struct i2c_adapter *adapter);
 static int intel_dp_write_test_reply(struct intel_dp *intel_dp, uint8_t reply);
 
-static int
-intel_dp_max_link_bw(struct intel_dp *intel_dp)
+int intel_dp_max_link_bw(struct intel_dp *intel_dp)
 {
 	int max_link_bw = intel_dp->dpcd[DP_MAX_LINK_RATE];
 	struct drm_device *dev = intel_dp->attached_connector->base.dev;
@@ -4821,20 +4820,6 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 
 	if (intel_encoder->type != INTEL_OUTPUT_EDP)
 		intel_encoder->type = INTEL_OUTPUT_DISPLAYPORT;
-
-	if (IS_CHERRYVIEW(dev) &&
-			intel_encoder->type == INTEL_OUTPUT_DISPLAYPORT) {
-		/* TODO: Need to test connected boot scenario once platform
-		 * patches are ready. This path is tested on reworked-RVP only.
-		 */
-		if (intel_encoder->connectors_active &&
-						crtc && crtc->enabled) {
-			DRM_DEBUG_KMS("Disabling crtc %c for upfront link training\n",
-					pipe_name(intel_crtc->pipe));
-			intel_crtc_control(crtc, false);
-		}
-		chv_upfront_link_train(dev, intel_dp, intel_crtc);
-	}
 
 	status = connector_status_connected;
 

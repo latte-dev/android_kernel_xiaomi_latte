@@ -15222,13 +15222,9 @@ start_link_train:
 	tmp_link_bw = intel_dp->link_bw;
 
 	/* Initialize with Max Link rate & lane count supported by panel */
-	intel_dp->link_bw =  intel_dp->dpcd[DP_MAX_LINK_RATE];
+	intel_dp->link_bw =  intel_dp_max_link_bw(intel_dp);
 	intel_dp->lane_count = intel_dp->dpcd[DP_MAX_LANE_COUNT] &
 					DP_MAX_LANE_COUNT_MASK;
-
-	/* CHV does not support HBR2 */
-	if (intel_dp->link_bw == DP_LINK_BW_5_4)
-		intel_dp->link_bw = DP_LINK_BW_2_7;
 
 	do {
 		/* Find port clock from link_bw */
@@ -15273,14 +15269,20 @@ start_link_train:
 		intel_display_power_put(dev_priv, power_domain);
 		intel_display_power_get(dev_priv, power_domain);
 
-		/* Go down to the next level and retry link training */
-		if (intel_dp->lane_count == 4) {
+		/*
+		 * Per Spec, retry all link rates at current lane count
+		 * if link training failed for all rates then reduce the
+		 * lane count and start from max link rate again till
+		 * we reach lowest link rate and least lane count.
+		 */
+		if (intel_dp->link_bw == DP_LINK_BW_2_7)
+			intel_dp->link_bw = DP_LINK_BW_1_62;
+		else if (intel_dp->lane_count == 4) {
 			intel_dp->lane_count = 2;
+			intel_dp->link_bw =  intel_dp_max_link_bw(intel_dp);
 		} else if (intel_dp->lane_count == 2) {
 			intel_dp->lane_count = 1;
-		} else if (intel_dp->link_bw == DP_LINK_BW_2_7) {
-			intel_dp->link_bw = DP_LINK_BW_1_62;
-			intel_dp->lane_count = 4;
+			intel_dp->link_bw =  intel_dp_max_link_bw(intel_dp);
 		} else {
 			/* Tried all combinations, so exit */
 			break;
