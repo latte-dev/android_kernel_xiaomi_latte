@@ -419,27 +419,57 @@ int dsi_send_dcs_cmd(struct intel_dsi *intel_dsi, int channel,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	enum pipe pipe = intel_crtc->pipe;
-	u32 cmd_addr;
+	u32 cmd_addr, cmd_addr_2;
 
-	if (I915_READ(MIPI_COMMAND_ADDRESS(pipe)) & COMMAND_VALID)
-		return -EBUSY;
 
 	if ((I915_READ(PIPECONF(pipe)) & PIPECONF_MIPI_DSR_ENABLE) == 0)
+		return -EBUSY;
+
+	if (intel_dsi->dual_link)
+		pipe = PIPE_A;
+
+	if (I915_READ(MIPI_COMMAND_ADDRESS(pipe)) & COMMAND_VALID)
 		return -EBUSY;
 
 	if (intel_dsi->cmd_buff == NULL)
 		return -ENOMEM;
 
 	memcpy(intel_dsi->cmd_buff, data, len);
-
 	cmd_addr = intel_dsi->cmd_buff_phy_addr & COMMAND_MEM_ADDRESS_MASK;
 	cmd_addr |= COMMAND_VALID;
+	cmd_addr_2 = 0;
 
 	if (pipe_render)
 		cmd_addr |= MEMORY_WRITE_DATA_FROM_PIPE_RENDERING;
 
+	if (intel_dsi->dual_link) {
+		pipe = PIPE_B;
+
+		if (I915_READ(MIPI_COMMAND_ADDRESS(pipe)) & COMMAND_VALID)
+			return -EBUSY;
+
+		if (intel_dsi->cmd_buff_2 == NULL)
+			return -ENOMEM;
+
+		memcpy(intel_dsi->cmd_buff_2, data, len);
+		cmd_addr_2 = intel_dsi->cmd_buff_phy_addr_2 &
+						COMMAND_MEM_ADDRESS_MASK;
+		cmd_addr_2 |= COMMAND_VALID;
+
+		if (pipe_render)
+			cmd_addr_2 |= MEMORY_WRITE_DATA_FROM_PIPE_RENDERING;
+
+		pipe = PIPE_A;
+	}
+
 	I915_WRITE(MIPI_COMMAND_LENGTH(pipe), len);
 	I915_WRITE(MIPI_COMMAND_ADDRESS(pipe), cmd_addr);
+
+	if (intel_dsi->dual_link) {
+		pipe = PIPE_B;
+		I915_WRITE(MIPI_COMMAND_LENGTH(pipe), len);
+		I915_WRITE(MIPI_COMMAND_ADDRESS(pipe), cmd_addr_2);
+	}
 
 	return 0;
 }

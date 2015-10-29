@@ -523,6 +523,10 @@ struct intel_dsi {
 	void *cmd_buff;
 	dma_addr_t cmd_buff_phy_addr;
 
+	struct drm_i915_gem_object *gem_obj_2;
+	void *cmd_buff_2;
+	dma_addr_t cmd_buff_phy_addr_2;
+
 	struct drm_i915_gem_object *cursor_obj;
 	void *cursor_buff[4];
 };

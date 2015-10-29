@@ -443,6 +443,31 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	}
 
 
+	if ((intel_dsi->dual_link) && (intel_dsi->gem_obj_2 == NULL) &&
+						is_cmd_mode(intel_dsi)) {
+		intel_dsi->gem_obj_2 = i915_gem_alloc_object(dev, 4096);
+		if (intel_dsi->gem_obj_2 == NULL) {
+			DRM_ERROR("Failed to allocate seqno page\n");
+			return;
+		}
+
+		ret = i915_gem_object_set_cache_level(intel_dsi->gem_obj_2,
+							I915_CACHE_LLC);
+		if (ret)
+			goto err_unref_2;
+
+		ret = i915_gem_obj_ggtt_pin(intel_dsi->gem_obj_2, 4096, 0);
+		if (ret) {
+err_unref_2:
+			drm_gem_object_unreference(&intel_dsi->gem_obj_2->base);
+			return;
+		}
+
+		intel_dsi->cmd_buff_2 =
+				kmap(sg_page(intel_dsi->gem_obj_2->pages->sgl));
+		intel_dsi->cmd_buff_phy_addr_2 = page_to_phys(
+				sg_page(intel_dsi->gem_obj_2->pages->sgl));
+	}
 	/* Panel Enable */
 	if (intel_dsi->dev.dev_ops->power_on)
 		intel_dsi->dev.dev_ops->power_on(&intel_dsi->dev);
@@ -833,6 +858,15 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 		drm_gem_object_unreference(&intel_dsi->cursor_obj->base);
 		mutex_unlock(&dev->struct_mutex);
 		intel_dsi->cursor_obj = NULL;
+	}
+
+	if ((intel_dsi->dual_link) && (intel_dsi->gem_obj_2 != NULL)) {
+		kunmap(intel_dsi->cmd_buff_2);
+		i915_gem_object_ggtt_unpin(intel_dsi->gem_obj_2);
+		mutex_lock(&dev->struct_mutex);
+		drm_gem_object_unreference(&intel_dsi->gem_obj_2->base);
+		mutex_unlock(&dev->struct_mutex);
+		intel_dsi->gem_obj_2 = NULL;
 	}
 }
 
@@ -1475,6 +1509,10 @@ bool intel_dsi_init(struct drm_device *dev)
 	intel_dsi->cursor_buff[3] = NULL;
 	intel_dsi->cursor_obj = NULL;
 
+
+	intel_dsi->cmd_buff_2 = NULL;
+	intel_dsi->cmd_buff_phy_addr_2 = 0;
+	intel_dsi->gem_obj_2 = NULL;
 
 	intel_encoder->cloneable = 0;
 	drm_connector_init(dev, connector, &intel_dsi_connector_funcs,
