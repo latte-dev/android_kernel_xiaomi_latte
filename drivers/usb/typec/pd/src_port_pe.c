@@ -34,13 +34,15 @@
 	pr_debug(LOG_TAG":%s:"format"\n", __func__, ##__VA_ARGS__)
 #define log_err(format, ...) \
 	pr_err(LOG_TAG":%s:"format"\n", __func__, ##__VA_ARGS__)
+#define log_warn(format, ...)	\
+	pr_warn(LOG_TAG":%s:"format"\n", __func__, ##__VA_ARGS__)
 
 #define MAX_CMD_RETRY	50
 #define TYPEC_SEND_SRC_CAP_TIME	200 /* 200 mSec */
 #define TYPEC_SRC_ACTIVITY_TIME	40 /* 40 mSec */
 
-#define VOLT_TO_SRC_CAP_DATA_OBJ(x)	(x / 50)
-#define CURRENT_TO_SRC_CAP_DATA_OBJ(x)	(x / 10)
+#define VOLT_TO_CAP_DATA_OBJ(x)		(x / 50)
+#define CURRENT_TO_CAP_DATA_OBJ(x)	(x / 10)
 
 #define TYPEC_SENDER_RESPONSE_TIMER     30 /* min: 24mSec; max: 30mSec */
 #define TYPEC_PS_SRC_ON_TIMER		480 /* min: 390mSec; max: 480mSec */
@@ -150,8 +152,8 @@ static int src_pe_send_srccap_cmd(struct src_port_pe *src_pe)
 		return ret;
 	}
 	memset(&pdo, 0, sizeof(struct pd_fixed_supply_pdo));
-	pdo.max_cur = CURRENT_TO_SRC_CAP_DATA_OBJ(pcap.ma); /* In 10mA units */
-	pdo.volt = VOLT_TO_SRC_CAP_DATA_OBJ(pcap.mv); /* In 50mV units */
+	pdo.max_cur = CURRENT_TO_CAP_DATA_OBJ(pcap.ma); /* In 10mA units */
+	pdo.volt = VOLT_TO_CAP_DATA_OBJ(pcap.mv); /* In 50mV units */
 	pdo.peak_cur = 0; /* No peek current supported */
 	pdo.dual_role_pwr = 1; /* Dual pwr role supported */
 	pdo.data_role_swap = 1; /*Dual data role*/
@@ -601,6 +603,81 @@ static void src_pe_handle_snk_cap_rcv(struct src_port_pe *src_pe,
 			snk_cap->ext_powered);
 }
 
+static void srcpe_send_default_cap(struct src_port_pe *src)
+{
+	struct pd_sink_fixed_pdo pdo = { 0 };
+
+	/* setting default pdo as vsafe5V with ma = 0 */
+	pdo.max_cur = CURRENT_TO_CAP_DATA_OBJ(0);
+	pdo.volt = VOLT_TO_CAP_DATA_OBJ(5000);
+	policy_send_packet(&src->p, &pdo, 4,
+					PD_DATA_MSG_SINK_CAP,
+					PE_EVT_SEND_SNK_CAP);
+}
+
+static int srcpe_handle_snk_cap_request(struct src_port_pe *src)
+{
+	int ret = 0;
+	int i;
+	struct power_caps pcaps;
+	struct pd_sink_fixed_pdo pdo[MAX_NUM_DATA_OBJ] = { {0} };
+
+	ret = policy_get_snkpwr_caps(&src->p, &pcaps);
+	if (ret < 0) {
+		log_warn("Couldn't get the sink power caps %d\n", ret);
+		srcpe_send_default_cap(src);
+		goto error;
+	}
+
+	/**
+	 * As per PD v1.1 spec except first pdo, all other Fixed Supply Power
+	 * Data Objects shall set bits 29...20 to zero.
+	 */
+	if (pcaps.n_cap > 0) {
+		/*
+		 * FIXME: DPM should provide info on USB capable and
+		 * higher power support required
+		 */
+		pdo[0].data_role_swap = 1;
+		pdo[0].usb_comm = 1;
+		pdo[0].ext_powered = 0;
+		pdo[0].higher_cap = 1;
+		pdo[0].dual_role_pwr = 1;
+
+		if (pcaps.n_cap > MAX_NUM_DATA_OBJ)
+			pcaps.n_cap = MAX_NUM_DATA_OBJ;
+
+		log_warn("DPM needs to be fixed to provide CAPs\n");
+	} else {
+		log_dbg("No PDO's from dpm setting default vasafe5v\n");
+		srcpe_send_default_cap(src);
+		goto error;
+	}
+
+	for (i = 0; i < pcaps.n_cap; i++) {
+		pdo[i].max_cur = CURRENT_TO_CAP_DATA_OBJ(pcaps.pcap[i].ma);
+		pdo[i].volt = VOLT_TO_CAP_DATA_OBJ(pcaps.pcap[i].mv);
+		pdo[i].supply_type = pcaps.pcap[i].psy_type;
+	}
+
+	ret = policy_send_packet(&src->p, pdo, pcaps.n_cap * 4,
+					PD_DATA_MSG_SINK_CAP,
+					PE_EVT_SEND_SNK_CAP);
+	if (ret < 0) {
+		log_err("Error in sending packet!\n");
+		goto error;
+	}
+	log_dbg("PD_DATA_MSG_SINK_CAP sent\n");
+
+error:
+	return ret;
+}
+
+static int srcpe_handle_src_cap_request(struct src_port_pe *src)
+{
+	return src_pe_send_srccap_cmd(src);
+}
+
 static int
 src_pe_rcv_pkt(struct policy *srcp, struct pd_packet *pkt, enum pe_event evt)
 {
@@ -643,6 +720,12 @@ src_pe_rcv_pkt(struct policy *srcp, struct pd_packet *pkt, enum pe_event evt)
 		}
 		src_pe->got_snk_caps = 1;
 		src_pe_handle_snk_cap_rcv(src_pe, pkt);
+		break;
+	case PE_EVT_RCVD_GET_SINK_CAP:
+		ret = srcpe_handle_snk_cap_request(src_pe);
+		break;
+	case PE_EVT_RCVD_GET_SRC_CAP:
+		ret = srcpe_handle_src_cap_request(src_pe);
 		break;
 	case PE_EVT_RCVD_DR_SWAP:
 		src_pe_handle_rcv_dr_swap(src_pe);
