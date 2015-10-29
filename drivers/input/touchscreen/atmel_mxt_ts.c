@@ -2639,22 +2639,20 @@ static bool mxt_fw_is_latest(struct mxt_data *data, struct mxt_info *info,
 
 static int mxt_check_firmware(struct mxt_data *data, const struct firmware *fw)
 {
-	int error = 0;
-	bool retry = false;
+	int error;
 	bool alt_bootloader_addr = false;
 	struct i2c_client *client = data->client;
 	struct mxt_info info = { 0 };
 
-read_info:
 	error = __mxt_read_reg(client, 0, sizeof(struct mxt_info), &info);
-	if (error || (!retry && !mxt_fw_is_latest(data, &info, fw))) {
+	if (error || !mxt_fw_is_latest(data, &info, fw)) {
 		mxt_force_bootloader(data);
 retry_bootloader:
 		error = mxt_probe_bootloader(data, alt_bootloader_addr);
 		if (error) {
 			if (alt_bootloader_addr) {
 				/* Chip is not in appmode or bootloader mode */
-				return error;
+				goto out;
 			}
 			dev_info(&client->dev, "Trying alternate bootloader address\n");
 			alt_bootloader_addr = true;
@@ -2669,13 +2667,11 @@ retry_bootloader:
 			msleep(MXT_FW_RESET_TIME);
 		} else
 			dev_err(&client->dev, "Firmware update failed\n");
-
-		retry = true;
-		goto read_info;
+		return error;
 	}
-	if (error)
-		dev_err(&client->dev, "Check firmware err %d\n", error);
 
+out:
+	release_firmware(fw);
 	return error;
 }
 
