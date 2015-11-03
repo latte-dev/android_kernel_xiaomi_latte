@@ -676,6 +676,7 @@ struct intel_dp {
 	enum hdmi_force_audio force_audio;
 	uint32_t color_range;
 	bool color_range_auto;
+	bool allow_dpcd;
 	uint8_t link_bw;
 	uint8_t lane_count;
 	uint8_t sink_count;

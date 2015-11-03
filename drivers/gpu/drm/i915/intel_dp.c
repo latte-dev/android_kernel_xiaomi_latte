@@ -3087,6 +3087,7 @@ static void chv_pre_enable_dp(struct intel_encoder *encoder)
 	if (is_edp(intel_dp))
 		vlv_init_panel_power_sequencer(intel_dp);
 
+	intel_dp->allow_dpcd = true;
 	intel_enable_dp(encoder);
 
 	vlv_wait_port_ready(dev_priv, dport);
@@ -4126,6 +4127,7 @@ intel_dp_link_down(struct intel_dp *intel_dp)
 
 	intel_dp_stop_link_train(intel_dp);
 	intel_dp->has_fast_link_train = false;
+	intel_dp->allow_dpcd = false;
 
 	if (HAS_PCH_CPT(dev) && (IS_GEN7(dev) || port != PORT_A)) {
 		DP &= ~DP_LINK_TRAIN_MASK_CPT;
@@ -4475,6 +4477,15 @@ static void intel_dp_update_simulate_detach_info(struct intel_dp *intel_dp)
 }
 
 /*
+ * Required DPCD registers should be read
+ * within 100ms from short pulse generation. so
+ * retry for a max of 80ms, if we are blocked
+ * for so long better to fail, since crossing
+ * the limit will result in failure as well
+ */
+#define MAX_SHORT_PULSE_RETRY_COUNT 8
+
+/*
  * According to DP spec
  * 5.1.2:
  *  1. Read DPCD
@@ -4493,14 +4504,19 @@ intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 	u8 old_sink_count = intel_dp->sink_count;
 	u8 old_lane_count = intel_dp->dpcd[DP_MAX_LANE_COUNT];
 	bool ret;
+	uint8_t counter = MAX_SHORT_PULSE_RETRY_COUNT;
 
 	*perform_full_detect = false;
 	intel_dp->compliance_test_active = 0;
 	intel_dp->compliance_test_type = 0;
 	intel_dp->compliance_test_data = 0;
 
+	while (!intel_dp->allow_dpcd && counter-- > 0)
+		mdelay(10);
+
+	DRM_DEBUG_KMS("\n");
 	/* Try to read receiver status if the link appears to be up */
-	if (!intel_dp_get_link_status(intel_dp, link_status)) {
+	if (counter == 0 || !intel_dp_get_link_status(intel_dp, link_status)) {
 		*perform_full_detect = true;
 		return;
 	}
