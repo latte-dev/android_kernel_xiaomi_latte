@@ -159,7 +159,7 @@ static const struct drm_display_mode drm_dmt_modes[] = {
 		   DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_PVSYNC) },
 	/* 640x480@60Hz */
 	{ DRM_MODE("640x480", DRM_MODE_TYPE_DRIVER, 25175, 640, 656,
-		   752, 800, 0, 480, 489, 492, 525, 0,
+		   752, 800, 0, 480, 490, 492, 525, 0,
 		   DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC) },
 	/* 640x480@72Hz */
 	{ DRM_MODE("640x480", DRM_MODE_TYPE_DRIVER, 31500, 640, 664,
