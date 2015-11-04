@@ -1040,9 +1040,12 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 		      max_lane_count, bws[max_clock],
 		      adjusted_mode->crtc_clock);
 
-	/* Walk through all bpp values. Luckily they're all nicely spaced with 2
-	 * bpc in between. */
-	bpp = pipe_config->pipe_bpp;
+	if (intel_dp->compliance_test_data == INTEL_DP_RESOLUTION_FAILSAFE)
+		bpp = 18;
+	else {
+		bpp = pipe_config->pipe_bpp;
+	}
+
 	if (is_edp(intel_dp)) {
 		edid = intel_dp_get_edid(drm_connector, &intel_dp->aux.ddc);
 
@@ -1073,6 +1076,10 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 		}
 	}
 
+	/*
+	 * Walk through all bpp values. Luckily they're all nicely spaced with 2
+	 * bpc in between.
+	 */
 	for (; bpp >= 6*3; bpp -= 2*3) {
 		mode_rate = intel_dp_link_required(adjusted_mode->crtc_clock,
 						   bpp);
@@ -4936,6 +4943,15 @@ static int intel_dp_get_modes(struct drm_connector *connector)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	enum intel_display_power_domain power_domain;
 	int ret;
+
+	if (intel_dp->compliance_test_data == INTEL_DP_RESOLUTION_FAILSAFE) {
+		int count;
+
+		count = drm_add_modes_noedid(connector, 640, 480);
+		drm_set_preferred_mode(connector, 640, 480);
+		DRM_ERROR("Using fail mode since edid is corrupt\n");
+		return count;
+	}
 
 	/* We should parse the EDID data and find out if it has an audio sink
 	 */
