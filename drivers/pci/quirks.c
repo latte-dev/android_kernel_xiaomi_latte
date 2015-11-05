@@ -2912,22 +2912,39 @@ static void quirk_intel_ntb(struct pci_dev *dev)
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x0e08, quirk_intel_ntb);
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x0e0d, quirk_intel_ntb);
 
+#define BOOT_MODE_CHARGER "androidboot.mode=charger"
 
-/*PCIe port 0 on Cherryview should support runtime PM*/
-static void quirk_pcie_enable_rtpm(struct pci_dev *dev)
+static bool is_it_charger_mode(void)
 {
-	dev_info(&dev->dev, "enable runtime PM\n");
-	pm_runtime_put_noidle(&dev->dev);
-	pm_runtime_allow(&dev->dev);
+	if (strstr(saved_command_line, BOOT_MODE_CHARGER))
+		return true;
+	else
+		return false;
 }
-DECLARE_PCI_FIXUP_ENABLE(PCI_VENDOR_ID_INTEL,
-	PCI_DEVICE_ID_INTEL_CHV_PCIe_0, quirk_pcie_enable_rtpm);
 
 static int pci_disable_dev_pme_poll(struct pci_dev *pdev, void *data)
 {
 	pdev->pme_poll = false;
 	return 0;
 }
+
+/*PCIe port 0 on Cherryview should support runtime PM*/
+static void quirk_pcie_enable_rtpm(struct pci_dev *dev)
+{
+	bool charger_mode = false;
+
+	dev_info(&dev->dev, "enable runtime PM\n");
+	/* if boot mode is charger OS ignore the children for PCIE0 */
+	charger_mode = is_it_charger_mode();
+	if (charger_mode) {
+		pm_suspend_ignore_children(&dev->dev, true);
+		pci_walk_bus(dev->subordinate, pci_disable_dev_pme_poll, NULL);
+	}
+	pm_runtime_put_noidle(&dev->dev);
+	pm_runtime_allow(&dev->dev);
+}
+DECLARE_PCI_FIXUP_ENABLE(PCI_VENDOR_ID_INTEL,
+	PCI_DEVICE_ID_INTEL_CHV_PCIe_0, quirk_pcie_enable_rtpm);
 
 /*PCIEe port 1 on Cherryview should support runtime PM and ignore children*/
 static void quirk_pcie_enable_rtpm_ignore_children(struct pci_dev *dev)
