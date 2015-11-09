@@ -1625,7 +1625,7 @@ retry:
 
 	/*
 	 * FIXME!
-	 * only IMX135 for Saltbay use this algorithm
+	 * only IMX135 for Saltbay and IMX227 use this algorithm
 	 */
 	if (idx == -1 && again == true && dev->new_res_sel_method) {
 		again = false;
@@ -2099,6 +2099,7 @@ static int __update_imx_device_settings(struct imx_device *dev, u16 sensor_id)
 		dev->mode_tables = &imx_sets[IMX227_SAND];
 		dev->vcm_driver = NULL;
 		dev->otp_driver = &imx_otps[IMX227_SAND];
+		dev->new_res_sel_method = true;
 		return 0;
 	case IMX132_ID:
 		dev->mode_tables = &imx_sets[IMX132_SALTBAY];
