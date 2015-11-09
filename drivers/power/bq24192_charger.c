@@ -218,6 +218,9 @@
 #define FULL_THREAD_JIFFIES		(HZ * 30) /* 30sec */
 #define TEMP_THREAD_JIFFIES		(HZ * 30) /* 30sec */
 
+/* retry task worker timeout jiffy */
+#define RETRY_TASK_JIFFIES		msecs_to_jiffies(100) /* 100msec */
+
 #define BATT_TEMP_MAX_DEF	60	/* 60 degrees */
 #define BATT_TEMP_MIN_DEF	0
 
@@ -883,11 +886,10 @@ static int reset_wdt_timer(struct bq24192_chip *chip)
 /*
  *This function will modify the VINDPM as per the battery voltage
  */
-static int bq24192_modify_vindpm(u8 vindpm)
+static int bq24192_modify_vindpm(struct bq24192_chip *chip, u8 vindpm)
 {
 	int ret;
 	u8 vindpm_prev;
-	struct bq24192_chip *chip = i2c_get_clientdata(bq24192_client);
 
 	dev_info(&chip->client->dev, "%s\n", __func__);
 
@@ -1049,7 +1051,14 @@ int bq24192_vbus_enable(void)
 
 	if ((chip->chip_type == BQ24296) ||
 		(chip->chip_type == BQ24297)) {
+		mutex_lock(&chip->event_lock);
 		ret = bq24192_turn_otg_vbus(chip, true);
+		mutex_unlock(&chip->event_lock);
+		if (ret < 0) {
+			dev_warn(&chip->client->dev,
+				"%s failed to turn on vbus (%d)\n",
+				__func__, ret);
+		}
 	} else {
 		mutex_lock(&chip->event_lock);
 		ret = program_timers(chip,
@@ -1078,8 +1087,16 @@ int bq24192_vbus_disable(void)
 	chip->vbus_enable = false;
 
 	if ((chip->chip_type == BQ24296) ||
-		(chip->chip_type == BQ24297))
+		(chip->chip_type == BQ24297)) {
+		mutex_lock(&chip->event_lock);
 		ret = bq24192_turn_otg_vbus(chip, false);
+		mutex_unlock(&chip->event_lock);
+		if (ret < 0) {
+			dev_warn(&chip->client->dev,
+				"%s failed to turn off vbus (%d)\n",
+				__func__, ret);
+		}
+	}
 
 	return ret;
 }
@@ -1908,10 +1925,10 @@ static irqreturn_t bq24192_irq_thread(int irq, void *devid)
 }
 
 
-static int bq24192_setup_vindpm(struct bq24192_chip *chip)
+static int bq24192_get_vindpm(struct bq24192_chip *chip, u8 *dpm)
 {
 	u8 vindpm = INPUT_SRC_VOLT_LMT_DEF;
-	int vbatt, ret;
+	int vbatt;
 
 	vbatt = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_NOW);
 	if (vbatt == -ENODEV || vbatt == -EINVAL) {
@@ -1946,14 +1963,10 @@ static int bq24192_setup_vindpm(struct bq24192_chip *chip)
 		else
 			vindpm = INPUT_SRC_VOLT_LMT_468;
 
-		mutex_lock(&chip->event_lock);
-		ret = bq24192_modify_vindpm(vindpm);
-		if (ret < 0)
-			dev_err(&chip->client->dev, "%s failed\n", __func__);
-		mutex_unlock(&chip->event_lock);
 	}
 
 end:
+	*dpm = vindpm;
 	return vbatt;
 }
 
@@ -1964,13 +1977,20 @@ static void bq24192_task_worker(struct work_struct *work)
 	int ret, jiffy = CHARGER_TASK_JIFFIES, vbatt;
 	static int prev_health = POWER_SUPPLY_HEALTH_GOOD;
 	int curr_health;
+	u8 dpm;
 
 	dev_info(&chip->client->dev, "%s\n", __func__);
 
+	vbatt = bq24192_get_vindpm(chip, &dpm);
+	if (!mutex_trylock(&chip->event_lock)) {
+		/* schedule the task worker, as the mutex is held already */
+		schedule_delayed_work(&chip->chrg_task_wrkr,
+						RETRY_TASK_JIFFIES);
+		return;
+	}
+
 	/* Reset the WDT */
-	mutex_lock(&chip->event_lock);
 	ret = reset_wdt_timer(chip);
-	mutex_unlock(&chip->event_lock);
 	if (ret < 0)
 		dev_warn(&chip->client->dev, "WDT reset failed:\n");
 
@@ -1980,11 +2000,13 @@ static void bq24192_task_worker(struct work_struct *work)
 	 */
 	if (chip->boost_mode) {
 		jiffy = CHARGER_HOST_JIFFIES;
+		mutex_unlock(&chip->event_lock);
 		goto sched_task_work;
 	}
 
 	/* Modify the VINDPM */
-	vbatt = bq24192_setup_vindpm(chip);
+	bq24192_modify_vindpm(chip, dpm);
+	mutex_unlock(&chip->event_lock);
 
 	/*
 	 * BQ driver depends upon the charger interrupt to send notification
@@ -2104,6 +2126,7 @@ static int bq24192_usb_otg_enable(struct usb_phy *phy, int on)
 	chip->vbus_enable = on;
 	ret =  bq24192_turn_otg_vbus(chip, on);
 	mutex_unlock(&chip->event_lock);
+
 	if (ret < 0)
 		dev_err(&chip->client->dev, "VBUS mode(%d) failed\n", on);
 
