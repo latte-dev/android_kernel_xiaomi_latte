@@ -208,7 +208,7 @@ static void silead_ts_read_data(struct i2c_client *client)
 		data->pos[i - 1].x = x;
 		data->pos[i - 1].y = y;
 
-		dev_dbg(dev, "x=%d y=%d id=%d\n", x, y, id);
+		dev_dbg(dev, "x=%d y=%d id=%d, fw_name=%s\n", x, y, id, data->fw_name);
 	}
 
 	input_mt_assign_slots(data->input_dev, data->slots, data->pos, touch_nr);
@@ -217,6 +217,14 @@ static void silead_ts_read_data(struct i2c_client *client)
 		x = data->pos[i].x;
 		y = data->pos[i].y;
 		id = data->slots[i];
+/* the i8880 with the di_xian panel firmware is badly broken for multi touch
+ * We test for the firmware version and don't use the data slot information
+ * but instead use the touch number
+ */
+		if(strstr(data->fw_name,"di_xian") != NULL){
+			dev_dbg(dev, "%s in use no data slot support. using touch_nr\n", data->fw_name);
+			id = i;
+		}
 
 		if (data->xy_swap)
 			silead_ts_report_touch(data,
