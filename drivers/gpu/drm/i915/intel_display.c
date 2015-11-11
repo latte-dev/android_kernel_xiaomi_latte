@@ -7208,6 +7208,17 @@ static void i9xx_set_pipeconf(struct intel_crtc *intel_crtc)
 
 	/* only g4x and later have fancy bpc/dither controls */
 	if (IS_G4X(dev) || IS_VALLEYVIEW(dev)) {
+
+		/*
+		 * compliance will fail if dithering is enabled for 6bpc
+		 * hence avoid this. This will not affect normal functioning
+		 * since external DP does not need dithering for 6bpc
+		 */
+		if (intel_pipe_has_type(&intel_crtc->base,
+				INTEL_OUTPUT_DISPLAYPORT) &&
+				intel_crtc->config.pipe_bpp < 24)
+			intel_crtc->config.dither = false;
+
 		/* Bspec claims that we can't use dithering for 30bpp pipes. */
 		if (intel_crtc->config.dither && intel_crtc->config.pipe_bpp != 30)
 			pipeconf |= PIPECONF_DITHER_EN |
