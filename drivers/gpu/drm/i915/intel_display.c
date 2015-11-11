@@ -11277,7 +11277,7 @@ int intel_set_disp_calc_flip(struct drm_mode_set_display *disp,
 			}
 
 			if (pfit_mode != (pfit_control & ~MASK_PFIT_SCALING_MODE)) {
-				DRM_ERROR("pfit mode(%d) mismatch with calculated mode(%d)\n",
+				DRM_INFO("pfit mode(%d) mismatch with calculated mode(%d)\n",
 						(pfit_control & ~MASK_PFIT_SCALING_MODE), pfit_mode);
 				pfit_control &=  MASK_PFIT_SCALING_MODE;
 				pfit_control |= pfit_mode;
