@@ -318,6 +318,7 @@ struct atomisp_sub_device {
 	struct v4l2_ctrl *enable_raw_buffer_lock;
 	struct v4l2_ctrl *ion_dev_fd;
 	struct v4l2_ctrl *disable_dz;
+	struct v4l2_ctrl *select_isp_version;
 
 	struct {
 		struct list_head fw;
