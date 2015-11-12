@@ -789,7 +789,11 @@ static void mdm_cleanup(struct mdm_info *mdm)
 		del_timer(&mdm->flashing_timer);
 		mutex_destroy(&mdm->lock);
 #ifdef CONFIG_HAS_WAKELOCK
-		wake_lock_destroy(&mdm->stay_awake);
+		{ 
+			char *name = (char *)mdm->stay_awake.ws.name;
+			wake_lock_destroy(&mdm->stay_awake);
+			kfree(name);
+		}
 #endif
 	}
 }
@@ -911,7 +915,7 @@ static int mdm_ctrl_module_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_HAS_WAKELOCK
 		snprintf(name, sizeof(name), "%s-wakelock%d", DRVNAME, i);
-		wake_lock_init(&mdm->stay_awake, WAKE_LOCK_SUSPEND, name);
+		wake_lock_init(&mdm->stay_awake, WAKE_LOCK_SUSPEND, kstrdup(name, GFP_KERNEL));
 #endif
 
 		mdm_ctrl_set_state(mdm, MDM_CTRL_STATE_OFF);
