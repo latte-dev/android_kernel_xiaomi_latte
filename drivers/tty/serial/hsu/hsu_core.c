@@ -907,6 +907,32 @@ static void serial_hsu_break_ctl(struct uart_port *port, int break_state)
 	pm_runtime_put(up->dev);
 }
 
+static void serial_hsu_throttle(struct uart_port *port)
+{
+	struct tty_struct *tty = port->state->port.tty;
+	unsigned long flags;
+
+	if (tty->termios.c_cflag & CRTSCTS) {
+		spin_lock_irqsave(&port->lock, flags);
+		port->mctrl &= ~TIOCM_RTS;
+		serial_hsu_set_mctrl(port, port->mctrl);
+		spin_unlock_irqrestore(&port->lock, flags);
+	}
+}
+
+static void serial_hsu_unthrottle(struct uart_port *port)
+{
+	struct tty_struct *tty = port->state->port.tty;
+	unsigned long flags;
+
+	if (tty->termios.c_cflag & CRTSCTS) {
+		spin_lock_irqsave(&port->lock, flags);
+		port->mctrl |= TIOCM_RTS;
+		serial_hsu_set_mctrl(port, port->mctrl);
+		spin_unlock_irqrestore(&port->lock, flags);
+	}
+}
+
 /*
  * What special to do:
  * 1. chose the 64B fifo mode
@@ -1475,6 +1501,8 @@ struct uart_ops serial_hsu_pops = {
 	.stop_tx	= serial_hsu_stop_tx,
 	.start_tx	= serial_hsu_start_tx,
 	.stop_rx	= serial_hsu_stop_rx,
+	.throttle	= serial_hsu_throttle,
+	.unthrottle	= serial_hsu_unthrottle,
 	.enable_ms	= serial_hsu_enable_ms,
 	.break_ctl	= serial_hsu_break_ctl,
 	.startup	= serial_hsu_startup,
