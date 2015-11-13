@@ -689,6 +689,11 @@ struct imx_resolution imx227_res_video[] = {
 				.lines_per_frame = 0x0302,
 			},
 			{
+				.fps = 30,
+				.pixels_per_line = 0x0E70,
+				.lines_per_frame = 0x0C08,
+			},
+			{
 			}
 		},
 	},
