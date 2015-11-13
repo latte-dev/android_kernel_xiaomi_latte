@@ -38,6 +38,7 @@ static int snkpe_handle_select_capability_state(struct sink_port_pe *sink,
 							struct pd_packet *pkt);
 static int snkpe_handle_give_snk_cap_state(struct sink_port_pe *sink);
 static void sink_port_policy_exit(struct policy *p);
+static void sink_do_reset(struct sink_port_pe *pe);
 
 static inline void snkpe_update_state(struct sink_port_pe *sink,
 					enum pe_states cur_state)
@@ -518,6 +519,14 @@ static int sink_port_policy_rcv_request(struct policy *p, enum pe_event evt)
 static void sink_handle_src_cap(struct sink_port_pe *sink,
 					struct pd_packet *pkt)
 {
+	if (!sink->hard_reset_complete) {
+		/* You are here because reset complete got missed,
+		 * but it is handled properly by timeout.
+		 * Just set the variable as src_cap received means
+		 * port partner is recovered from reset.
+		 */
+		sink->hard_reset_complete = true;
+	}
 	snkpe_update_state(sink, PE_SNK_EVALUATE_CAPABILITY);
 
 	sink->hard_reset_count = 0;
@@ -758,7 +767,10 @@ static void snkpe_handle_startup(struct sink_port_pe *sink)
 
 static void snkpe_handle_sink_hard_reset(struct sink_port_pe *sink)
 {
+	int ret;
+
 	pr_warn("SNKPE: transitioning to hard reset\n");
+	sink_do_reset(sink);
 	/* send hard reset */
 	sink->hard_reset_complete = false;
 	policy_send_packet(&sink->p, NULL, 0, PD_CMD_HARD_RESET,
@@ -767,14 +779,11 @@ static void snkpe_handle_sink_hard_reset(struct sink_port_pe *sink)
 	/* increment counter */
 	sink->hard_reset_count++;
 	/* wait for hardrst complete */
-	wait_event(sink->wq, sink->hard_reset_complete);
-
-	if ((sink->last_pkt == PE_EVT_RCVD_HARD_RESET) ||
-		(sink->last_pkt == PE_EVT_RCVD_SOFT_RESET)) {
-		/* this will move the state to SNK_STARTUP */
-		sink->hard_reset_count = 0;
-		return;
-	}
+	ret = wait_event_timeout(sink->wq, sink->hard_reset_complete,
+		msecs_to_jiffies(TYPEC_HARD_RESET_COMPLETE_TIMER
+		+ TYPEC_HARD_RESET_TIMER));
+	if (ret == 0)
+		pr_info("SNKPE:%s: Reset complete timed out\n", __func__);
 
 	if (!timer_pending(&sink->no_response_timer))
 		mod_timer(&sink->no_response_timer,
@@ -961,6 +970,7 @@ static void sinkpe_reset_timers(struct sink_port_pe *sink)
 
 static void sink_do_reset(struct sink_port_pe *pe)
 {
+	snkpe_do_prot_reset(pe);
 	/* complete the pending timers */
 	if (!completion_done(&pe->wct_complete))
 		complete(&pe->wct_complete);
@@ -971,11 +981,6 @@ static void sink_do_reset(struct sink_port_pe *pe)
 	if (!completion_done(&pe->pssoff_complete))
 		complete(&pe->pssoff_complete); /* PS Source Off timer */
 
-	if (pe->cur_state == PE_SNK_HARD_RESET) {
-		pe->hard_reset_complete = true;
-		wake_up(&pe->wq);
-	}
-
 	if (timer_pending(&pe->snk_request_timer)) {
 		del_timer_sync(&pe->snk_request_timer);
 		pe->request_timer_expired = true;
@@ -985,8 +990,6 @@ static void sink_do_reset(struct sink_port_pe *pe)
 	if (timer_pending(&pe->no_response_timer))
 		del_timer_sync(&pe->no_response_timer);
 
-	snkpe_update_state(pe, PE_SNK_STARTUP);
-	schedule_work(&pe->timer_work);
 }
 
 static void sink_handle_src_hard_reset(struct sink_port_pe *pe)
@@ -1007,18 +1010,34 @@ static int sink_port_policy_rcv_cmd(struct policy *p, enum pe_event evt)
 
 	switch (evt) {
 	case PE_EVT_RCVD_HARD_RESET:
-		ret = snkpe_do_prot_reset(sink);
+		/* If sink pe is already in reset state, ignore this*/
+		if (sink->cur_state == PE_SNK_HARD_RESET)
+			break;
+
 		sink->last_pkt = evt;
 		sink_handle_src_hard_reset(sink);
+		snkpe_update_state(sink, PE_SNK_STARTUP);
+		schedule_work(&sink->timer_work);
 		break;
 	case PE_EVT_RCVD_HARD_RESET_COMPLETE:
 		pr_err("SNKPE: RCVD PE_EVT_RCVD_HARD_RESET_COMPLETE\n");
-		sink->hard_reset_complete = true;
-		if (sink->cur_state == PE_SNK_HARD_RESET)
+		if (sink->cur_state == PE_SNK_HARD_RESET) {
+			sink->hard_reset_complete = true;
 			wake_up(&sink->wq);
-		else {
-			snkpe_do_prot_reset(sink);
+		} else if ((sink->cur_state == PE_SNK_STARTUP
+			|| sink->cur_state == PE_SNK_WAIT_FOR_CAPABILITIES)
+				&& !sink->hard_reset_complete) {
+			/* Reset complete got timeout and sink is waiting
+			 *for src_cap, ignore this event.
+			 */
+			sink->hard_reset_complete = true;
+			break;
+		} else {
+			/* This is due to auto generated hardreset by Hw. */
+			/* reset sink */
 			sink_do_reset(sink);
+			snkpe_update_state(sink, PE_SNK_STARTUP);
+			schedule_work(&sink->timer_work);
 		}
 		break;
 	case PE_EVT_RCVD_SOFT_RESET:
@@ -1155,6 +1174,7 @@ static inline int sink_port_policy_start(struct policy *p)
 	mutex_lock(&sink->snkpe_state_lock);
 	p->state = POLICY_STATE_ONLINE;
 	sink->cur_state = PE_SNK_STARTUP;
+	sink->hard_reset_complete = true;
 	mutex_unlock(&sink->snkpe_state_lock);
 	return snkpe_start(sink);
 }

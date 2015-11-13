@@ -54,6 +54,8 @@
 #define TYPEC_SINK_ACTIVITY_TIMER	150 /* min 120mSec; max: 150mSec */
 #define TYPEC_SINK_REQUEST_TIMER	100 /* min 100mSec; max: ? */
 #define TYPEC_PS_SRC_OFF_TIMER		920 /* min 750mSec; max: 920mSec */
+#define TYPEC_HARD_RESET_TIMER		5 /* max: 5mSec */
+#define TYPEC_HARD_RESET_COMPLETE_TIMER	5 /* max: 5mSec */
 #define HARD_RESET_COUNT_N		2
 
 enum {
