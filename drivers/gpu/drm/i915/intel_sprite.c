@@ -1930,6 +1930,14 @@ int intel_sprite_set_colorkey(struct drm_device *dev, void *data,
 	}
 
 	plane = obj_to_plane(obj);
+
+	/*
+	 * Primary plane also gets registered as drm_plane.
+	 * Apply Color Key only if its sprite plane.
+	 */
+	if (plane->type != DRM_PLANE_TYPE_OVERLAY)
+		return -EINVAL;
+
 	intel_plane = to_intel_plane(plane);
 	ret = intel_plane->update_colorkey(plane, set);
 
@@ -1959,6 +1967,10 @@ int intel_sprite_get_colorkey(struct drm_device *dev, void *data,
 	}
 
 	plane = obj_to_plane(obj);
+
+	if (plane->type != DRM_PLANE_TYPE_OVERLAY)
+		return -EINVAL;
+
 	intel_plane = to_intel_plane(plane);
 	intel_plane->get_colorkey(plane, get);
 
