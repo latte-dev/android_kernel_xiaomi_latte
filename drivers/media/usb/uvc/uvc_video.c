@@ -1275,9 +1275,13 @@ static void uvc_video_decode_bulk(struct urb *urb, struct uvc_streaming *stream,
 						     stream->bulk.header,
 						     stream->bulk.payload_size);
 			}
-			if (buf->state == UVC_BUF_STATE_READY)
+			if (buf->state == UVC_BUF_STATE_READY) {
+				if (stream->dev->quirks & UVC_QUIRK_APPEND_UVC_HEADER)
+						uvc_video_decode_data(stream, buf, stream->bulk.header,
+									   stream->bulk.header_size);
 				buf = uvc_queue_next_buffer(&stream->queue,
 							    buf);
+			}
 		}
 
 		stream->bulk.header_size = 0;
