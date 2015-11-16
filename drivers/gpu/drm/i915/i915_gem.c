@@ -2228,6 +2228,26 @@ i915_gem_shrink(struct drm_i915_private *dev_priv,
 {
 	const bool purgeable_only = flags & I915_SHRINK_PURGEABLE;
 	unsigned long count = 0;
+	struct drm_i915_gem_request *saved_OLR[I915_NUM_RINGS];
+	struct intel_engine_cs *ring;
+	int r;
+
+	/*
+	 * It might be that an object the shrinker tries to free up is being
+	 * referenced by a batch buffer that is still queued up in the
+	 * scheduler and not yet executing on hardware. This is fine, the
+	 * unbind will wait for the object to be idle which in turn will
+	 * flush the outstanding batch buffer from the scheduler. However,
+	 * doing so will require using the OLR as part of the batch buffer
+	 * submission back end. The problem is that the shrink call might
+	 * have come from an out of memory condition during the front half of
+	 * batch buffer submission (i.e. submission from user land into the
+	 * scheduler). In that case, the OLR will already be in use. Thus it
+	 * must be saved away and restored again after to prevent it being
+	 * corrupted part way through the submission.
+	 */
+	for_each_ring(ring, dev_priv, r)
+		saved_OLR[r] = ring->outstanding_lazy_request;
 
 	/*
 	 * As we may completely rewrite the (un)bound list whilst unbinding
@@ -2310,6 +2330,10 @@ i915_gem_shrink(struct drm_i915_private *dev_priv,
 		}
 		list_splice(&still_in_list, &dev_priv->mm.bound_list);
 	}
+
+	/* Restore the OLR again: */
+	for_each_ring(ring, dev_priv, r)
+		ring->outstanding_lazy_request = saved_OLR[r];
 
 	return count;
 }
