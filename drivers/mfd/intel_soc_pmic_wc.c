@@ -46,6 +46,7 @@
 #include <linux/regulator/driver.h>
 #include <linux/regulator/gpio-regulator.h>
 #include <linux/platform_device.h>
+#include <linux/dmi.h>
 
 
 #define CHIPID		0x00
@@ -914,6 +915,7 @@ static void wcove_set_bcu_pdata(void)
 
 static int whiskey_cove_init(void)
 {
+	const char *board_name = dmi_get_system_info(DMI_BOARD_NAME);
 	pr_info("Whiskey Cove: ID 0x%02X, VERSION 0x%02X\n",
 		intel_soc_pmic_readb(CHIPID), intel_soc_pmic_readb(CHIPVER));
 
@@ -921,7 +923,14 @@ static int whiskey_cove_init(void)
 	wcove_set_bcu_pdata();
 	wc_set_adc_pdata();
 	wc_set_gpio_pdata();
-	wc_set_v1p2_pdata();
+
+	/* V1P2A is shared with multiple consumer on RVP designs
+	* and is required to be always enabled so skip for RVP
+	*/
+
+	if (board_name && !strcmp(board_name, "Cherry Trail FFD"))
+		wc_set_v1p2_pdata();
+
 	wc_set_v1p8_pdata();
 	wc_set_v2p8_pdata();
 	wc_set_vprog4b_pdata();
