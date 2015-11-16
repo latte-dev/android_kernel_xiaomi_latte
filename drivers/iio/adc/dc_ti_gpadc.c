@@ -42,6 +42,8 @@
 #include <linux/iio/driver.h>
 #include <linux/iio/types.h>
 #include <linux/iio/consumer.h>
+#include <linux/pm_runtime.h>
+#include <linux/pm_qos.h>
 
 #define DC_ADC_IRQ_MASK_REG		0x02
 #define IRQ_MASK_ADC			(1 << 2)
@@ -106,6 +108,7 @@ struct gpadc_info {
 	struct device *dev;
 	int irq;
 	wait_queue_head_t wait;
+	struct pm_qos_request pm_qos;
 };
 
 #define ADC_CHANNEL(_type, _channel, _datasheet_name) \
@@ -188,7 +191,7 @@ int iio_dc_ti_gpadc_sample(struct iio_dev *indio_dev,
 				int ch, struct gpadc_result *res)
 {
 	struct gpadc_info *info = iio_priv(indio_dev);
-	int i, ret, adc_en_mask, corrected_code, raw_code, gain_err;
+	int i, ret, adc_en_mask, corrected_code, raw_code;
 	u8 th, tl;
 
 	/* prepare ADC channel enable mask */
@@ -206,6 +209,20 @@ int iio_dc_ti_gpadc_sample(struct iio_dev *indio_dev,
 	mutex_lock(&info->lock);
 
 	/*
+	 * BPTHERM channel needs BPTHERM_BIAS Regulator to be enabled.
+	 * To enable this regulator, the device needs to be out of D0ix
+	 * state. Hence holding a QOS contraint for C6 latency so that
+	 * BPTHERM_BIAS refernce voltage is enabled properly till the
+	 * Battery Pack Temperature is measured.
+	 */
+	if (adc_en_mask & CNTL_ADC_CH_SEL_BPTHERM) {
+		pm_runtime_get_sync(info->dev);
+		pm_runtime_get_sync(info->dev->parent);
+		pm_qos_update_request(&info->pm_qos,
+				CSTATE_EXIT_LATENCY_C6);
+	}
+
+	/*
 	 * If channel BPTHERM has been selected, first enable the BPTHERM BIAS
 	 * which provides the VREFT Voltage reference to convert BPTHERM Input
 	 * voltage to temperature.
@@ -219,6 +236,7 @@ int iio_dc_ti_gpadc_sample(struct iio_dev *indio_dev,
 			goto done;
 		msleep(35);
 	}
+
 	/*As per the TI(PMIC Vendor), the ADC enable and ADC start commands
 	should not be sent together. Hence sending the commands separately*/
 	/* enable ADC channels */
@@ -235,11 +253,8 @@ int iio_dc_ti_gpadc_sample(struct iio_dev *indio_dev,
 	 * As per PMIC Vendor, a minimum of 50 micro seconds delay is required
 	 * between ADC Enable and ADC START commands. This is also recommended
 	 * by Intel Hardware team after the timing analysis of GPADC signals.
-	 * Since the I2C Write trnsaction to set the channel number also
-	 * imparts 25 micro seconds of delay, so we need to wait for another
-	 * 25 micro seconds before issuing ADC START command.
 	 */
-	usleep_range(25, 40);
+	usleep_range(50, 60);
 
 	/* Start the ADC conversion for the selected channel */
 	ret = intel_soc_pmic_setb(DC_PMIC_ADC_CNTL_REG, (u8)CNTL_ADC_START);
@@ -294,6 +309,16 @@ int iio_dc_ti_gpadc_sample(struct iio_dev *indio_dev,
 				CNTL_ADC_START | CNTL_ADC_EN));
 	if (adc_en_mask & CNTL_ADC_CH_SEL_BPTHERM)
 		intel_soc_pmic_clearb(DC_PMIC_ADC_CNTL_REG, CNTL_EN_EXT_BPTH_BIAS);
+
+	/*
+	 * For BPTHERM channel, release the QOS contraint after
+	 * completing ADC read
+	 */
+	if (adc_en_mask & CNTL_ADC_CH_SEL_BPTHERM) {
+		pm_runtime_put_sync(info->dev->parent);
+		pm_runtime_put_sync(info->dev);
+		pm_qos_update_request(&info->pm_qos, PM_QOS_DEFAULT_VALUE);
+	}
 done:
 	mutex_unlock(&info->lock);
 	return 0;
@@ -421,6 +446,9 @@ static int dc_ti_gpadc_probe(struct platform_device *pdev)
 	if (err)
 		dev_err(info->dev, "Error during reading calibration values\n");
 
+	pm_qos_add_request(&info->pm_qos, PM_QOS_CPU_DMA_LATENCY,
+			PM_QOS_DEFAULT_VALUE);
+
 	dev_dbg(&pdev->dev, "dc_ti adc probed\n");
 
 	return 0;
@@ -436,6 +464,8 @@ static int dc_ti_gpadc_remove(struct platform_device *pdev)
 {
 	struct iio_dev *indio_dev = platform_get_drvdata(pdev);
 	struct gpadc_info *info = iio_priv(indio_dev);
+
+	pm_qos_remove_request(&info->pm_qos);
 
 	if (info->irq >= 0)
 		free_irq(info->irq, info);
