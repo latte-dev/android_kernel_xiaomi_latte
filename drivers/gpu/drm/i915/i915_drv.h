@@ -2485,6 +2485,10 @@ enum context_submission_status {
 
 #define GT_FREQUENCY_MULTIPLIER 50
 
+/* platform details */
+#define PCI_CHV_REV_ID_PACKAGE_TYPE_MASK	0x3
+#define PCI_CHV_REV_ID_PACKAGE_TYPE_T3		0x2
+
 #include "i915_trace.h"
 
 extern const struct drm_ioctl_desc i915_ioctls[];

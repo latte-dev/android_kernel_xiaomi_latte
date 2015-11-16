@@ -882,10 +882,15 @@ static void intel_disable_hdmi(struct intel_encoder *encoder)
 static int hdmi_portclock_limit(struct intel_hdmi *hdmi, bool respect_dvi_limit)
 {
 	struct drm_device *dev = intel_hdmi_to_dev(hdmi);
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	bool is_chv_t3 = IS_CHERRYVIEW(dev) &&
+			((dev_priv->dev->pdev->revision &
+				PCI_CHV_REV_ID_PACKAGE_TYPE_MASK) ==
+					PCI_CHV_REV_ID_PACKAGE_TYPE_T3);
 
 	if ((respect_dvi_limit && !hdmi->has_hdmi_sink) || IS_G4X(dev))
 		return 165000;
-	else if (IS_HASWELL(dev) || INTEL_INFO(dev)->gen >= 8)
+	else if (IS_HASWELL(dev) || (INTEL_INFO(dev)->gen >= 8 && !is_chv_t3))
 		return 300000;
 	else
 		return 225000;
