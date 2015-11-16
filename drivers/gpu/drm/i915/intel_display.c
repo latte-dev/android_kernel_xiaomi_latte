@@ -11181,6 +11181,7 @@ int intel_set_disp_calc_flip(struct drm_mode_set_display *disp,
 	if (disp->update_flag & DRM_MODE_SET_DISPLAY_UPDATE_PANEL_FITTER) {
 		u32 pfitcontrol = I915_READ(PFIT_CONTROL);
 		u32 pfit_control = pfitcontrol;
+		u32 scaling_src_size = I915_READ(PIPESRC(intel_crtc->pipe));
 
 		/* Check if panel fitter is already enabled on another pipe */
 		if (((pfit_control & PFIT_PIPE_MASK) >> PFIT_PIPE_SHIFT)
@@ -11247,7 +11248,7 @@ int intel_set_disp_calc_flip(struct drm_mode_set_display *disp,
 				pfit_control |= pfit_mode;
 			}
 			intel_crtc->pfit_control = pfit_control;
-			if (pfit_control != pfitcontrol)
+			if (pfit_control != pfitcontrol || scaling_src_size != intel_crtc->scaling_src_size)
 				dev_priv->pfit_changed = true;
 		}
 
