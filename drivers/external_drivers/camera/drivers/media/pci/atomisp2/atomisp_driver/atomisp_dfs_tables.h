@@ -145,7 +145,7 @@ static const struct atomisp_freq_scaling_rule dfs_rules_merr_117a[] = {
 		.width = 1080,
 		.height = 1920,
 		.fps = 30,
-		.isp_freq = ISP_FREQ_266MHZ,
+		.isp_freq = ISP_FREQ_400MHZ,
 		.run_mode = ATOMISP_RUN_MODE_VIDEO,
 	},
 	{
