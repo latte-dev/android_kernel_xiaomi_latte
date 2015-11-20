@@ -2336,6 +2336,15 @@ static int lrc_setup_wa_ctx_obj(struct intel_engine_cs *ring, u32 size)
 {
 	int ret;
 
+	/*
+	 * In more recent kernels, rings are only initialized once and there
+	 * was no risk of leaking the wa_ctx obj. But this is not the case in
+	 * v3.14, i915_resume will re-init the rings (gt.init_rings), so it
+	 * isn't required to create a new wa_ctx obj.
+	 */
+	if (ring->wa_ctx.obj)
+		return 0;
+
 	ring->wa_ctx.obj = i915_gem_alloc_object(ring->dev, PAGE_ALIGN(size));
 	if (!ring->wa_ctx.obj) {
 		DRM_DEBUG_DRIVER("alloc LRC WA ctx backing obj failed.\n");
