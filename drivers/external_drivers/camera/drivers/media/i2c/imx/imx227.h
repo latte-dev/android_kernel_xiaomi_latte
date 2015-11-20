@@ -101,7 +101,7 @@ static struct imx_reg const imx_VIDEO_2M_9X16_45fps[] = {
 	{IMX_8BIT, 0x0112, 0x0a},
 	{IMX_8BIT, 0x0113, 0x0a},
 	{IMX_8BIT, 0x0344, 0x02},
-	{IMX_8BIT, 0x0345, 0x8e},
+	{IMX_8BIT, 0x0345, 0x8a},
 	{IMX_8BIT, 0x0346, 0x01},
 	{IMX_8BIT, 0x0347, 0x88},
 	{IMX_8BIT, 0x0348, 0x06},
@@ -109,7 +109,7 @@ static struct imx_reg const imx_VIDEO_2M_9X16_45fps[] = {
 	{IMX_8BIT, 0x034a, 0x09},
 	{IMX_8BIT, 0x034b, 0x17},
 	{IMX_8BIT, 0x034c, 0x04},
-	{IMX_8BIT, 0x034d, 0x44},
+	{IMX_8BIT, 0x034d, 0x48},
 	{IMX_8BIT, 0x034e, 0x07},
 	{IMX_8BIT, 0x034f, 0x90},
 
@@ -127,7 +127,7 @@ static struct imx_reg const imx_VIDEO_2M_9X16_45fps[] = {
 	{IMX_8BIT, 0x040a, 0x00},
 	{IMX_8BIT, 0x040b, 0x00},
 	{IMX_8BIT, 0x040c, 0x04},
-	{IMX_8BIT, 0x040d, 0x44},
+	{IMX_8BIT, 0x040d, 0x48},
 	{IMX_8BIT, 0x040e, 0x07},
 	{IMX_8BIT, 0x040f, 0x90},
 
@@ -594,13 +594,18 @@ struct imx_resolution imx227_res_video[] = {
 	{
 		.desc = "imx_VIDEO_2M_9X16_45fps",
 		.regs = imx_VIDEO_2M_9X16_45fps,
-		.width = 1092,
+		.width = 1096,
 		.height = 1936,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.mipi_freq = 499000,
 		.used = 0,
 		.fps_options = {
+			{
+				.fps = 30,
+				.pixels_per_line = 0x0E70,
+				.lines_per_frame = 0x0C08,
+			},
 			{
 				.fps = 45,
 				.pixels_per_line = 0x0E70,
