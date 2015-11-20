@@ -71,4 +71,5 @@ extern int xhci_intel_phy_mux_switch(struct xhci_hcd *xhci, int is_device_on);
 extern void xhci_intel_clr_internal_pme_flag(struct xhci_hcd *xhci);
 extern void xhci_intel_ssic_port_unused(struct xhci_hcd *xhci, bool unused);
 extern void xhci_change_ssic_regs(struct xhci_hcd *xhci, bool enable);
+extern bool xhci_intel_ssic_port_check(struct xhci_hcd *xhci, int port);
 extern int xhci_intel_need_disable_stall(struct xhci_hcd *xhci);

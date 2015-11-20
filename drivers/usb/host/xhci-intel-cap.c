@@ -47,6 +47,13 @@ void xhci_change_ssic_regs(struct xhci_hcd *xhci, bool enable)
 			readl(hcd->regs + SSIC_CONFIG2));
 }
 
+bool xhci_intel_ssic_port_check(struct xhci_hcd *xhci, int port)
+{
+	/* Check if device present and the port matches */
+	return (xhci->ssic_device_present) &&
+			(port == xhci->ssic_port_number);
+}
+
 int xhci_intel_need_disable_stall(struct xhci_hcd *xhci)
 {
 	struct acpi_device *acpi_dev;

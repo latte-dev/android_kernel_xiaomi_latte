@@ -25,6 +25,7 @@
 
 #include "xhci.h"
 #include "xhci-trace.h"
+#include "xhci-intel-cap.h"
 
 #define	PORT_WAKE_BITS	(PORT_WKOC_E | PORT_WKDISC_E | PORT_WKCONN_E)
 #define	PORT_RWC_BITS	(PORT_CSC | PORT_PEC | PORT_WRC | PORT_OCC | \
@@ -986,7 +987,11 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 				goto error;
 			temp = readl(port_array[wIndex] + PORTPMSC);
 			temp &= ~PORT_U1_TIMEOUT_MASK;
-			temp |= PORT_U1_TIMEOUT(timeout);
+			/* Disable U1 for Intel Modem */
+			if (xhci_intel_ssic_port_check(xhci, wIndex + 1))
+				temp |= PORT_U1_TIMEOUT(PORT_U1_DISABLE);
+			else
+				temp |= PORT_U1_TIMEOUT(timeout);
 			writel(temp, port_array[wIndex] + PORTPMSC);
 			break;
 		case USB_PORT_FEAT_U2_TIMEOUT:
@@ -994,7 +999,11 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 				goto error;
 			temp = readl(port_array[wIndex] + PORTPMSC);
 			temp &= ~PORT_U2_TIMEOUT_MASK;
-			temp |= PORT_U2_TIMEOUT(timeout);
+			/* Disable U2 for Intel Modem */
+			if (xhci_intel_ssic_port_check(xhci, wIndex + 1))
+				temp |= PORT_U2_TIMEOUT(PORT_U2_DISABLE);
+			else
+				temp |= PORT_U2_TIMEOUT(timeout);
 			writel(temp, port_array[wIndex] + PORTPMSC);
 			break;
 		case USB_PORT_FEAT_TEST:
