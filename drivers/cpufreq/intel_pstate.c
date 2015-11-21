@@ -435,20 +435,35 @@ static void atom_set_pstate(struct cpudata *cpudata, int pstate)
 	wrmsrl_on_cpu(cpudata->cpu, MSR_IA32_PERF_CTL, val);
 }
 
-#define ATOM_BCLK_FREQS 5
-static int atom_freq_table[ATOM_BCLK_FREQS] = { 833, 1000, 1333, 1167, 800};
-
-static int atom_get_scaling(void)
+static int silvermont_get_scaling(void)
 {
 	u64 value;
 	int i;
+	/* Defined in Table 35-6 from SDM (Sept 2015) */
+	static int silvermont_freq_table[] = {
+		83300, 100000, 133300, 116700, 80000};
 
 	rdmsrl(MSR_FSB_FREQ, value);
-	i = value & 0x3;
+	i = value & 0x7;
+	BUG_ON(i > 4);
 
-	BUG_ON(i > ATOM_BCLK_FREQS);
+	return silvermont_freq_table[i];
+}
 
-	return atom_freq_table[i] * 100;
+static int airmont_get_scaling(void)
+{
+	u64 value;
+	int i;
+	/* Defined in Table 35-10 from SDM (Sept 2015) */
+	static int airmont_freq_table[] = {
+		83300, 100000, 133300, 116700, 80000,
+		93300, 90000, 88900, 87500};
+
+	rdmsrl(MSR_FSB_FREQ, value);
+	i = value & 0xF;
+	BUG_ON(i > 8);
+
+	return airmont_freq_table[i];
 }
 
 static void atom_get_vid(struct cpudata *cpudata)
@@ -467,7 +482,6 @@ static void atom_get_vid(struct cpudata *cpudata)
 	rdmsrl(ATOM_TURBO_VIDS, value);
 	cpudata->vid.turbo = value & 0x7f;
 }
-
 
 static int core_get_min_pstate(void)
 {
@@ -529,11 +543,11 @@ static struct cpu_defaults core_params = {
 	},
 };
 
-static struct cpu_defaults atom_params = {
+static struct cpu_defaults silvermont_params = {
 	.pid_policy = {
 		.sample_rate_ms = 10,
 		.deadband = 0,
-		.setpoint = 97,
+		.setpoint = 60,
 		.p_gain_pct = 14,
 		.d_gain_pct = 0,
 		.i_gain_pct = 4,
@@ -543,11 +557,29 @@ static struct cpu_defaults atom_params = {
 		.get_min = atom_get_min_pstate,
 		.get_turbo = atom_get_turbo_pstate,
 		.set = atom_set_pstate,
-		.get_scaling = atom_get_scaling,
+		.get_scaling = silvermont_get_scaling,
 		.get_vid = atom_get_vid,
 	},
 };
 
+static struct cpu_defaults airmont_params = {
+	.pid_policy = {
+		.sample_rate_ms = 10,
+		.deadband = 0,
+		.setpoint = 60,
+		.p_gain_pct = 14,
+		.d_gain_pct = 0,
+		.i_gain_pct = 4,
+	},
+	.funcs = {
+		.get_max = atom_get_max_pstate,
+		.get_min = atom_get_min_pstate,
+		.get_turbo = atom_get_turbo_pstate,
+		.set = atom_set_pstate,
+		.get_scaling = airmont_get_scaling,
+		.get_vid = atom_get_vid,
+	},
+};
 
 static void intel_pstate_get_min_max(struct cpudata *cpu, int *min, int *max)
 {
@@ -759,7 +791,7 @@ static void intel_pstate_timer_func(unsigned long __data)
 static const struct x86_cpu_id intel_pstate_cpu_ids[] = {
 	ICPU(0x2a, core_params),
 	ICPU(0x2d, core_params),
-	ICPU(0x37, atom_params),
+	ICPU(0x37, silvermont_params),
 	ICPU(0x3a, core_params),
 	ICPU(0x3c, core_params),
 	ICPU(0x3d, core_params),
@@ -767,7 +799,7 @@ static const struct x86_cpu_id intel_pstate_cpu_ids[] = {
 	ICPU(0x3f, core_params),
 	ICPU(0x45, core_params),
 	ICPU(0x46, core_params),
-	ICPU(0x4c, atom_params),
+	ICPU(0x4c, airmont_params),
 	ICPU(0x4f, core_params),
 	ICPU(0x56, core_params),
 	{}
