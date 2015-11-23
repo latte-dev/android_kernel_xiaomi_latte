@@ -29,8 +29,11 @@
 #else
 #include <media/v4l2-chip-ident.h>
 #endif
+#ifdef CONFIG_PLATFORM_BTNS
+#include "ov8858_btns.h"
+#else
 #include "ov8858.h"
-
+#endif
 static int ov8858_i2c_read(struct i2c_client *client, u16 len, u16 addr,
 			   u8 *buf)
 {
