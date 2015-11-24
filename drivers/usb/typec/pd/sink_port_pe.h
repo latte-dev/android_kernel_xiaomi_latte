@@ -48,7 +48,7 @@
 #define REQ_DOBJ_MAX_OPERATING_CUR	(0x3FF << REQ_DOBJ_MAX_OP_CUR_SHIFT)
 
 #define TYPEC_SENDER_RESPONSE_TIMER	30 /* min: 24mSec; max: 30mSec */
-#define TYPEC_SINK_WAIT_CAP_TIMER	2500 /* min 2.1Sec; max: 2.5Sec */
+#define TYPEC_SINK_WAIT_CAP_TIMER	620 /* min 310mSec; max: 620mSec */
 #define TYPEC_NO_RESPONSE_TIMER		5500 /* min 4.5Sec; max: 5.5Sec */
 #define TYPEC_PS_TRANSITION_TIMER	550 /* min 450mSec; max: 550mSec */
 #define TYPEC_SINK_ACTIVITY_TIMER	150 /* min 120mSec; max: 150mSec */
