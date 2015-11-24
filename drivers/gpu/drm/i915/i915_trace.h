@@ -16,6 +16,109 @@
 #define TRACE_SYSTEM_STRING __stringify(TRACE_SYSTEM)
 #define TRACE_INCLUDE_FILE i915_trace
 
+/* atomic update */
+TRACE_EVENT(i915_atomic_update_start,
+	    TP_PROTO(struct intel_crtc *crtc),
+	    TP_ARGS(crtc),
+	    TP_STRUCT__entry(
+			     __field(enum pipe, pipe)
+			     __field(bool, pfit_changed)
+			     __field(u32, pfit_control)
+			     __field(u32, scaling_src_size)
+			     __field(u32, frame)
+			     __field(u32, scanline)
+			     ),
+
+	    TP_fast_assign(
+			   __entry->pipe = crtc->pipe;
+			   __entry->pfit_changed = ((struct drm_i915_private *)
+			     crtc->base.dev->dev_private)->pfit_changed;
+			   __entry->pfit_control = crtc->pfit_control;
+			   __entry->scaling_src_size = crtc->scaling_src_size;
+			   __entry->frame =
+			     crtc->base.dev->driver->get_vblank_counter(
+			     crtc->base.dev, crtc->pipe);
+			   __entry->scanline = intel_get_crtc_scanline(crtc);
+			   ),
+
+	    TP_printk("pipe %c, frame=%u, scanline=%u, pf[%s]:ctrl=%x size=%x",
+		      pipe_name(__entry->pipe), __entry->frame,
+		       __entry->scanline, __entry->pfit_changed ? "Y":"N",
+		       __entry->pfit_control, __entry->scaling_src_size)
+);
+
+TRACE_EVENT(i915_atomic_update_end,
+	    TP_PROTO(struct intel_crtc *crtc),
+	    TP_ARGS(crtc),
+	    TP_STRUCT__entry(
+			     __field(enum pipe, pipe)
+			     __field(u32, frame)
+			     __field(u32, scanline)
+			     ),
+
+	    TP_fast_assign(
+			   __entry->pipe = crtc->pipe;
+			   __entry->frame =
+			     crtc->base.dev->driver->get_vblank_counter(
+			     crtc->base.dev, crtc->pipe);
+			   __entry->scanline = intel_get_crtc_scanline(crtc);
+			   ),
+
+	    TP_printk("pipe %c, frame=%u, scanline=%u",
+		      pipe_name(__entry->pipe), __entry->frame,
+		       __entry->scanline)
+);
+
+TRACE_EVENT(i915_maxfifo_update,
+	    TP_PROTO(struct intel_crtc *crtc, bool enable),
+	    TP_ARGS(crtc, enable),
+	    TP_STRUCT__entry(
+			     __field(enum pipe, pipe)
+			     __field(u32, frame)
+			     __field(u32, scanline)
+			     __field(bool, enable)
+			     ),
+
+	    TP_fast_assign(
+			   __entry->pipe = crtc->pipe;
+			   __entry->frame =
+			     crtc->base.dev->driver->get_vblank_counter(
+			     crtc->base.dev, crtc->pipe);
+			   __entry->scanline = intel_get_crtc_scanline(crtc);
+			   __entry->enable = enable;
+			   ),
+
+	    TP_printk("pipe %c, frame=%u, scanline=%u, maxfifo=%s",
+		      pipe_name(__entry->pipe), __entry->frame,
+		       __entry->scanline,
+		       __entry->enable ? "Enabled":"Disabled")
+);
+
+TRACE_EVENT(i915_plane_info,
+	    TP_PROTO(struct intel_crtc *crtc,
+		     struct drm_mode_set_display_plane *plane, u32 disp_flag),
+	    TP_ARGS(crtc, plane, disp_flag),
+	    TP_STRUCT__entry(
+			     __field(enum pipe, pipe)
+			     __field(u32, obj_type)
+			     __field(u32, fb_id)
+			     __field(u32, flags)
+			     __field(u32, disp_flag)
+			     ),
+
+	    TP_fast_assign(
+			   __entry->pipe = crtc->pipe;
+			   __entry->obj_type = plane->obj_type;
+			   __entry->fb_id = plane->fb_id;
+			   __entry->flags = plane->flags;
+			   __entry->disp_flag = disp_flag;
+			   ),
+
+	    TP_printk("pipe %c, obj_type=%x, fb_id=%u, flags=%x, disp_flag=%x",
+		      pipe_name(__entry->pipe), __entry->obj_type,
+		       __entry->fb_id, __entry->flags,  __entry->disp_flag)
+);
+
 /* pipe updates */
 
 TRACE_EVENT(i915_pipe_update_start,

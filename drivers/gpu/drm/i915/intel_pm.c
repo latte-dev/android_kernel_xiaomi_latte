@@ -1728,6 +1728,7 @@ void intel_update_maxfifo(struct drm_i915_private *dev_priv,
 			I915_WRITE(FW_BLC_SELF_VLV, ~FW_CSPWRDWNEN);
 		dev_priv->maxfifo_enabled = false;
 	}
+	trace_i915_maxfifo_update(to_intel_crtc(crtc), enable);
 }
 
 void

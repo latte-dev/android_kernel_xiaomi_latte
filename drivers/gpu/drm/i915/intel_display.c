@@ -11481,6 +11481,8 @@ static int intel_crtc_set_display(struct drm_crtc *crtc,
 
 	/* make sure to start from a fresh vblank */
 	for (i = disp->num_planes-1; i >= 0; i--) {
+		trace_i915_plane_info(intel_crtc, &disp->plane[i],
+			disp->update_flag);
 		if (disp->plane[i].update_flag &
 				DRM_MODE_SET_DISPLAY_PLANE_UPDATE_PRESENT)
 			plane_cnt++;
@@ -11541,13 +11543,14 @@ static int intel_crtc_set_display(struct drm_crtc *crtc,
 	}
 
 	preempt_disable();
-
+	trace_i915_atomic_update_start(intel_crtc);
 	/* Commit to registers */
 	ret = intel_set_disp_commit_regs(disp, dev, intel_crtc, intel_disp_ptr);
 
 	if (IS_CHERRYVIEW(dev))
 		vlv_update_dsparb(intel_crtc);
 
+	trace_i915_atomic_update_end(intel_crtc);
 	preempt_enable();
 
 	/* Enable maxfifo if needed */
