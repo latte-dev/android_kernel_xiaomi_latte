@@ -1840,7 +1840,7 @@ static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 	case CABLE_TYPE_SINK:
 		/* Check for VBUS status */
 		if (cable_state) {
-			ret = pmic_read_reg(chc.reg_map->pmic_usbpath, &val);
+			ret = pmic_read_reg(chc.reg_map->pmic_schgrirq1, &val);
 			if (ret < 0) {
 				dev_err(chc.dev,
 					"%s: Failed to read VBUS status\n",
