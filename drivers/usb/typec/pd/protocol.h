@@ -9,7 +9,7 @@
 #include "message.h"
 #include "policy_engine.h"
 
-#define PD_MAX_MSG_ID	8
+#define PD_MAX_MSG_ID	7
 
 enum {
 	PROT_EVENT_NONE,

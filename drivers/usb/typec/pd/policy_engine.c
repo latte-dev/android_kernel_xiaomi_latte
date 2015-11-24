@@ -772,6 +772,10 @@ static void pe_handle_dpm_event(struct policy_engine *pe,
 					__func__);
 			 break;
 		}
+		/* reset the protocol layer */
+		pe_send_packet(pe, NULL, 0,
+				PD_CMD_PROTOCOL_RESET, PE_EVT_SEND_PROTOCOL_RESET);
+
 		pe_set_power_role(pe, POWER_ROLE_NONE);
 		pe_set_data_role(pe, DATA_ROLE_NONE);
 		/* Stop all active policies */

@@ -204,6 +204,7 @@ static int pd_prot_rcv_pkt_from_policy(struct pd_prot *prot, u8 msg_type,
 		return prot_rx_reset(prot);
 	} else if (msg_type == PD_CMD_PROTOCOL_RESET) {
 		pd_prot_flush_fifo(prot, FIFO_TYPE_RX);
+		pd_reset_counters(prot);
 		prot_clear_rx_msg_list(prot);
 		return pd_tx_fsm_state(prot, PROT_TX_PHY_LAYER_RESET);
 	}
@@ -237,17 +238,6 @@ int prot_rx_send_goodcrc(struct pd_prot *pd, u8 msg_id)
 	pd_prot_send_phy_packet(pd, &pd->tx_buf, PD_MSG_HEADER_SIZE);
 	mutex_unlock(&pd->tx_data_lock);
 	return 0;
-}
-
-static void pd_tx_discard_msg(struct pd_prot *pd)
-{
-	mutex_lock(&pd->tx_lock);
-	pd->event = PROT_EVENT_DISCARD;
-	pd->tx_msg_id = pd->tx_msg_id + 1;
-	if (pd->tx_msg_id >= PD_MAX_MSG_ID)
-		pd->tx_msg_id = 0;
-	mutex_unlock(&pd->tx_lock);
-	pd_tx_fsm_state(pd, PROT_TX_PHY_LAYER_RESET);
 }
 
 static int prot_fwd_ctrlmsg_to_pe(struct pd_prot *pd, struct prot_msg *msg)
@@ -431,7 +421,7 @@ static void pd_prot_phy_rcv(struct pd_prot *pd)
 		else if (msg_type == PD_CTRL_MSG_GOODCRC) {
 			send_good_crc = 0;
 			if (msg_id == pd->tx_msg_id) {
-				pd->tx_msg_id = (msg_id + 1) % PD_MAX_MSG_ID;
+				pd->tx_msg_id = (msg_id + 1) & PD_MAX_MSG_ID;
 				pd_prot_add_msg_rx_list(pd, &rcv_buf, len);
 			} else
 				dev_warn(pd->phy->dev, "GCRC msg id not matching\n");
@@ -449,7 +439,6 @@ static void pd_prot_phy_rcv(struct pd_prot *pd)
 		 * reveived messages.
 		 */
 		if (pd->rx_msg_id != msg_id) {
-			pd_tx_discard_msg(pd);
 			pd->rx_msg_id = msg_id;
 			pd_prot_add_msg_rx_list(pd, &rcv_buf, len);
 		} else {
@@ -470,6 +459,11 @@ static void pd_notify_protocol(struct typec_phy *phy, unsigned long event)
 	case PROT_PHY_EVENT_TX_SENT:
 		mutex_lock(&pd->tx_lock);
 		pd->event = PROT_EVENT_TX_COMPLETED;
+		/*
+		 * msg sent and received good crc.
+		 * flush the tx fifo
+		 */
+		pd_prot_flush_fifo(pd, FIFO_TYPE_TX);
 		mutex_unlock(&pd->tx_lock);
 		complete(&pd->tx_complete);
 		break;
