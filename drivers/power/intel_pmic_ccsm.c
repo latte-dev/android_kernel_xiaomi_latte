@@ -1549,57 +1549,156 @@ static inline void pmicint_mask_for_typec_handling(void)
 				chc.reg_map->pmic_mchgrirq1);
 }
 
-static int pmic_ccsm_check_extcon_events(struct extcon_dev *edev)
+static int pmic_ccsm_add_event(struct pmic_chrgr_drv_context *chc,
+					enum cable_type type, bool state)
 {
-        struct pmic_cable_event *evt;
-	bool cable_state;
+	struct pmic_cable_event *evt;
 
-        evt = kzalloc(sizeof(*evt), GFP_ATOMIC);
-        if (!evt) {
-                dev_err(chc.dev, "failed to allocate memory for cable event\n");
-                return -ENOMEM;
-        }
-
-	cable_state = extcon_get_cable_state(edev, "USB-Host");
-	if (cable_state != chc.host_cable_state) {
-		evt->ctype = CABLE_TYPE_HOST;
-		chc.host_cable_state = cable_state;
-		goto process_evt;
-	}
-	cable_state = extcon_get_cable_state(edev, "USB");
-	if (cable_state != chc.device_cable_state) {
-		evt->ctype = CABLE_TYPE_USB;
-		chc.device_cable_state = cable_state;
-		goto process_evt;
+	evt = kzalloc(sizeof(*evt), GFP_ATOMIC);
+	if (!evt) {
+		dev_err(chc->dev, "failed to allocate memory for %d event\n",
+				type);
+		return -ENOMEM;
 	}
 
-	cable_state = extcon_get_cable_state(edev, "USB_TYPEC_SNK");
-	if (cable_state != chc.snk_cable_state) {
-		evt->ctype = CABLE_TYPE_SINK;
-		chc.snk_cable_state = cable_state;
-		goto process_evt;
-	}
-
-	cable_state = extcon_get_cable_state(edev, "USB_TYPEC_SRC");
-	if (cable_state != chc.src_cable_state) {
-		evt->ctype = CABLE_TYPE_SOURCE;
-		chc.src_cable_state = cable_state;
-		goto process_evt;
-	}
-
-        dev_dbg(chc.dev, "no actual cable event found\n");
-	kfree(evt);
-	return -EINVAL;
-
-process_evt:
-	INIT_LIST_HEAD(&evt->node);
-	evt->cbl_state = cable_state;
-	spin_lock(&chc.cable_event_queue_lock);
-        list_add_tail(&evt->node, &chc.cable_evt_list);
-	spin_unlock(&chc.cable_event_queue_lock);
-	schedule_work(&chc.extcon_work);
+	evt->ctype = type;
+	evt->cbl_state = state;
+	spin_lock(&chc->cable_event_queue_lock);
+	list_add_tail(&evt->node, &chc->cable_evt_list);
+	spin_unlock(&chc->cable_event_queue_lock);
 
 	return 0;
+}
+
+static int pmic_ccsm_handle_cables_disconnect(struct pmic_chrgr_drv_context *chc)
+{
+	int ret = 0;
+
+	/* diconnect the previously connected cables */
+	if (chc->snk_cable_state) {
+		chc->snk_cable_state = false;
+		ret |= pmic_ccsm_add_event(chc, CABLE_TYPE_SINK,
+						chc->snk_cable_state);
+	}
+
+	if (chc->src_cable_state) {
+		chc->src_cable_state = false;
+		ret |= pmic_ccsm_add_event(chc, CABLE_TYPE_SOURCE,
+						chc->src_cable_state);
+	}
+
+	if (chc->device_cable_state) {
+		chc->device_cable_state = false;
+		ret |= pmic_ccsm_add_event(chc, CABLE_TYPE_USB,
+						chc->device_cable_state);
+	}
+
+	if (chc->host_cable_state) {
+		chc->host_cable_state = false;
+		ret |= pmic_ccsm_add_event(chc, CABLE_TYPE_HOST,
+						chc->host_cable_state);
+	}
+
+	return ret;
+}
+
+static int pmic_ccsm_check_extcon_events(struct extcon_dev *edev)
+{
+	struct pmic_cable_event *evt, *tmp;
+	struct list_head new_list;
+	bool host_cable_state;
+	bool device_cable_state;
+	bool sink_cable_state;
+	bool src_cable_state;
+	unsigned long flags;
+	int ret;
+
+	host_cable_state = extcon_get_cable_state(edev, "USB-Host");
+	device_cable_state = extcon_get_cable_state(edev, "USB");
+	sink_cable_state = extcon_get_cable_state(edev, "USB_TYPEC_SNK");
+	src_cable_state = extcon_get_cable_state(edev, "USB_TYPEC_SRC");
+
+	/* check for all cables disconnect only */
+	if (!host_cable_state && !device_cable_state &&
+		 !sink_cable_state && !src_cable_state) {
+
+		spin_lock_irqsave(&chc.cable_event_queue_lock, flags);
+		list_replace_init(&chc.cable_evt_list, &new_list);
+
+		if (!list_empty(&new_list)) {
+			evt = list_last_entry(&new_list,
+					struct pmic_cable_event, node);
+			if (!evt->cbl_state) {
+				list_del(&evt->node);
+				list_add_tail(&evt->node, &chc.cable_evt_list);
+			}
+		}
+		spin_unlock_irqrestore(&chc.cable_event_queue_lock, flags);
+
+		if(pmic_ccsm_handle_cables_disconnect(&chc))
+			dev_warn(chc.dev, "Unable to handle cable events\n");
+
+		/* schedule work to process the previouly connected events */
+		schedule_work(&chc.extcon_work);
+
+		/* Free all the previous events*/
+		if (!list_empty(&new_list)) {
+			list_for_each_entry_safe(evt, tmp, &new_list, node) {
+				/* Free the event*/
+				kfree(evt);
+			}
+		}
+
+		return 0;
+	}
+
+	if (sink_cable_state != chc.snk_cable_state) {
+		chc.snk_cable_state = sink_cable_state;
+		ret = pmic_ccsm_add_event(&chc, CABLE_TYPE_SINK,
+						sink_cable_state);
+		if (ret < 0)
+			dev_err(chc.dev, "%s error(%d) in adding sink event\n",
+				__func__, ret);
+		goto end;
+	}
+
+	if (src_cable_state != chc.src_cable_state) {
+		chc.src_cable_state = src_cable_state;
+		ret = pmic_ccsm_add_event(&chc, CABLE_TYPE_SOURCE,
+						src_cable_state);
+		if (ret < 0)
+			dev_err(chc.dev, "%s error(%d) in adding src event\n",
+				__func__, ret);
+		goto end;
+	}
+
+	if (host_cable_state != chc.host_cable_state) {
+		chc.host_cable_state = host_cable_state;
+		ret = pmic_ccsm_add_event(&chc, CABLE_TYPE_HOST,
+						host_cable_state);
+		if (ret < 0)
+			dev_err(chc.dev, "%s error(%d) in adding host event\n",
+				__func__, ret);
+		goto end;
+	}
+
+	if (device_cable_state != chc.device_cable_state) {
+		chc.device_cable_state = device_cable_state;
+		ret = pmic_ccsm_add_event(&chc, CABLE_TYPE_USB,
+						device_cable_state);
+		if (ret < 0)
+			dev_err(chc.dev,
+				"%s error(%d) in adding device event\n",
+				__func__, ret);
+		goto end;
+	}
+
+	dev_warn(chc.dev, "no actual cable event found\n");
+	return -EINVAL;
+
+end:
+	schedule_work(&chc.extcon_work);
+	return ret;
 }
 
 static int pmic_ccsm_ext_cable_event(struct notifier_block *nb,
@@ -1814,12 +1913,21 @@ static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 	int ret;
 	bool notify_otg = false;
 
-	mutex_lock(&pmic_lock);
 	/* Prevent system for entering to suspend when event processing */
 	if (!wake_lock_active(&chc.wakelock))
 		wake_lock(&chc.wakelock);
 
 	switch (cbl_type) {
+	case CABLE_TYPE_SINK:
+		/* Do charger detection and send notification
+		 * to power sypply framework.
+		 */
+		handle_internal_usbphy_notifications(cable_state);
+		break;
+	case CABLE_TYPE_SOURCE:
+		/* Enable/Disable self charging from reverse boost in pmic */
+		intel_pmic_handle_otgmode(cable_state);
+		break;
         case CABLE_TYPE_USB:
 		/* Send VBUS notification to USB subsystem so that system will
 		 * switch device mode of operation.
@@ -1835,16 +1943,6 @@ static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
                  */
 		otg_evt = cable_state ? USB_EVENT_ID : USB_EVENT_NONE;
 		notify_otg = true;
-		break;
-	case CABLE_TYPE_SINK:
-		/* Do charger detection and send notification
-		 * to power sypply framework.
-		 */
-		handle_internal_usbphy_notifications(cable_state);
-		break;
-	case CABLE_TYPE_SOURCE:
-		/* Enable/Disable self charging from reverse boost in pmic */
-		intel_pmic_handle_otgmode(cable_state);
 		break;
 	default:
 		dev_info(chc.dev, "%s event %d not supported\n",
@@ -1865,28 +1963,31 @@ vbus_fail:
 	if (wake_lock_active(&chc.wakelock))
 		wake_unlock(&chc.wakelock);
 
-	mutex_unlock(&pmic_lock);
 }
 
 static void pmic_ccsm_extcon_cable_worker(struct work_struct *work)
 {
-	struct pmic_cable_event *evt, *tmp;
-	struct list_head new_list;
+	struct pmic_cable_event *evt;
+	unsigned long flags;
 
-	if (list_empty(&chc.cable_evt_list))
-		return;
-
-	spin_lock(&chc.cable_event_queue_lock);
-	list_replace_init(&chc.cable_evt_list, &new_list);
-	spin_unlock(&chc.cable_event_queue_lock);
-
-	list_for_each_entry_safe(evt, tmp, &new_list, node) {
+	spin_lock_irqsave(&chc.cable_event_queue_lock, flags);
+	while (!list_empty(&chc.cable_evt_list)) {
+		evt = list_first_entry(&chc.cable_evt_list,
+				struct pmic_cable_event, node);
+		list_del(&evt->node);
+		spin_unlock_irqrestore(&chc.cable_event_queue_lock, flags);
+		/* Handle the event */
 		dev_info(chc.dev, "%s: cable type %d %s\n", __func__,
-			evt->ctype,
-			evt->cbl_state ? "Connected" : "Disconnected");
+				evt->ctype,
+				evt->cbl_state ? "Connected" : "Disconnected");
+		mutex_lock(&pmic_lock);
 		pmic_ccsm_process_cable_events(evt->ctype, evt->cbl_state);
+		mutex_unlock(&pmic_lock);
 		kfree(evt);
+
+		spin_lock_irqsave(&chc.cable_event_queue_lock, flags);
 	}
+	spin_unlock_irqrestore(&chc.cable_event_queue_lock, flags);
 }
 
 /**
