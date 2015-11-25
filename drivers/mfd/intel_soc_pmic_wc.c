@@ -928,7 +928,7 @@ static int whiskey_cove_init(void)
 	* and is required to be always enabled so skip for RVP
 	*/
 
-	if (board_name && !strcmp(board_name, "Cherry Trail FFD"))
+	if (board_name && strcmp(board_name, "Cherry Trail Tablet"))
 		wc_set_v1p2_pdata();
 
 	wc_set_v1p8_pdata();
