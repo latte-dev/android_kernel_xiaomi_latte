@@ -2591,6 +2591,8 @@ i915_gem_object_move_to_active(struct drm_i915_gem_object *obj,
 				       &dev_priv->mm.fence_list);
 		}
 	}
+
+	trace_i915_gem_object_move_to_active(obj, req);
 }
 
 void i915_vma_move_to_active(struct i915_vma *vma,
@@ -2627,6 +2629,8 @@ i915_gem_object_move_to_inactive(struct drm_i915_gem_object *obj)
 
 	obj->active = 0;
 	drm_gem_object_unreference(&obj->base);
+
+	trace_i915_gem_object_move_to_inactive(obj);
 
 	WARN_ON(i915_verify_lists(dev));
 }

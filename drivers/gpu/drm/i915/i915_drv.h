@@ -2296,6 +2296,8 @@ struct drm_i915_gem_request {
 	uint32_t uniq;
 };
 
+#include "i915_trace.h"
+
 void i915_gem_request_free(struct kref *req_ref);
 void i915_gem_complete_requests_ring(struct intel_engine_cs *ring,
 				     bool lazy_coherency);
@@ -2315,6 +2317,7 @@ i915_gem_request_get_ring(struct drm_i915_gem_request *req)
 static inline void
 i915_gem_request_reference(struct drm_i915_gem_request *req)
 {
+	trace_i915_gem_request_reference(req);
 	kref_get(&req->ref);
 }
 
@@ -2322,6 +2325,7 @@ static inline void
 i915_gem_request_unreference(struct drm_i915_gem_request *req)
 {
 	WARN_ON(!mutex_is_locked(&req->ring->dev->struct_mutex));
+	trace_i915_gem_request_unreference(req);
 	kref_put(&req->ref, i915_gem_request_free);
 }
 
@@ -2564,8 +2568,6 @@ enum context_submission_status {
 /* platform details */
 #define PCI_CHV_REV_ID_PACKAGE_TYPE_MASK	0x3
 #define PCI_CHV_REV_ID_PACKAGE_TYPE_T3		0x2
-
-#include "i915_trace.h"
 
 extern const struct drm_ioctl_desc i915_ioctls[];
 extern struct drm_display_mode rot_mode;
@@ -3043,13 +3045,16 @@ i915_gem_context_get(struct drm_i915_file_private *file_priv, u32 id);
 void i915_gem_context_free(struct kref *ctx_ref);
 struct drm_i915_gem_object *
 i915_gem_alloc_context_obj(struct drm_device *dev, size_t size);
+
 static inline void i915_gem_context_reference(struct intel_context *ctx)
 {
+	trace_i915_gem_context_reference(ctx);
 	kref_get(&ctx->ref);
 }
 
 static inline void i915_gem_context_unreference(struct intel_context *ctx)
 {
+	trace_i915_gem_context_unreference(ctx);
 	kref_put(&ctx->ref, i915_gem_context_free);
 }
 

@@ -1367,6 +1367,118 @@ TRACE_EVENT(i915_gem_retire_work_handler,
 		__entry->dev, __entry->idle)
 );
 
+TRACE_EVENT(i915_gem_context_reference,
+	TP_PROTO(struct intel_context *ctx),
+	TP_ARGS(ctx),
+
+	TP_STRUCT__entry(
+			__field(void *, ctx)
+			__field(u32, refcnt)
+			),
+
+	TP_fast_assign(
+			__entry->ctx   = ctx;
+			__entry->refcnt = atomic_read(&(&ctx->ref)->refcount);
+			),
+
+	TP_printk("ctx=%p, refcnt before +1=%d",
+		__entry->ctx, __entry->refcnt)
+);
+
+TRACE_EVENT(i915_gem_context_unreference,
+	TP_PROTO(struct intel_context *ctx),
+	TP_ARGS(ctx),
+
+	TP_STRUCT__entry(
+			__field(void *, ctx)
+			__field(u32, refcnt)
+			),
+
+	TP_fast_assign(
+			__entry->ctx   = ctx;
+			__entry->refcnt  = atomic_read(&(&ctx->ref)->refcount);
+			),
+
+	TP_printk("ctx=%p, refcnt before -1=%d",
+		__entry->ctx, __entry->refcnt)
+);
+
+TRACE_EVENT(i915_gem_request_reference,
+	TP_PROTO(struct drm_i915_gem_request *req),
+	TP_ARGS(req),
+
+	TP_STRUCT__entry(
+			__field(u32, seqno)
+			__field(u32, uniq)
+			__field(u32, refcnt)
+			),
+
+	TP_fast_assign(
+			__entry->uniq = req ? req->uniq : 0;
+			__entry->seqno = i915_gem_request_get_seqno(req);
+			__entry->refcnt  = atomic_read(&(&req->ref)->refcount);
+			),
+
+	TP_printk("uniq=%d, seqno=%d, refcnt before +1=%d",
+		__entry->uniq, __entry->seqno, __entry->refcnt)
+);
+
+TRACE_EVENT(i915_gem_request_unreference,
+	TP_PROTO(struct drm_i915_gem_request *req),
+	TP_ARGS(req),
+
+	TP_STRUCT__entry(
+			__field(u32, seqno)
+			__field(u32, uniq)
+			__field(u32, refcnt)
+			),
+
+	TP_fast_assign(
+			__entry->uniq = req ? req->uniq : 0;
+			__entry->seqno = i915_gem_request_get_seqno(req);
+			__entry->refcnt = atomic_read(&(&req->ref)->refcount);
+			),
+
+	TP_printk("uniq=%d,seqno=%d, refcnt before -1=%d",
+		__entry->uniq, __entry->seqno, __entry->refcnt)
+);
+
+TRACE_EVENT(i915_gem_object_move_to_active,
+	TP_PROTO(struct drm_i915_gem_object *obj,
+			struct drm_i915_gem_request *req),
+	TP_ARGS(obj, req),
+
+	TP_STRUCT__entry(
+			__field(void *, obj)
+			__field(u32, uniq)
+			__field(u32, seqno)
+			),
+
+	TP_fast_assign(
+			__entry->obj  = obj;
+			__entry->uniq = req ? req->uniq : 0;
+			__entry->seqno = i915_gem_request_get_seqno(req);
+			),
+
+	TP_printk("obj=%p, uniq=%d, seqno=%d", __entry->obj,
+		__entry->uniq, __entry->seqno)
+);
+
+TRACE_EVENT(i915_gem_object_move_to_inactive,
+	TP_PROTO(struct drm_i915_gem_object *obj),
+	TP_ARGS(obj),
+
+	TP_STRUCT__entry(
+			__field(void *, obj)
+			),
+
+	TP_fast_assign(
+			__entry->obj  = obj;
+			),
+
+	TP_printk("obj=%p", __entry->obj)
+);
+
 #endif /* _I915_TRACE_H_ */
 
 /* This part must be outside protection */
