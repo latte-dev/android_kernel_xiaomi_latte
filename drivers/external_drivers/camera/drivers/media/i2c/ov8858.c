@@ -1683,7 +1683,10 @@ static int __update_ov8858_device_settings(struct ov8858_device *dev,
 	else
 		return -ENODEV;
 
-	return dev->vcm_driver->init(&dev->sd);
+	if (dev->vcm_driver && dev->vcm_driver->init)
+		return dev->vcm_driver->init(&dev->sd);
+
+	return 0;
 }
 
 static int ov8858_s_config(struct v4l2_subdev *sd,
