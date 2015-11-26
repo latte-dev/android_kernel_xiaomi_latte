@@ -238,7 +238,9 @@
 #define BQ_GPIO_MUX_SEL_PMIC	0
 #define BQ_GPIO_MUX_SEL_SOC	1
 #define FPO0_USB_COMP_OFFSET	0x01
-
+#define BQ24192_MIN_INLMT	100
+#define BQ24192_MAX_INLMT	3000
+#define BQ24192_MAX_ITERM	2048
 static struct power_supply *fg_psy;
 
 enum bq24192_chrgr_stat {
@@ -1289,12 +1291,6 @@ static inline int bq24192_enable_charging(
 
 	dev_warn(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, val);
 
-	ret = program_timers(chip, CHRG_TIMER_EXP_CNTL_WDT160SEC, false);
-	if (ret < 0) {
-		dev_err(&chip->client->dev,
-				"program_timers failed: %d\n", ret);
-		return ret;
-	}
 
 	ret = bq24192_read_reg(chip->client, BQ24192_POWER_ON_CFG_REG);
 	if (ret < 0) {
@@ -1325,8 +1321,17 @@ static inline int bq24192_enable_charging(
 	ret = bq24192_write_reg(chip->client, BQ24192_POWER_ON_CFG_REG, regval);
 	if (ret < 0)
 		dev_warn(&chip->client->dev, "charger enable/disable failed\n");
+	else
+		chip->is_charging_enabled = val;
 
 	if (val) {
+		ret = program_timers(chip, CHRG_TIMER_EXP_CNTL_WDT160SEC,
+					false);
+		if (ret < 0) {
+			dev_err(&chip->client->dev,
+				"program_timers failed: %d\n", ret);
+			return ret;
+		}
 		/* Schedule the charger task worker now */
 		schedule_delayed_work(&chip->chrg_task_wrkr, 0);
 
@@ -1451,11 +1456,7 @@ static int bq24192_usb_set_property(struct power_supply *psy,
 	int ret = 0;
 
 	dev_dbg(&chip->client->dev, "%s %d\n", __func__, psp);
-	if (mutex_is_locked(&chip->event_lock)) {
-		dev_dbg(&chip->client->dev,
-			"%s: mutex is already acquired",
-				__func__);
-	}
+
 	mutex_lock(&chip->event_lock);
 
 	switch (psp) {
@@ -1479,18 +1480,21 @@ static int bq24192_usb_set_property(struct power_supply *psy,
 		}
 		break;
 	case POWER_SUPPLY_PROP_ENABLE_CHARGING:
-		bq24192_enable_hw_term(chip, val->intval);
-		ret = bq24192_enable_charging(chip, val->intval);
+		if (chip->is_charging_enabled !=
+				val->intval) {
+			bq24192_enable_hw_term(chip, val->intval);
+			ret = bq24192_enable_charging(chip, val->intval);
 
-		if (ret < 0)
-			dev_err(&chip->client->dev,
-				"Error(%d) in %s charging", ret,
-				(val->intval ? "enable" : "disable"));
-		else
-			chip->is_charging_enabled = val->intval;
+			if (ret < 0)
+				dev_err(&chip->client->dev,
+					"Error(%d) in %s charging", ret,
+					(val->intval ? "enable" : "disable"));
+			else
+				chip->is_charging_enabled = val->intval;
 
-		if (!val->intval)
-			cancel_delayed_work_sync(&chip->chrg_full_wrkr);
+			if (!val->intval)
+				cancel_delayed_work_sync(&chip->chrg_full_wrkr);
+		}
 		break;
 	case POWER_SUPPLY_PROP_ENABLE_CHARGER:
 		ret = bq24192_enable_charger(chip, val->intval);
@@ -1503,14 +1507,18 @@ static int bq24192_usb_set_property(struct power_supply *psy,
 			chip->is_charger_enabled = val->intval;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CURRENT:
-		ret = bq24192_set_cc(chip, val->intval);
-		if (!ret)
-			chip->cc = val->intval;
+		if (val->intval >= 0 && val->intval <= chip->max_cc) {
+			ret = bq24192_set_cc(chip, val->intval);
+			if (!ret)
+				chip->cc = val->intval;
+		}
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_VOLTAGE:
-		ret = bq24192_set_cv(chip, val->intval);
-		if (!ret)
-			chip->cv = val->intval;
+		if (val->intval > 0 && val->intval <= chip->max_cv) {
+			ret = bq24192_set_cv(chip, val->intval);
+			if (!ret)
+				chip->cv = val->intval;
+		}
 		break;
 	case POWER_SUPPLY_PROP_MAX_CHARGE_CURRENT:
 		chip->max_cc = val->intval;
@@ -1519,18 +1527,25 @@ static int bq24192_usb_set_property(struct power_supply *psy,
 		chip->max_cv = val->intval;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_TERM_CUR:
-		ret = bq24192_set_iterm(chip, val->intval);
-		if (!ret)
-			chip->iterm = val->intval;
+		if ((val->intval > 0 &&
+				val->intval <= BQ24192_MAX_ITERM)) {
+			ret = bq24192_set_iterm(chip, val->intval);
+			if (!ret)
+				chip->iterm = val->intval;
+		}
 		break;
 	case POWER_SUPPLY_PROP_CABLE_TYPE:
 		chip->cable_type = val->intval;
 		chip->usb.type = get_power_supply_type(chip->cable_type);
 		break;
 	case POWER_SUPPLY_PROP_INLMT:
-		ret = bq24192_set_inlmt(chip, val->intval);
-		if (!ret)
-			chip->inlmt = val->intval;
+		if ((val->intval >= BQ24192_MIN_INLMT &&
+			val->intval <= BQ24192_MAX_INLMT) &&
+				(chip->inlmt != val->intval)) {
+			ret = bq24192_set_inlmt(chip, val->intval);
+			if (!ret)
+				chip->inlmt = val->intval;
+		}
 		break;
 	case POWER_SUPPLY_PROP_MAX_TEMP:
 		chip->max_temp = val->intval;
@@ -1562,9 +1577,9 @@ static int bq24192_usb_get_property(struct power_supply *psy,
 	struct bq24192_chip *chip = container_of(psy,
 					struct bq24192_chip,
 					usb);
-	enum bq24192_chrgr_stat charging;
 
 	dev_dbg(&chip->client->dev, "%s %d\n", __func__, psp);
+
 	mutex_lock(&chip->event_lock);
 
 	switch (psp) {
@@ -1601,14 +1616,11 @@ static int bq24192_usb_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_ENABLE_CHARGING:
 		if (chip->boost_mode)
 			val->intval = false;
-		else {
-			charging = bq24192_is_charging(chip);
-			val->intval = (chip->is_charging_enabled && charging);
-		}
+		else
+			val->intval = chip->is_charging_enabled;
 		break;
 	case POWER_SUPPLY_PROP_ENABLE_CHARGER:
-		val->intval = (bq24192_get_charger_health() ==
-				POWER_SUPPLY_HEALTH_GOOD);
+		val->intval = chip->is_charger_enabled;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX:
 		val->intval = chip->cntl_state_max;
