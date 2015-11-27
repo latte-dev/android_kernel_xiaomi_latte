@@ -927,11 +927,12 @@ int typec_bind_detect(struct typec_phy *phy)
 	INIT_WORK(&detect->drp_work, detect_drp_work);
 	INIT_WORK(&detect->ufp_work, detect_ufp_work);
 
-	if (!phy->support_drp_toggle)
+	if (!phy->support_drp_toggle) {
 		setup_timer(&detect->drp_timer, detect_drp_timer,
 				(unsigned long)detect);
-
-	detect->detect_kthread = kthread_run(detect_kthread, detect, "detect");
+		detect->detect_kthread = kthread_run(detect_kthread,
+							detect, "detect");
+	}
 	detect->state = DETECT_STATE_UNATTACHED_DRP;
 
 	detect->otg = usb_get_phy(USB_PHY_TYPE_USB2);
