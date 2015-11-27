@@ -100,8 +100,8 @@
 #define POWER_ON_CFG_I2C_WDTTMR_RESET		(1 << 6)
 /* BQ2419X series charger and OTG enable bits */
 #define CHR_CFG_BIT_POS				4
-#define CHR_CFG_BIT_LEN				2
-#define CHR_CFG_CHRG_MASK			3
+#define CHR_CFG_BIT_LEN				1
+#define CHR_CFG_CHRG_MASK			1
 #define POWER_ON_CFG_CHRG_CFG_DIS		(0 << 4)
 #define POWER_ON_CFG_CHRG_CFG_EN		(1 << 4)
 #define POWER_ON_CFG_CHRG_CFG_OTG		(3 << 4)
@@ -534,60 +534,6 @@ static int bq24192_reg_multi_bitset(struct i2c_client *client, u8 reg,
 	return ret;
 }
 
-/*
- * This function verifies if the bq24192i charger chip is in Hi-Z
- * If yes, then clear the Hi-Z to resume the charger operations
- */
-static int bq24192_clear_hiz(struct bq24192_chip *chip)
-{
-	int ret, count;
-
-	dev_info(&chip->client->dev, "%s\n", __func__);
-
-	for (count = 0; count < MAX_TRY; count++) {
-		/*
-		 * Read the bq24192i REG00 register for charger Hi-Z mode.
-		 * If it is in Hi-Z, then clear the Hi-Z to resume the charging
-		 * operations.
-		 */
-		ret = bq24192_read_reg(chip->client,
-				BQ24192_INPUT_SRC_CNTL_REG);
-		if (ret < 0) {
-			dev_warn(&chip->client->dev,
-					"Input src cntl read failed\n");
-			goto i2c_error;
-		}
-
-		if (ret & INPUT_SRC_CNTL_EN_HIZ) {
-			dev_warn(&chip->client->dev,
-						"Charger IC in Hi-Z mode\n");
-#ifdef DEBUG
-			bq24192_dump_registers(chip);
-#endif
-			/* Clear the Charger from Hi-Z mode */
-			ret &= ~INPUT_SRC_CNTL_EN_HIZ;
-
-			/* Write the values back */
-			ret = bq24192_write_reg(chip->client,
-					BQ24192_INPUT_SRC_CNTL_REG, ret);
-			if (ret < 0) {
-				dev_warn(&chip->client->dev,
-						"Input src cntl write failed\n");
-				goto i2c_error;
-			}
-			msleep(150);
-		} else {
-			dev_info(&chip->client->dev,
-						"Charger is not in Hi-Z\n");
-			break;
-		}
-	}
-	return ret;
-i2c_error:
-	dev_err(&chip->client->dev, "%s\n", __func__);
-	return ret;
-}
-
 /* check_batt_psy -check for whether power supply type is battery
  * @dev : Power Supply dev structure
  * @data : Power Supply Driver Data
@@ -957,6 +903,27 @@ int bq24192_config_otg(struct bq24192_chip *chip)
 	return ret;
 }
 
+static inline int bq24192_enable_charger(
+			struct bq24192_chip *chip, int val)
+{
+	int ret = 0;
+
+	/***
+	 * Since charger detection is handled by BQ24296/7, puttting in HiZ
+	 * will disable further detections. Hence do not keep the charger in
+	 * HiZ mode.
+	 **/
+	if ((chip->chip_type == BQ24296) ||
+		(chip->chip_type == BQ24297))
+		return 0;
+
+	ret = bq24192_reg_read_modify(chip->client,
+			BQ24192_INPUT_SRC_CNTL_REG,
+				INPUT_SRC_CNTL_EN_HIZ, !val);
+
+	dev_dbg(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, val);
+	return ret;
+}
 /* This function should be called with the mutex held */
 static int bq24192_turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
 {
@@ -966,24 +933,15 @@ static int bq24192_turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
 			__func__, votg_on, chip->a_bus_enable);
 
 	if (votg_on && chip->a_bus_enable) {
-			bq24192_clear_hiz(chip);
 			/* Program the timers */
-			ret = program_timers(chip,
-						CHRG_TIMER_EXP_CNTL_WDTDISABLE,
-						false);
-			if (ret < 0) {
-				dev_warn(&chip->client->dev,
-					"TIMER disable failed %s\n", __func__);
-				goto i2c_write_fail;
-			}
-
+			chip->boost_mode = true;
 			ret = bq24192_config_otg(chip);
 			if (ret < 0) {
 				dev_warn(&chip->client->dev,
 						"read reg modify failed\n");
 				goto i2c_write_fail;
 			}
-
+			bq24192_enable_charger(chip, true);
 			/* Put the charger IC in reverse boost mode. Since
 			 * SDP charger can supply max 500mA charging current
 			 * Setting the boost current to 500mA
@@ -996,7 +954,15 @@ static int bq24192_turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
 						"read reg modify failed\n");
 				goto i2c_write_fail;
 			}
-			chip->boost_mode = true;
+			ret = program_timers(chip,
+						CHRG_TIMER_EXP_CNTL_WDTDISABLE,
+						false);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+					"TIMER disable failed %s\n", __func__);
+				goto i2c_write_fail;
+			}
+
 	} else {
 			/* Clear the charger from the OTG mode */
 			if ((chip->chip_type == BQ24296) ||
@@ -1310,7 +1276,7 @@ static inline int bq24192_enable_charging(
 		if (val)
 			regval = ret | POWER_ON_CFG_CHRG_CFG_EN;
 		else
-			regval = ret | POWER_ON_CFG_CHRG_CFG_DIS;
+			regval = ret & ~POWER_ON_CFG_CHRG_CFG_EN;
 	}
 
 	/* when coming out of fault condition we need to set inlimit
@@ -1358,28 +1324,6 @@ static inline int bq24192_enable_charging(
 		}
 	}
 
-	return ret;
-}
-
-static inline int bq24192_enable_charger(
-			struct bq24192_chip *chip, int val)
-{
-	int ret = 0;
-
-	/***
-	 * Since charger detection is handled by BQ24296/7, puttting in HiZ
-	 * will disable further detections. Hence do not keep the charger in
-	 * HiZ mode.
-	 **/
-	if ((chip->chip_type == BQ24296) ||
-		(chip->chip_type == BQ24297))
-		return 0;
-
-	ret = bq24192_reg_read_modify(chip->client,
-			BQ24192_INPUT_SRC_CNTL_REG,
-				INPUT_SRC_CNTL_EN_HIZ, !val);
-
-	dev_dbg(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, val);
 	return ret;
 }
 
@@ -1497,14 +1441,22 @@ static int bq24192_usb_set_property(struct power_supply *psy,
 		}
 		break;
 	case POWER_SUPPLY_PROP_ENABLE_CHARGER:
-		ret = bq24192_enable_charger(chip, val->intval);
-
-		if (ret < 0) {
-			dev_err(&chip->client->dev,
-			"Error(%d) in %s charger", ret,
-			(val->intval ? "enable" : "disable"));
-		} else
-			chip->is_charger_enabled = val->intval;
+		/* During PET stress test, OTG mode is triggered within
+		 * ~10mS of usb disconnect. Disable charger event reaches
+		 * late to the bq driver compared to OTG VBUS enabling,
+		 * as the disconnect event goes through charger framework.
+		 * This disables the VBUS. Hence disable charger is avoided
+		 * during OTG mode.
+		*/
+		if (!(chip->boost_mode && !val->intval)) {
+			ret = bq24192_enable_charger(chip, val->intval);
+			if (ret < 0) {
+				dev_err(&chip->client->dev,
+				"Error(%d) in %s charger", ret,
+				(val->intval ? "enable" : "disable"));
+			} else
+				chip->is_charger_enabled = val->intval;
+		}
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CURRENT:
 		if (val->intval >= 0 && val->intval <= chip->max_cc) {
