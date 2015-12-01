@@ -12,9 +12,9 @@ FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
 more details.
 */
 
-#ifndef __IA_CSS_COMMON_IO_PARAM
-#define __IA_CSS_COMMON_IO_PARAM
+#ifndef __IA_CSS_COMMON_IPU2_IO_PARAM_H
+#define __IA_CSS_COMMON_IPU2_IO_PARAM_H
 
 #include "../common/ia_css_common_io_types.h"
 
-#endif /* __IA_CSS_COMMON_IO_PARAM */
+#endif /* __IA_CSS_COMMON_IPU2_IO_PARAM_H */

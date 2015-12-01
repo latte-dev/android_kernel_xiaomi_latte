@@ -18,6 +18,10 @@ more details.
 #include "assert_support.h"
 #include "ia_css_xnr3_0_11.host.h"
 
+#ifndef IA_CSS_NO_DEBUG
+#include "ia_css_debug.h"
+#endif
+
 /*
  * XNR 3.0.11 division look-up table
  */
@@ -119,7 +123,7 @@ ia_css_xnr3_0_11_encode(
 	const struct ia_css_xnr3_0_11_config *from,
 	unsigned size)
 {
-	int kernel_size = XNR_FILTER_SIZE;
+	int kernel_size = XNR3_0_11_FILTER_SIZE;
 	/* The adjust factor is the next power of 2
 	   w.r.t. the kernel size*/
 	int adjust_factor = ceil_pow2(kernel_size);
@@ -143,13 +147,21 @@ ia_css_xnr3_0_11_encode(
 
 /* (void) = ia_css_xnr3_0_11_debug_dtrace(*config, level)
  * -----------------------------------------------
- * Dummy Function added as the tool expects it
+ * Debug trace function to dump XNR3_0_11 parameters
  */
 void
 ia_css_xnr3_0_11_debug_dtrace(
 	const struct ia_css_xnr3_0_11_config *config,
 	unsigned level)
 {
-	(void)config;
-	(void)level;
+#ifndef IA_CSS_NO_DEBUG
+	ia_css_debug_dtrace(level,
+		"config.weight_y0=%d, config.weight_y1=%d, "
+		"config.weight_u0=%d, config.weight_u1=%d, "
+		"config.weight_v0=%d, config.weight_v1=%d, ",
+		config->weight_y0, config->weight_y1,
+		config->weight_u0, config->weight_u1,
+		config->weight_v0, config->weight_v1);
+#endif
 }
+

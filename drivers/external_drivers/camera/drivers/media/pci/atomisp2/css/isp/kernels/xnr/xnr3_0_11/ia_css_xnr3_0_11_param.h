@@ -19,7 +19,7 @@ more details.
 #include "vmem.h" /* needed for VMEM_ARRAY */
 
 /* XNR3.0.11 filter size */
-#define XNR_FILTER_SIZE             11
+#define XNR3_0_11_FILTER_SIZE             11
 
 /*
  * STRUCT sh_css_isp_xnr3_0_11_vmem_params

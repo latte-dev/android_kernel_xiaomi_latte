@@ -118,7 +118,7 @@ ia_css_xnr3_0_5_encode(
 	const struct ia_css_xnr3_0_5_config *from,
 	unsigned size)
 {
-	int kernel_size = XNR_FILTER_SIZE;
+	int kernel_size = XNR3_0_5_FILTER_SIZE;
 	/* The adjust factor is the next power of 2
 	   w.r.t. the kernel size*/
 	int adjust_factor = ceil_pow2(kernel_size);

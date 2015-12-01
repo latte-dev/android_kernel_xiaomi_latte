@@ -36,6 +36,8 @@ enum ia_css_state_ids {
 	IA_CSS_CNR_STATE_ID,
 	IA_CSS_CNR2_STATE_ID,
 	IA_CSS_DP_STATE_ID,
+	IA_CSS_DPC2_STATE_ID,
+	IA_CSS_EED1_8_STATE_ID,
 	IA_CSS_DE_STATE_ID,
 	IA_CSS_TNR_STATE_ID,
 	IA_CSS_REF_STATE_ID,
@@ -51,6 +53,8 @@ struct ia_css_state_memory_offsets {
 		struct ia_css_isp_parameter cnr;
 		struct ia_css_isp_parameter cnr2;
 		struct ia_css_isp_parameter dp;
+		struct ia_css_isp_parameter dpc2;
+		struct ia_css_isp_parameter eed1_8;
 		struct ia_css_isp_parameter de;
 		struct ia_css_isp_parameter ynr;
 	} vmem;

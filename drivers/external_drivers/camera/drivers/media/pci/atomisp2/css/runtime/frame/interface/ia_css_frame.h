@@ -157,4 +157,15 @@ ia_css_frame_find_crop_resolution(const struct ia_css_resolution *in_res,
 	const struct ia_css_resolution *out_res,
 	struct ia_css_resolution *crop_res);
 
+/** @brief Finds the bytes per pixel for a format
+ * This function finds the number of bytes per pixel for a format
+ *
+ * @param
+ * @param[in] info	frame info
+ * @return		returns # of bytes per pixel for format
+ */
+unsigned
+ia_css_elems_bytes_from_info(
+	const struct ia_css_frame_info *info);
+
 #endif /* __IA_CSS_FRAME_H__ */

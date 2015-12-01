@@ -48,7 +48,7 @@ ia_css_xnr3_0_11_encode(
 
 /* (void) = ia_css_xnr3_0_11_debug_dtrace(*config, level)
  * -----------------------------------------------
- * Dummy Function added as the tool expects it
+ * Debug trace function to dump XNR3_0_11 parameters
  */
 void
 ia_css_xnr3_0_11_debug_dtrace(

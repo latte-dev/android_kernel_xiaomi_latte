@@ -64,6 +64,8 @@ more details.
 #if !defined(IS_ISP_2500_SYSTEM)
 /* This kernel is not used by SKC yet. */
 #include "isp/kernels/ipu2_io_ls/bayer_io_ls/ia_css_bayer_io.host.h"
+#include "isp/kernels/ipu2_io_ls/yuv444_io_ls/ia_css_yuv444_io.host.h"
+#include "isp/kernels/ipu2_io_ls/plane_io_ls/ia_css_plane_io.host.h"
 #endif
 
 #if defined(IS_ISP_2500_SYSTEM)
@@ -504,6 +506,7 @@ sh_css_copy_frame_to_spframe(struct ia_css_frame_sp *sp_frame_out,
 	case IA_CSS_FRAME_FORMAT_YUV444:
 	case IA_CSS_FRAME_FORMAT_YUV420_16:
 	case IA_CSS_FRAME_FORMAT_YUV422_16:
+	case IA_CSS_FRAME_FORMAT_YUV444_16:
 	case IA_CSS_FRAME_FORMAT_YV12:
 	case IA_CSS_FRAME_FORMAT_YV16:
 		sp_frame_out->planes.yuv.y.offset =
@@ -553,6 +556,7 @@ set_input_frame_buffer(const struct ia_css_frame *frame)
 	case IA_CSS_FRAME_FORMAT_RAW_PACKED:
 	case IA_CSS_FRAME_FORMAT_RAW:
 	case IA_CSS_FRAME_FORMAT_YUV420:
+	case IA_CSS_FRAME_FORMAT_YUV444_16:
 	case IA_CSS_FRAME_FORMAT_YUYV:
 	case IA_CSS_FRAME_FORMAT_YUV_LINE:
 	case IA_CSS_FRAME_FORMAT_NV12:
@@ -586,6 +590,7 @@ set_output_frame_buffer(const struct ia_css_frame *frame,
 	case IA_CSS_FRAME_FORMAT_YV16:
 	case IA_CSS_FRAME_FORMAT_YUV420_16:
 	case IA_CSS_FRAME_FORMAT_YUV422_16:
+	case IA_CSS_FRAME_FORMAT_YUV444_16:
 	case IA_CSS_FRAME_FORMAT_NV11:
 	case IA_CSS_FRAME_FORMAT_NV12:
 	case IA_CSS_FRAME_FORMAT_NV12_16:
@@ -868,6 +873,8 @@ configure_isp_from_args(
 	ia_css_tnr_configure(binary, (const struct ia_css_frame **)args->tnr_frames);
 #if !defined(IS_ISP_2500_SYSTEM)
 	ia_css_bayer_io_config(binary, args);
+	ia_css_yuv444_io_config(binary, args);
+	ia_css_plane_io_config(binary, args);
 #endif
 #ifdef HAS_TNR3
 	/* Remove support for TNR2 once TNR3 fully integrated */

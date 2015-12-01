@@ -86,14 +86,15 @@ enum ia_css_frame_format {
 							   interleaved even line */
 	IA_CSS_FRAME_FORMAT_CSI_MIPI_LEGACY_YUV420_8, /**< Legacy YUV420. UY odd
 							   line; VY even line */
-	IA_CSS_FRAME_FORMAT_CSI_MIPI_YUV420_10       /**< 10 bit per Y/U/V. Y odd
+	IA_CSS_FRAME_FORMAT_CSI_MIPI_YUV420_10,       /**< 10 bit per Y/U/V. Y odd
 							   line; UYVY interleaved
 							   even line */
+	IA_CSS_FRAME_FORMAT_YUV444_16  /**< 16 bits per plane YUV 444, Y, U, V plane */
 };
 
 /* NOTE: IA_CSS_FRAME_FORMAT_NUM was purposely defined outside of enum type ia_css_frame_format, */
 /*       because of issues this would cause with the Clockwork code checking tool.               */
-#define IA_CSS_FRAME_FORMAT_NUM (IA_CSS_FRAME_FORMAT_CSI_MIPI_YUV420_10 + 1)
+#define IA_CSS_FRAME_FORMAT_NUM (IA_CSS_FRAME_FORMAT_YUV444_16 + 1)
 
 /** Number of valid output frame formats for ISP **/
 #define IA_CSS_FRAME_OUT_FORMAT_NUM	(IA_CSS_FRAME_FORMAT_RGBA888 + 1)

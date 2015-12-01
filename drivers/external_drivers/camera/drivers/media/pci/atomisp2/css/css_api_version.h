@@ -34,7 +34,7 @@ The version string has four dot-separated numbers, read left to right:
 
 */
 
-#define CSS_API_VERSION_STRING	"2.1.20.9"
+#define CSS_API_VERSION_STRING	"2.1.20.19"
 
 /*
 Change log
@@ -435,6 +435,33 @@ v2.1.20.8, Temprarily disable memory debug features for SVOS.
 v2.1.20.9, Enable ISP 2.7 naming
 - Add IA_CSS_PIPE_VERSION_2_7 to enum ia_css_pipe_version
 - Add #define SH_CSS_ISP_PIPE_VERSION_2_7 4
+
+v2.1.20.11 (1 changes parallel), Add DPC2 parameters in ISP configuration
+- Add DPC2 config in ia_css_isp_config struct
+
+v2.1.20.12 (1 changes parallel), EED1_8 Parameter API
+- Add eed1_8_config in in ia_css_isp_config struct
+
+v2.1.20.13 (1 changes parallel), Add OB2 parameters in CSS API
+- Add ob2_config in ia_css_isp_config struct
+
+v2.1.20.14 (1 changes parallel), Add CTC2 parameters in ISP configurations
+- Add CTC2 config in ia_css_isp_config struct
+
+v2.1.20.15, Add IEFD kernel parameters in CSS API
+- Add iefd2_6_config in struct ia_css_isp_config 
+
+v2.1.20.16 (6 changes parallel), Add YUV444 16 bit format support
+- Add IA_CSS_FRAME_FORMAT_YUV444_16 in enum ia_css_frame_format
+
+v2.1.20.17 (1 changes parallel), Enable Macc1.5 API
+- Add macc1_5_config and macc1_5_table in in ia_css_isp_config struct
+
+v2.1.20.18, Add XNR3_0_11 parameters in ISP configurations
+- Add XNR3_0_11 config in ia_css_isp_config struct
+
+v2.1.20.19, Add Plane IO parameters in ISP configurations
+- Add Plane IO config in ia_css_isp_config struct
 
 */
 

@@ -387,6 +387,8 @@ static const char *debug_frame_format2str(const enum ia_css_frame_format frame_f
 		return "YUYV";
 	case IA_CSS_FRAME_FORMAT_YUV444:
 		return "YUV444";
+	case IA_CSS_FRAME_FORMAT_YUV444_16:
+		return "YUV444_16";
 	case IA_CSS_FRAME_FORMAT_YUV_LINE:
 		return "YUV_LINE";
 	case IA_CSS_FRAME_FORMAT_RAW:
@@ -1423,6 +1425,7 @@ void ia_css_debug_frame_print(const struct ia_css_frame *frame,
 	case IA_CSS_FRAME_FORMAT_YV16:
 	case IA_CSS_FRAME_FORMAT_YUV420_16:
 	case IA_CSS_FRAME_FORMAT_YUV422_16:
+	case IA_CSS_FRAME_FORMAT_YUV444_16:
 		ia_css_debug_dtrace(2, "  Y = %p\n",
 				    data + frame->planes.yuv.y.offset);
 		ia_css_debug_dtrace(2, "  U = %p\n",
@@ -2841,7 +2844,7 @@ ia_css_debug_pipe_graph_dump_stage(
 {
 	char blob_name[SH_CSS_MAX_BINARY_NAME+10] = "<unknown type>";
 	char const *bin_type = "<unknown type>";
-	int i;
+	int i, tnr_frames_count=0;
 
 	assert(stage != NULL);
 	if (stage->sp_func != IA_CSS_PIPELINE_NO_FUNC)
@@ -3027,7 +3030,11 @@ ia_css_debug_pipe_graph_dump_stage(
 			"in", true);
 	}
 
-	for (i = 0; i < NUM_TNR_FRAMES; i++) {
+	/* Guard in case of binaries that don't have any binary_info */
+	if (stage->binary_info != NULL) {
+		tnr_frames_count = stage->binary_info->enable.luma_only ? (NUM_TNR_FRAMES_MAX):(NUM_TNR_FRAMES);
+	}
+	for (i = 0; i < tnr_frames_count; i++) {
 		if (stage->args.tnr_frames[i]) {
 			ia_css_debug_pipe_graph_dump_frame(
 					stage->args.tnr_frames[i], id,

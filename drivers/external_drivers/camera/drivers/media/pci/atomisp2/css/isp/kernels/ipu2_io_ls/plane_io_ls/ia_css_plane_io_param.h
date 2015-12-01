@@ -17,4 +17,10 @@ more details.
 
 #include "../common/ia_css_common_io_param.h"
 
+#define PLANE_IO_LS_NUM_PLANES	3
+struct sh_css_plane_io_config {
+	struct ia_css_common_io_config get_plane_io_config[PLANE_IO_LS_NUM_PLANES];
+	struct ia_css_common_io_config put_plane_io_config[PLANE_IO_LS_NUM_PLANES];
+};
+
 #endif /* __IA_CSS_PLANE_IO_PARAM_H */

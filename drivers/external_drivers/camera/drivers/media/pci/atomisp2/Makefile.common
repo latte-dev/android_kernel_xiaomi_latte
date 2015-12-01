@@ -7,9 +7,9 @@ else ifneq ($(ISP2401), )
 endif
 
 ifneq ($(ISP2401_NEW_INPUT_SYSTEM), )
-	src_filter_out := %ifmtr.c %input_system.c %input_formatter.c %vmem.c %timer.c %ia_css_ctc2.host.c %ia_css_pdaf.host.c
+	src_filter_out := %ifmtr.c %input_system.c %input_formatter.c %vmem.c %timer.c %ia_css_pdaf.host.c
 else
-	src_filter_out := %csi_rx_rmgr.c %isys_dma_rmgr.c %virtual_isys.c %isys_stream2mmio_rmgr.c %vmem.c %timer.c %ia_css_ctc2.host.c %ia_css_pdaf.host.c
+	src_filter_out := %csi_rx_rmgr.c %isys_dma_rmgr.c %virtual_isys.c %isys_stream2mmio_rmgr.c %vmem.c %timer.c %ia_css_pdaf.host.c
 endif
 
 atomisp-$(postfix)-objs := \

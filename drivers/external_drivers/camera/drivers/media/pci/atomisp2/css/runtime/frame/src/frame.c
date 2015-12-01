@@ -86,10 +86,6 @@ static struct ia_css_frame *frame_create(unsigned int width,
 	bool contiguous,
 	bool valid);
 
-static unsigned
-ia_css_elems_bytes_from_info(
-	const struct ia_css_frame_info *info);
-
 /**************************************************************************
 **	CSS API functions, exposed by ia_css.h
 **************************************************************************/
@@ -404,6 +400,9 @@ enum ia_css_err ia_css_frame_init_planes(struct ia_css_frame *frame)
 	case IA_CSS_FRAME_FORMAT_YUV444:
 		frame_init_yuv_planes(frame, 1, 1, false, 1);
 		break;
+	case IA_CSS_FRAME_FORMAT_YUV444_16:
+		frame_init_yuv_planes(frame, 1, 1, false, 2);
+		break;
 	case IA_CSS_FRAME_FORMAT_YUV420_16:
 		frame_init_yuv_planes(frame, 2, 2, false, 2);
 		break;
@@ -464,7 +463,10 @@ void ia_css_frame_info_set_width(struct ia_css_frame_info *info,
 	else if (info->format == IA_CSS_FRAME_FORMAT_NV12_TILEY)
 		info->padded_width = CEIL_MUL(align, NV12_TILEY_TILE_WIDTH);
 	else if (info->format == IA_CSS_FRAME_FORMAT_RAW ||
-		 info->format == IA_CSS_FRAME_FORMAT_RAW_PACKED)
+		 info->format == IA_CSS_FRAME_FORMAT_RAW_PACKED ||
+		 info->format == IA_CSS_FRAME_FORMAT_YUV444 ||
+		 info->format == IA_CSS_FRAME_FORMAT_YUV444_16 ||
+		 info->format == IA_CSS_FRAME_FORMAT_YUV420_16)
 		info->padded_width = CEIL_MUL(align, 2 * ISP_VEC_NELEMS);
 	else {
 		info->padded_width = CEIL_MUL(align, HIVE_ISP_DDR_WORD_BYTES);
@@ -853,7 +855,7 @@ static struct ia_css_frame *frame_create(unsigned int width,
 	return me;
 }
 
-static unsigned
+unsigned
 ia_css_elems_bytes_from_info(const struct ia_css_frame_info *info)
 {
 	if (info->format == IA_CSS_FRAME_FORMAT_RGB565)
@@ -861,6 +863,8 @@ ia_css_elems_bytes_from_info(const struct ia_css_frame_info *info)
 	if (info->format == IA_CSS_FRAME_FORMAT_YUV420_16)
 		return 2; /* bytes per pixel */
 	if (info->format == IA_CSS_FRAME_FORMAT_YUV422_16)
+		return 2; /* bytes per pixel */
+	if (info->format == IA_CSS_FRAME_FORMAT_YUV444_16)
 		return 2; /* bytes per pixel */
 	/* Note: Essentially NV12_16 is a 2 bytes per pixel format, this return value is used
 	 * to configure DMA for the output buffer,

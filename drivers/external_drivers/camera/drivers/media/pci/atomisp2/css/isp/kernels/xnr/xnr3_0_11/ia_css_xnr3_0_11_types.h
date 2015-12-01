@@ -15,11 +15,18 @@ more details.
 #ifndef __IA_CSS_XNR3_0_11_TYPES_H
 #define __IA_CSS_XNR3_0_11_TYPES_H
 
- /*
- * STRUCT ia_css_xnr3_0_11_config
- * -----------------------------------------------
- * Struct with all parameters for the XNR3.0.11 kernel that can be set
- * from the CSS API
+/** @file
+* CSS-API header file for Extra Noise Reduction (XNR3_0_11) parameters.
+*/
+
+/**
+ * \brief XNR3_0_11 Weight Parameters
+ * \details Weight parameters define the strength of the XNR filter.
+ * A lower value means strong filtering.  There are two values for
+ * each of the three YUV planes: one for dark areas and one for
+ * bright areas.  All weight parameters are between 1 and 8191.
+ * 1 - strongest
+ * 8191 - ineffective
  */
 struct ia_css_xnr3_0_11_config {
 	int32_t weight_y0;     /**< Weight for Y range similarity in dark area */

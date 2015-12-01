@@ -579,7 +579,8 @@ void ia_css_pipe_get_capturepp_binarydesc(
 		pipe->config.default_capture_config.enable_capture_pp_bli;
 	capture_pp_descr->enable_fractional_ds = true;
 	capture_pp_descr->enable_xnr =
-		pipe->config.default_capture_config.enable_xnr != 0;
+		(pipe->config.default_capture_config.enable_xnr != 0 &&
+		 pipe->config.isp_pipe_version != IA_CSS_PIPE_VERSION_2_7);
 	IA_CSS_LEAVE_PRIVATE("");
 }
 
@@ -610,12 +611,12 @@ void ia_css_pipe_get_primary_binarydesc(
 	assert(pipe != NULL);
 	assert(in_info != NULL);
 	assert(out_info != NULL);
-	assert(stage_idx < NUM_PRIMARY_HQ_STAGES);
+	assert(stage_idx < NUM_PRIMARY_HQ27_STAGES);
 	/* vf_info can be NULL - example video_binarydescr */
 	/*assert(vf_info != NULL);*/
 	IA_CSS_ENTER_PRIVATE("");
 
-	if (pipe_version == IA_CSS_PIPE_VERSION_2_6_1)
+	if (pipe_version == IA_CSS_PIPE_VERSION_2_7)
 		mode = primary_hq_binary_modes[stage_idx];
 	else
 		mode = IA_CSS_BINARY_MODE_PRIMARY;
@@ -631,6 +632,7 @@ void ia_css_pipe_get_primary_binarydesc(
 		in_info->format = IA_CSS_FRAME_FORMAT_RAW_PACKED;
 	else
 #endif
+	if (stage_idx == 0)
 		in_info->format = IA_CSS_FRAME_FORMAT_RAW;
 
 	in_info->raw_bit_depth = ia_css_pipe_util_pipe_input_format_bpp(pipe);
@@ -643,7 +645,11 @@ void ia_css_pipe_get_primary_binarydesc(
 
 	if (pipe->stream->config.online &&
 	    pipe->stream->config.mode != IA_CSS_INPUT_MODE_MEMORY) {
-		prim_descr->online = true;
+		/* Primary binaries in ISP2.7 can be configured to be offline mode
+		 * since they read from the memory. Online mode execution
+		 * is taken care by pre_de binary. */
+		prim_descr->online =
+			(pipe_version == IA_CSS_PIPE_VERSION_2_7) ? false : true;
 		prim_descr->two_ppc =
 		    (pipe->stream->config.pixels_per_clock == 2);
 		prim_descr->stream_format = pipe->stream->config.input_config.format;
@@ -658,7 +664,10 @@ void ia_css_pipe_get_primary_binarydesc(
 		 * if continuous viewfinder is required, then we must select
 		 * a striped one. Otherwise we prefer to use a non-striped
 		 * since it has better performance. */
-		if (pipe_version == IA_CSS_PIPE_VERSION_2_6_1)
+		/* NOTE: Need to check later if we can use striped primary
+		 * binaries for ISP 2.7 */
+		if (pipe_version == IA_CSS_PIPE_VERSION_2_6_1 ||
+		    pipe_version == IA_CSS_PIPE_VERSION_2_7)
 			prim_descr->striped = false;
 		else
 			prim_descr->striped = prim_descr->continuous && !pipe->stream->disable_cont_vf;
@@ -776,7 +785,8 @@ void ia_css_pipe_get_pre_de_binarydesc(
 	if (pipe->config.isp_pipe_version == IA_CSS_PIPE_VERSION_1)
 		pipe_binarydesc_get_offline(pipe, IA_CSS_BINARY_MODE_PRE_ISP,
 				       pre_de_descr, in_info, out_infos, NULL);
-	else if (pipe->config.isp_pipe_version == IA_CSS_PIPE_VERSION_2_2) {
+	else if ((pipe->config.isp_pipe_version == IA_CSS_PIPE_VERSION_2_2) ||
+		(pipe->config.isp_pipe_version == IA_CSS_PIPE_VERSION_2_7)) {
 		pipe_binarydesc_get_offline(pipe, IA_CSS_BINARY_MODE_PRE_DE,
 				       pre_de_descr, in_info, out_infos, NULL);
 	}

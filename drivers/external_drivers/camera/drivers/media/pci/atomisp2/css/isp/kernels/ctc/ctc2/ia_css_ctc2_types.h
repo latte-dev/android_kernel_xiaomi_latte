@@ -15,6 +15,9 @@ more details.
 #ifndef __IA_CSS_CTC2_TYPES_H
 #define __IA_CSS_CTC2_TYPES_H
 
+/** @file
+* CSS-API header file for Chroma Tone Control parameters for CTC2.
+*/
 /** Chroma Tone Control configuration.
 *
 *  ISP block: CTC2 (CTC by polygonal approximation)
@@ -24,32 +27,35 @@ more details.
 */
 struct ia_css_ctc2_config {
 
-	/**< Gains by Y(Luma) at Y =0.0,Y_X1, Y_X2, Y_X3, Y_X4 and Y_X5
-	*   --default/ineffective value: 4096(0.5f)
-	*/
-	int32_t y_y0;
-	int32_t y_y1;
-	int32_t y_y2;
-	int32_t y_y3;
-	int32_t y_y4;
-	int32_t y_y5;
+	int32_t y_y0;	/**< Gain by Y(Luma) at Y=0
+				u0.13, [0,8191], default/ineffective 4096 */
+	int32_t y_y1;	/**< Gain by Y(Luma) at Y=Y_X1
+				u0.13, [0,8191], default/ineffective 4096 */
+	int32_t y_y2;	/**< Gain by Y(Luma) at Y=Y_X2
+				u0.13, [0,8191], default/ineffective 4096 */
+	int32_t y_y3;	/**< Gain by Y(Luma) at Y=Y_X3
+				u0.13, [0,8191], default/ineffective 4096 */
+	int32_t y_y4;	/**< Gain by Y(Luma) at Y=Y_X4
+				u0.13, [0,8191], default/ineffective 4096 */
+	int32_t y_y5;	/**< Gain by Y(Luma) at Y=Y_X5
+				u0.13, [0,8191], default/ineffective 4096 */
 	/** 1st-4th  kneepoints by Y(Luma) --default/ineffective value:n/a
 	*   requirement: 0.0 < y_x1 < y_x2 <y _x3 < y_x4 < 1.0
 	*/
-	int32_t y_x1;
-	int32_t y_x2;
-	int32_t y_x3;
-	int32_t y_x4;
+	int32_t y_x1;	/** 1st kneepoint by Y(Luma)*/
+	int32_t y_x2;	/** 2nd kneepoint by Y(Luma)*/
+	int32_t y_x3;	/** 3rd kneepoint by Y(Luma)*/
+	int32_t y_x4;	/** 4th kneepoint by Y(Luma)*/
 	/** Gains by UV(Chroma) under threholds uv_x0 and uv_x1
 	*   --default/ineffective value: 4096(0.5f)
 	*/
-	int32_t uv_y0;
-	int32_t uv_y1;
+	int32_t uv_y0;	/** Gain by UV(chroma) at UV_X0*/
+	int32_t uv_y1;	/** Gain by UV(chroma) at UV_X0*/
 	/** Minimum and Maximum Thresholds by UV(Chroma)- uv_x0 and uv_x1
 	*   --default/ineffective value: n/a
 	*/
-	int32_t uv_x0;
-	int32_t uv_x1;
+	int32_t uv_x0;	/** Threshold of gain by UV at dull area*/
+	int32_t uv_x1;	/** Threshold of gain by UV at vivid area*/
 	};
 
 #endif /* __IA_CSS_CTC2_TYPES_H */

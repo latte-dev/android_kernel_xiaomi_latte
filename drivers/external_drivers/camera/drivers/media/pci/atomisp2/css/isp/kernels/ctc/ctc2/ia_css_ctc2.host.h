@@ -30,4 +30,10 @@ void ia_css_ctc2_encode(struct ia_css_isp_ctc2_dmem_params *to,
 			struct ia_css_ctc2_config *from,
 			size_t size);
 
+#ifndef IA_CSS_NO_DEBUG
+void
+ia_css_ctc2_debug_dtrace(
+	const struct ia_css_ctc2_config *config,
+	unsigned level);
+#endif
 #endif /* __IA_CSS_CTC2_HOST_H */

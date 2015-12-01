@@ -22,9 +22,6 @@ more details.
 /* 4 planes : GR, R, B, GB */
 #define NUM_PLANES		4
 
-/* ToDo: Move this to testsetup */
-#define MAX_FRAME_SIMDWIDTH	30
-
 /* 3 lines state per color plane input_line_state */
 #define DPC2_STATE_INPUT_BUFFER_HEIGHT	(3 * NUM_PLANES)
 /* Each plane has width equal to half frame line */

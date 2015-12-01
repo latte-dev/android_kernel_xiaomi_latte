@@ -1,4 +1,4 @@
-/* Release Version: irci_ecr-master_20150911_0724 */
+/* Release Version: irci_ecr-master_20151129_1500 */
 /**
 Support for Intel Camera Imaging ISP subsystem.
 Copyright (c) 2010 - 2015, Intel Corporation.
@@ -39,6 +39,7 @@ more details.
 #include "isp/kernels/cnr/cnr_2/ia_css_cnr2_types.h"
 #include "isp/kernels/csc/csc_1.0/ia_css_csc_types.h"
 #include "isp/kernels/ctc/ctc_1.0/ia_css_ctc_types.h"
+#include "isp/kernels/ctc/ctc2/ia_css_ctc2_types.h"
 #include "isp/kernels/dp/dp_1.0/ia_css_dp_types.h"
 #include "isp/kernels/de/de_1.0/ia_css_de_types.h"
 #include "isp/kernels/de/de_2/ia_css_de2_types.h"
@@ -47,7 +48,11 @@ more details.
 #include "isp/kernels/gc/gc_1.0/ia_css_gc_types.h"
 #include "isp/kernels/gc/gc_2/ia_css_gc2_types.h"
 #include "isp/kernels/macc/macc_1.0/ia_css_macc_types.h"
+#include "isp/kernels/macc/macc1_5/ia_css_macc1_5_types.h"
+#include "isp/kernels/dpc2/ia_css_dpc2_types.h"
+#include "isp/kernels/eed1_8/ia_css_eed1_8_types.h"
 #include "isp/kernels/ob/ob_1.0/ia_css_ob_types.h"
+#include "isp/kernels/ob/ob2/ia_css_ob2_types.h"
 #include "isp/kernels/s3a/s3a_1.0/ia_css_s3a_types.h"
 #include "isp/kernels/sc/sc_1.0/ia_css_sc_types.h"
 #include "isp/kernels/sdis/sdis_1.0/ia_css_sdis_types.h"
@@ -56,10 +61,13 @@ more details.
 #include "isp/kernels/wb/wb_1.0/ia_css_wb_types.h"
 #include "isp/kernels/xnr/xnr_1.0/ia_css_xnr_types.h"
 #include "isp/kernels/xnr/xnr_3.0/ia_css_xnr3_types.h"
+#include "isp/kernels/iefd2_6/ia_css_iefd2_6_types.h"
+#include "isp/kernels/xnr/xnr3_0_11/ia_css_xnr3_0_11_types.h"
 #include "isp/kernels/tnr/tnr3/ia_css_tnr3_types.h"
 #include "isp/kernels/ynr/ynr_1.0/ia_css_ynr_types.h"
 #include "isp/kernels/ynr/ynr_2/ia_css_ynr2_types.h"
 #include "isp/kernels/output/output_1.0/ia_css_output_types.h"
+#include "isp/kernels/ipu2_io_ls/plane_io_ls/ia_css_plane_io_types.h"
 
 #define IA_CSS_DVS_STAT_GRID_INFO_SUPPORTED
 /**< Should be removed after Driver adaptation will be done */
@@ -467,6 +475,7 @@ struct ia_css_capture_config {
  *    ["ISP block", 1&2]   : ISP block is used both for ISP1 and ISP2.
  *    ["ISP block", 1only] : ISP block is used only for ISP1.
  *    ["ISP block", 2only] : ISP block is used only for ISP2.
+ *    ["ISP block", 2.7only] : ISP block is used only for ISP2.7.
  */
 struct ia_css_isp_config {
 	struct ia_css_wb_config   *wb_config;	/**< White Balance
@@ -488,7 +497,7 @@ struct ia_css_isp_config {
 	struct ia_css_macc_config *macc_config;	/**< MACC
 							[MACC2, 2only] */
 	struct ia_css_ctc_config  *ctc_config;	/**< Chroma Tone Control
-							[CTC2, 2only] */
+							[CTC, 2only] */
 	struct ia_css_aa_config   *aa_config;	/**< YUV Anti-Aliasing
 							[AA2, 2only]
 							(not used currently) */
@@ -500,7 +509,7 @@ struct ia_css_isp_config {
 	struct ia_css_ob_config   *ob_config;  /**< Objective Black
 							[OB1, 1&2] */
 	struct ia_css_dp_config   *dp_config;  /**< Defect Pixel Correction
-							[DPC1/DPC2, 1&2] */
+							[DPC1, 1&2] */
 	struct ia_css_nr_config   *nr_config;  /**< Noise Reduction
 							[BNR1&YNR1&CNR1, 1&2]*/
 	struct ia_css_ee_config   *ee_config;  /**< Edge Enhancement
@@ -550,6 +559,22 @@ struct ia_css_isp_config {
 	 *  the risk for regression is not in the individual blocks, but how they
 	 *  integrate together. */
 	struct ia_css_output_config   *output_config;	/**< Main Output Mirroring, flipping */
+	struct ia_css_dpc2_config    *dpc2_config;    /**< Defect Pixel Correction
+							[DPC2, 2.7] */
+	struct ia_css_eed1_8_config  *eed1_8_config;  /**<Edge Enhancement Demosaic
+							[EED1_8, 2.7] */
+	struct ia_css_ob2_config     *ob2_config;     /**< Objective Black
+							[OB2, 2.7only] */
+	struct ia_css_ctc2_config    *ctc2_config;    /**< Chroma Tone Control
+							[CTC2, 2.7] */
+	struct ia_css_iefd2_6_config *iefd2_6_config; /**<Image Enhancement Filter Directed
+							[IEFD2_6, 2.7] */
+	struct ia_css_macc1_5_config *macc1_5_config; /**< MACC
+							[MACC1.5, 2.7only] */
+	struct ia_css_macc1_5_table  *macc1_5_table;  /**< MACC
+							[MACC1.5, 2.7only]*/
+	struct ia_css_xnr3_0_11_config  *xnr3_0_11_config; /**< eXtra Noise Reduction
+								[XNR3_0_11] */
 
 	struct ia_css_2500_lin_kernel_config     *lin_2500_config;       /**< Skylake: Linearization config */
 	struct ia_css_2500_obgrid_kernel_config  *obgrid_2500_config;    /**< Skylake: OBGRID config */

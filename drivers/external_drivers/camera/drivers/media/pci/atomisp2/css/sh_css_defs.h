@@ -115,7 +115,15 @@ RGB[0,8191],coef[-8192,8191] -> RGB[0,8191]
 #define SH_CSS_YUV2RGB_CCM_INPUT_BITS     SH_CSS_BAYER_BITS
 
 /* Bits of output of CCM,  = 12, RGB[0,4095] */
+
+#ifdef GC2_PIPE_VERSION_2_6_1
+/* According to spec CCM output is 13bit. GAMMA is expected to do 1bit right shift */
+/* This is required to bit-exact with ate */
+
+#define SH_CSS_YUV2RGB_CCM_OUTPUT_BITS   13
+#else
 #define SH_CSS_YUV2RGB_CCM_OUTPUT_BITS    SH_CSS_RGB_GAMMA_INPUT_BITS
+#endif
 
 /* Maximum value of output of CCM */
 #define SH_CSS_YUV2RGB_CCM_MAX_OUTPUT     \
@@ -139,7 +147,7 @@ RGB[0,8191],coef[-8192,8191] -> RGB[0,8191]
 #define SH_CSS_MAX_BQ_GRID_WIDTH          80
 #define SH_CSS_MAX_BQ_GRID_HEIGHT         60
 
-/* The minimum dvs envelope is 12x12(for IPU2) and 8x8(for IPU3) to make sure the 
+/* The minimum dvs envelope is 12x12(for IPU2) and 8x8(for IPU3) to make sure the
  * invalid rows/columns that result from filter initialization are skipped. */
 #if defined(IS_ISP_2500_SYSTEM)
 #define SH_CSS_MIN_DVS_ENVELOPE           8U
@@ -237,14 +245,12 @@ RGB[0,8191],coef[-8192,8191] -> RGB[0,8191]
 #define NUM_TNR_FRAMES_PER_REF_BUF_SET		(2)
 
 /* In luma-only mode alternate illuminated frames are supported, that requires two double buffers */
-#ifdef ENABLE_LUMA_ONLY
-#define NUM_TNR_REF_BUF_SETS	(2)
-#else
+#define NUM_TNR_REF_BUF_SETS_MAX	(2)
 #define NUM_TNR_REF_BUF_SETS	(1)
-#endif
 
+/* In luma-only mode alternate illuminated frames are supported, that requires two buffer sets */
+#define NUM_TNR_FRAMES_MAX	(NUM_TNR_FRAMES_PER_REF_BUF_SET * NUM_TNR_REF_BUF_SETS_MAX)
 #define NUM_TNR_FRAMES		(NUM_TNR_FRAMES_PER_REF_BUF_SET * NUM_TNR_REF_BUF_SETS)
-
 
 /* Rules: these implement logic shared between the host code and ISP firmware.
    The ISP firmware needs these rules to be applied at pre-processor time,
