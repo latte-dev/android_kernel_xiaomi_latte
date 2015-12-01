@@ -1216,7 +1216,6 @@ CONFIG_EEPROM_93CX6=m
 # Texas Instruments shared transport line discipline
 #
 # CONFIG_TI_ST is not set
-# CONFIG_INTEL_LD is not set
 # CONFIG_SENSORS_LIS3_I2C is not set
 
 #
