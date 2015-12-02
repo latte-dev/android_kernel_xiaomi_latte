@@ -11214,6 +11214,15 @@ int intel_set_disp_calc_flip(struct drm_mode_set_display *disp,
 			DRM_ERROR("Not enabling Panel Fitter\n");
 		} else {
 			u32 pfit_mode = 0;
+			if (disp->panel_fitter.mode == PFIT_OFF ||
+					disp->panel_fitter.src_w == 0 ||
+					disp->panel_fitter.src_h == 0) {
+				pfit_control &= ~PFIT_ENABLE;
+				intel_crtc->scaling_src_size =
+						(((mode->hdisplay - 1) << 16) |
+							(mode->vdisplay - 1));
+				goto pfit_out;
+			}
 
 			pfit_control &= ~PFIT_PIPE_MASK;
 			pfit_control |= (intel_crtc->pipe << PFIT_PIPE_SHIFT);
@@ -11221,8 +11230,7 @@ int intel_set_disp_calc_flip(struct drm_mode_set_display *disp,
 			intel_crtc->scaling_src_size =
 				(((disp->panel_fitter.src_w - 1) << 16) |
 						(disp->panel_fitter.src_h - 1));
-			if (disp->panel_fitter.mode == PFIT_OFF);
-			else if (((mode->hdisplay * disp->panel_fitter.src_h) /
+			if (((mode->hdisplay * disp->panel_fitter.src_h) /
 						disp->panel_fitter.src_w) < mode->vdisplay)
 				pfit_mode |= PFIT_SCALING_LETTER;
 			else if (((mode->vdisplay * disp->panel_fitter.src_w) /
@@ -11268,6 +11276,7 @@ int intel_set_disp_calc_flip(struct drm_mode_set_display *disp,
 				pfit_control &=  MASK_PFIT_SCALING_MODE;
 				pfit_control |= pfit_mode;
 			}
+pfit_out:
 			intel_crtc->pfit_control = pfit_control;
 			if (pfit_control != pfitcontrol || scaling_src_size != intel_crtc->scaling_src_size)
 				dev_priv->pfit_changed = true;
