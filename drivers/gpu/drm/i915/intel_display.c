@@ -15176,12 +15176,13 @@ bool chv_upfront_link_train(struct drm_device *dev,
 	bool found = false;
 	bool valid_crtc = false;
 	uint8_t tmp_lane_count, tmp_link_bw;
-	power_domain = intel_display_port_power_domain(encoder);
 
 	if (!connector || !encoder) {
 		DRM_DEBUG_KMS("dp connector/encoder is NULL\n");
 		return false;
 	}
+
+	power_domain = intel_display_port_power_domain(encoder);
 
 	/* If we already have a crtc, start link training directly */
 	if (crtc) {
