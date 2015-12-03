@@ -406,6 +406,7 @@ struct pmic_chrgr_drv_context {
 	bool src_cable_state;
 	bool snk_cable_state;
 	bool is_usb_typec;
+	bool is_notify_otg;
 
 	bool tt_lock;
 	unsigned int irq[PMIC_CCSM_IRQ_MAX];		/* GPE_ID or IRQ# */

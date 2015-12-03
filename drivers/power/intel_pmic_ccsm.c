@@ -918,6 +918,9 @@ static void handle_internal_usbphy_notifications(int mask)
 		cap.chrg_type = chc.charger_type;
 	}
 
+	/* by default all the events should be notified to USB */
+	chc.is_notify_otg = true;
+
 	switch (cap.chrg_type) {
 	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
 		if (cap.chrg_evt == POWER_SUPPLY_CHARGER_EVENT_CONNECT)
@@ -939,7 +942,17 @@ static void handle_internal_usbphy_notifications(int mask)
 	case POWER_SUPPLY_CHARGER_TYPE_USB_DCP:
 	case POWER_SUPPLY_CHARGER_TYPE_SE1:
 	case POWER_SUPPLY_CHARGER_TYPE_USB_ACA:
+	case POWER_SUPPLY_CHARGER_TYPE_AC:
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_B:
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_C:
+	case POWER_SUPPLY_CHARGER_TYPE_MHL:
+	case POWER_SUPPLY_CHARGER_TYPE_B_DEVICE:
 		cap.ma = HIGH_POWER_CHRG_CURRENT;
+		/*
+		 * don't notify to OTG driver incase of non PC/Dock ports
+		 * connect/disconenct.
+		 */
+		chc.is_notify_otg = false;
 		break;
 	case POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK:
 	case POWER_SUPPLY_CHARGER_TYPE_ACA_A:
@@ -949,16 +962,10 @@ static void handle_internal_usbphy_notifications(int mask)
 		else
 			evt = USB_EVENT_NONE;
 		break;
-	case POWER_SUPPLY_CHARGER_TYPE_AC:
-	case POWER_SUPPLY_CHARGER_TYPE_ACA_B:
-	case POWER_SUPPLY_CHARGER_TYPE_ACA_C:
-	case POWER_SUPPLY_CHARGER_TYPE_MHL:
-	case POWER_SUPPLY_CHARGER_TYPE_B_DEVICE:
-		cap.ma = HIGH_POWER_CHRG_CURRENT;
-		break;
 	case POWER_SUPPLY_CHARGER_TYPE_NONE:
 	default:
 		cap.ma = 0;
+		chc.is_notify_otg = false;
 	}
 
 	dev_dbg(chc.dev, "Notifying OTG ev:%d, evt:%d, chrg_type:%d, mA:%d\n",
@@ -1884,27 +1891,6 @@ static inline int register_cooling_device(struct pmic_chrgr_drv_context *chc)
 	return 0;
 }
 
-static bool is_notify_otg(void)
-{
-	enum power_supply_charger_cable_type ctype = chc.charger_type;
-
-	/* don't do charger detection again if already charger type is set */
-	if (!ctype) {
-		ctype = get_charger_type();
-		if (ctype == 0)
-			return false;
-	}
-
-	/* don't notify to OTG driver in case of DCP/SE1/ACA
-	 * connect/disconenct */
-	if (ctype == POWER_SUPPLY_CHARGER_TYPE_USB_DCP ||
-			ctype == POWER_SUPPLY_CHARGER_TYPE_SE1 ||
-			ctype == POWER_SUPPLY_CHARGER_TYPE_USB_ACA)
-		return false;
-
-	return true;
-}
-
 static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 						bool cable_state)
 {
@@ -1932,7 +1918,7 @@ static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 		/* Send VBUS notification to USB subsystem so that system will
 		 * switch device mode of operation.
                  */
-		if (is_notify_otg()) {
+		if (chc.is_notify_otg) {
 			otg_evt = cable_state ? USB_EVENT_VBUS : USB_EVENT_NONE;
 			notify_otg = true;
 		}
