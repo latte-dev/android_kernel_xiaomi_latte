@@ -3880,6 +3880,12 @@ int atomisp_css_get_ob_config(struct atomisp_sub_device *asd,
 	return 0;
 }
 
+void atomisp_css_set_ob2_config(struct atomisp_sub_device *asd,
+			struct atomisp_css_ob2_config *ob2_config)
+{
+	asd->params.config.ob2_config = ob2_config;
+}
+
 int atomisp_css_get_dp_config(struct atomisp_sub_device *asd,
 			struct atomisp_dp_config *config)
 {

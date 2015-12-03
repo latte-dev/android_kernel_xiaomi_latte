@@ -69,6 +69,7 @@
 #define atomisp_css_anr_config	ia_css_anr_config
 #define atomisp_css_xnr_config	ia_css_xnr_config
 #define atomisp_css_macc_config	ia_css_macc_config
+#define atomisp_css_ob2_config	ia_css_ob2_config
 #define atomisp_css_gamma_table	ia_css_gamma_table
 #define atomisp_css_ctc_table	ia_css_ctc_table
 #define atomisp_css_macc_table	ia_css_macc_table
@@ -259,6 +260,9 @@ void atomisp_css_unload_firmware(struct atomisp_device *isp);
 
 void atomisp_css_set_dvs_6axis(struct atomisp_sub_device *asd,
 			struct atomisp_css_dvs_6axis *dvs_6axis);
+
+void atomisp_css_set_ob2_config(struct atomisp_sub_device *asd,
+			struct atomisp_css_ob2_config *ob2_config);
 
 unsigned int atomisp_css_debug_get_dtrace_level(void);
 
