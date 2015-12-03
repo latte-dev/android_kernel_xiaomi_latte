@@ -3219,6 +3219,17 @@ void atomisp_apply_css_parameters(
 	if (css_param->update_flag.dvs_6axis_config)
 		atomisp_css_set_dvs_6axis(asd, css_param->dvs_6axis);
 
+	/* Workaround for BTNS, apply default OB2 setting for IMX227.
+	   before AIQ for ISP2.7 is available,	we have to keep such
+	   workaround for a reasonable image color
+	 */
+#ifdef CONFIG_PLATFORM_BTNS
+	{
+		static struct atomisp_css_ob2_config imx227_ob2_config =
+			{1024, 1024, 1024, 1024};
+		atomisp_css_set_ob2_config(asd, &imx227_ob2_config);
+	}
+#endif
 	atomisp_css_set_isp_config_id(asd, css_param->isp_config_id);
 	/*
 	 * These configurations are on used by ISP1.x, not for ISP2.x,
