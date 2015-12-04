@@ -68,8 +68,10 @@ static inline int ceiling_fp(int32_t x)
 
 struct sample {
 	int32_t core_pct_busy;
+	int32_t busy_scaled;
 	u64 aperf;
 	u64 mperf;
+	u64 tsc;
 	int freq;
 	ktime_t time;
 };
@@ -113,6 +115,8 @@ struct cpudata {
 	ktime_t last_sample_time;
 	u64	prev_aperf;
 	u64	prev_mperf;
+	u64	prev_tsc;
+	u64	prev_cummulative_iowait;
 	struct sample sample;
 
 #ifdef CONFIG_CPU_FREQ_STAT
@@ -137,12 +141,16 @@ struct pstate_funcs {
 	int (*get_scaling)(void);
 	void (*set)(struct cpudata*, int pstate);
 	void (*get_vid)(struct cpudata *);
+	int32_t (*get_target_pstate)(struct cpudata *);
 };
 
 struct cpu_defaults {
 	struct pstate_adjust_policy pid_policy;
 	struct pstate_funcs funcs;
 };
+
+static inline int32_t get_target_pstate_use_performance(struct cpudata *cpu);
+static inline int32_t get_target_pstate_use_cpu_load(struct cpudata *cpu);
 
 static struct pstate_adjust_policy pid_params;
 static struct pstate_funcs pstate_funcs;
@@ -540,6 +548,7 @@ static struct cpu_defaults core_params = {
 		.get_turbo = core_get_turbo_pstate,
 		.get_scaling = core_get_scaling,
 		.set = core_set_pstate,
+		.get_target_pstate = get_target_pstate_use_performance,
 	},
 };
 
@@ -559,6 +568,7 @@ static struct cpu_defaults silvermont_params = {
 		.set = atom_set_pstate,
 		.get_scaling = silvermont_get_scaling,
 		.get_vid = atom_get_vid,
+		.get_target_pstate = get_target_pstate_use_cpu_load,
 	},
 };
 
@@ -578,6 +588,7 @@ static struct cpu_defaults airmont_params = {
 		.set = atom_set_pstate,
 		.get_scaling = airmont_get_scaling,
 		.get_vid = atom_get_vid,
+		.get_target_pstate = get_target_pstate_use_cpu_load,
 	},
 };
 
@@ -639,21 +650,6 @@ static void intel_pstate_set_pstate(struct cpudata *cpu, int pstate)
 #endif
 }
 
-static inline void intel_pstate_pstate_increase(struct cpudata *cpu, int steps)
-{
-	int target;
-	target = cpu->pstate.current_pstate + steps;
-
-	intel_pstate_set_pstate(cpu, target);
-}
-
-static inline void intel_pstate_pstate_decrease(struct cpudata *cpu, int steps)
-{
-	int target;
-	target = cpu->pstate.current_pstate - steps;
-	intel_pstate_set_pstate(cpu, target);
-}
-
 static void intel_pstate_get_cpu_pstates(struct cpudata *cpu)
 {
 	sprintf(cpu->name, "Intel 2nd generation core");
@@ -690,25 +686,25 @@ static inline void intel_pstate_calc_busy(struct cpudata *cpu,
 
 static inline void intel_pstate_sample(struct cpudata *cpu)
 {
-	u64 aperf, mperf;
+	u64 aperf, mperf, tsc;
 
 	rdmsrl(MSR_IA32_APERF, aperf);
 	rdmsrl(MSR_IA32_MPERF, mperf);
-
-	aperf = aperf >> FRAC_BITS;
-	mperf = mperf >> FRAC_BITS;
+	rdmsrl(MSR_IA32_TSC, tsc);
+	if ((cpu->prev_mperf == mperf) || (cpu->prev_tsc == tsc))
+		return;
 
 	cpu->last_sample_time = cpu->sample.time;
 	cpu->sample.time = ktime_get();
-	cpu->sample.aperf = aperf;
-	cpu->sample.mperf = mperf;
-	cpu->sample.aperf -= cpu->prev_aperf;
-	cpu->sample.mperf -= cpu->prev_mperf;
+	cpu->sample.aperf = aperf - cpu->prev_aperf;
+	cpu->sample.mperf = mperf - cpu->prev_mperf;
+	cpu->sample.tsc = tsc - cpu->prev_tsc;
 
 	intel_pstate_calc_busy(cpu, &cpu->sample);
 
 	cpu->prev_aperf = aperf;
 	cpu->prev_mperf = mperf;
+	cpu->prev_tsc = tsc;
 }
 
 static inline void intel_pstate_set_sample_time(struct cpudata *cpu)
@@ -720,7 +716,41 @@ static inline void intel_pstate_set_sample_time(struct cpudata *cpu)
 	mod_timer_pinned(&cpu->timer, jiffies + delay);
 }
 
-static inline int32_t intel_pstate_get_scaled_busy(struct cpudata *cpu)
+static inline int32_t get_target_pstate_use_cpu_load(struct cpudata *cpu)
+{
+	struct sample *sample = &cpu->sample;
+	u64 cummulative_iowait, delta_iowait_us;
+	u64 delta_iowait_mperf;
+	u64 mperf, now;
+	int32_t cpu_load;
+
+	cummulative_iowait = get_cpu_iowait_time_us(cpu->cpu, &now);
+
+	/* Convert iowait time into number of IO cycles spent at max_freq.
+	 * IO is considered as busy only for the cpu_load algorithm. For
+	 * performance this is not needed since we always try to reach the
+	 * maximum P-State, so we are already boosting the IOs.
+	 */
+	delta_iowait_us = cummulative_iowait - cpu->prev_cummulative_iowait;
+	delta_iowait_mperf = div64_u64(delta_iowait_us * cpu->pstate.scaling *
+		cpu->pstate.max_pstate, MSEC_PER_SEC);
+
+	mperf = cpu->sample.mperf + delta_iowait_mperf;
+	cpu->prev_cummulative_iowait = cummulative_iowait;
+
+	/*
+	 * The load can be estimated as the ratio of the mperf counter
+	 * running at a constant frequency during active periods
+	 * (C0) and the time stamp counter running at the same frequency
+	 * also during C-states.
+	 */
+	cpu_load = div64_u64(int_tofp(100) * mperf, sample->tsc);
+	cpu->sample.busy_scaled = cpu_load;
+
+	return cpu->pstate.current_pstate - pid_calc(&cpu->pid, cpu_load);
+}
+
+static inline int32_t get_target_pstate_use_performance(struct cpudata *cpu)
 {
 	int32_t core_busy, max_pstate, current_pstate, sample_ratio;
 	u32 duration_us;
@@ -740,27 +770,17 @@ static inline int32_t intel_pstate_get_scaled_busy(struct cpudata *cpu)
 		core_busy = mul_fp(core_busy, sample_ratio);
 	}
 
-	return core_busy;
+	cpu->sample.busy_scaled = core_busy;
+	return cpu->pstate.current_pstate - pid_calc(&cpu->pid, core_busy);
 }
 
 static inline void intel_pstate_adjust_busy_pstate(struct cpudata *cpu)
 {
-	int32_t busy_scaled;
-	struct _pid *pid;
-	signed int ctl = 0;
-	int steps;
+	int target_pstate;
 
-	pid = &cpu->pid;
-	busy_scaled = intel_pstate_get_scaled_busy(cpu);
+	target_pstate = pstate_funcs.get_target_pstate(cpu);
 
-	ctl = pid_calc(pid, busy_scaled);
-
-	steps = abs(ctl);
-
-	if (ctl < 0)
-		intel_pstate_pstate_increase(cpu, steps);
-	else
-		intel_pstate_pstate_decrease(cpu, steps);
+	intel_pstate_set_pstate(cpu, target_pstate);
 }
 
 static void intel_pstate_timer_func(unsigned long __data)
@@ -775,7 +795,7 @@ static void intel_pstate_timer_func(unsigned long __data)
 	intel_pstate_adjust_busy_pstate(cpu);
 
 	trace_pstate_sample(fp_toint(sample->core_pct_busy),
-			fp_toint(intel_pstate_get_scaled_busy(cpu)),
+			fp_toint(get_target_pstate_use_performance(cpu)),
 			cpu->pstate.current_pstate,
 			sample->mperf,
 			sample->aperf,
@@ -1031,6 +1051,7 @@ static void copy_cpu_funcs(struct pstate_funcs *funcs)
 	pstate_funcs.get_scaling = funcs->get_scaling;
 	pstate_funcs.set       = funcs->set;
 	pstate_funcs.get_vid   = funcs->get_vid;
+	pstate_funcs.get_target_pstate = funcs->get_target_pstate;
 }
 
 #if IS_ENABLED(CONFIG_ACPI)
