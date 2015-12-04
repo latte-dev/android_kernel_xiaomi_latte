@@ -516,6 +516,19 @@ const struct atomisp_format_bridge atomisp_output_fmts[] = {
 		.mbus_code = V4L2_MBUS_FMT_CUSTOM_M10MO_RAW,
 		.sh_fmt = CSS_FRAME_FORMAT_BINARY_8,
 		.description = "Custom RAW for M10MO"
+	}, {
+	/* Only for ISP2.7 format*/
+		.pixelformat = V4L2_PIX_FMT_CUSTOM_YCgCo444_16,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_CUSTOM_YCgCo444_16,
+		.sh_fmt = CSS_FRAME_FORMAT_YCgCo444_16,
+		.description = "Custom YCgCo444_16"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_CUSTOM_YUV420_16,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_CUSTOM_YUV420_16,
+		.sh_fmt = CSS_FRAME_FORMAT_YUV420_16,
+		.description = "Custom YUV420_16"
 	},
 };
 

@@ -1936,6 +1936,10 @@ v4l2_fmt_to_sh_fmt(u32 fmt)
 	case V4L2_PIX_FMT_JPEG:
 	case V4L2_PIX_FMT_CUSTOM_M10MO_RAW:
 		return CSS_FRAME_FORMAT_BINARY_8;
+	case V4L2_PIX_FMT_CUSTOM_YUV420_16:
+		return CSS_FRAME_FORMAT_YUV420_16;
+	case V4L2_PIX_FMT_CUSTOM_YCgCo444_16:
+		return CSS_FRAME_FORMAT_YCgCo444_16;
 	case V4L2_PIX_FMT_SBGGR16:
 	case V4L2_PIX_FMT_SBGGR10:
 	case V4L2_PIX_FMT_SGBRG10:
@@ -2009,6 +2013,8 @@ static u32 get_pixel_depth(u32 pixelformat)
 	case V4L2_PIX_FMT_SGBRG10:
 	case V4L2_PIX_FMT_SGRBG10:
 	case V4L2_PIX_FMT_SRGGB10:
+	case V4L2_PIX_FMT_CUSTOM_YUV420_16:
+	case V4L2_PIX_FMT_CUSTOM_YCgCo444_16:
 		return 16;
 	case V4L2_PIX_FMT_RGB24:
 	case V4L2_PIX_FMT_YUV444:
@@ -4407,6 +4413,9 @@ atomisp_bytesperline_to_padded_width(unsigned int bytesperline,
 		return bytesperline/2;
 	case CSS_FRAME_FORMAT_RGBA888:
 		return bytesperline/4;
+	case CSS_FRAME_FORMAT_YUV420_16:
+	case CSS_FRAME_FORMAT_YCgCo444_16:
+		return bytesperline/2;
 	/* The following cases could be removed, but we leave them
 	   in to document the formats that are included. */
 	case CSS_FRAME_FORMAT_NV11:
@@ -4417,7 +4426,6 @@ atomisp_bytesperline_to_padded_width(unsigned int bytesperline,
 	case CSS_FRAME_FORMAT_YV12:
 	case CSS_FRAME_FORMAT_YV16:
 	case CSS_FRAME_FORMAT_YUV420:
-	case CSS_FRAME_FORMAT_YUV420_16:
 	case CSS_FRAME_FORMAT_YUV422:
 	case CSS_FRAME_FORMAT_YUV422_16:
 	case CSS_FRAME_FORMAT_YUV444:
