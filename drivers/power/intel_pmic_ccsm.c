@@ -845,6 +845,7 @@ err_exit:
 static int get_charger_type(void)
 {
 	int ret, i = 0;
+	int time = 0;
 	u8 val;
 	int chgr_type, rid;
 
@@ -858,18 +859,16 @@ static int get_charger_type(void)
 		if ((val & USBSRCDET_SUSBHWDET) ==
 			USBSRCDET_SUSBHWDET_DETSUCC)
 			break;
-		else {
-			pmic_write_reg(chc.reg_map->pmic_usbphyctrl,
-						USBPHYCTRL_CTYPE_START);
-			usleep_range(USBSRCDET_SLEEP_MIN_TIME,
-					USBSRCDET_SLEEP_MAX_TIME);
-		}
+		else
+			msleep(USBSRCDET_SLEEP_RETRYDET);
+
+		time += USBSRCDET_SLEEP_RETRYDET;
 	} while (i < USBSRCDET_RETRY_CNT);
 
 	if ((val & USBSRCDET_SUSBHWDET_DETSUCC) !=
 			USBSRCDET_SUSBHWDET_DETSUCC) {
 		dev_err(chc.dev, "Charger detection unsuccessful after %dms\n",
-			i * USBSRCDET_SLEEP_MIN_TIME);
+			time);
 		return 0;
 	}
 
