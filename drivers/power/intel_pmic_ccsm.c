@@ -1837,23 +1837,6 @@ static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 		notify_otg = true;
 		break;
 	case CABLE_TYPE_SINK:
-		/* Check for VBUS status */
-		if (cable_state) {
-			ret = pmic_read_reg(chc.reg_map->pmic_schgrirq1, &val);
-			if (ret < 0) {
-				dev_err(chc.dev,
-					"%s: Failed to read VBUS status\n",
-					__func__);
-				goto vbus_fail;
-			}
-			if (!(val & CHRGRIRQ1_SVBUSDET_MASK)) {
-				dev_err(chc.dev,
-				"%s: VBUS not preset in sink mode, val=%x\n",
-					__func__, val);
-				goto vbus_fail;
-			}
-			dev_info(chc.dev, "%s: VBUS Present\n", __func__);
-		}
 		/* Do charger detection and send notification
 		 * to power sypply framework.
 		 */
