@@ -1933,6 +1933,11 @@ static int ov8858_g_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_EXPOSURE_ABSOLUTE:
 		ctrl->val = dev->exposure;
 		break;
+#ifdef CONFIG_PLATFORM_BTNS
+	case V4L2_CID_LINK_FREQ:
+		ctrl->val = 360000000;
+		break;
+#endif
 	default:
 		dev_warn(&client->dev,
 			 "%s: Error: Invalid ctrl: 0x%X\n", __func__, ctrl->id);
@@ -2253,7 +2258,20 @@ static const struct v4l2_ctrl_config ctrls[] = {
 		.min = V4L2_EXPOSURE_AUTO,
 		.max = V4L2_EXPOSURE_APERTURE_PRIORITY,
 		.step = 1,
-	}
+	},
+#ifdef CONFIG_PLATFORM_BTNS
+	{
+		.ops = &ctrl_ops,
+		.id = V4L2_CID_LINK_FREQ,
+		.name = "Link Frequency",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 1,
+		.max = 1500000000,
+		.step = 1,
+		.def = 360000000,
+		.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+	},
+#endif
 };
 
 static int ov8858_probe(struct i2c_client *client,
