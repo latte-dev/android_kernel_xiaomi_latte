@@ -217,7 +217,7 @@ static const struct usb_device_id usb_amd_resume_quirk_list[] = {
 	{ }  /* terminating entry must be last */
 };
 
-static bool usb_match_any_interface(struct usb_device *udev,
+bool usb_match_any_interface(struct usb_device *udev,
 				    const struct usb_device_id *id)
 {
 	unsigned int i;

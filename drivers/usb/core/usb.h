@@ -27,6 +27,8 @@ extern void usb_release_interface_cache(struct kref *ref);
 extern void usb_disable_device(struct usb_device *dev, int skip_ep0);
 extern int usb_deauthorize_device(struct usb_device *);
 extern int usb_authorize_device(struct usb_device *);
+extern bool usb_match_any_interface(struct usb_device *udev,
+		const struct usb_device_id *id);
 extern void usb_detect_quirks(struct usb_device *udev);
 extern void usb_detect_interface_quirks(struct usb_device *udev);
 extern int usb_remove_device(struct usb_device *udev);

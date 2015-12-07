@@ -16,11 +16,25 @@
  * YOU _SHOULD_ CHANGE THIS LIST TO MATCH YOUR PRODUCT AND ITS TESTING!
  */
 
+#include <linux/usb/storage.h>
+#include <linux/usb/cdc.h>
+
 static struct usb_device_id whitelist_table [] = {
 
 /* hubs are optional in OTG, but very handy ... */
 { USB_DEVICE_INFO(USB_CLASS_HUB, 0, 0), },
 { USB_DEVICE_INFO(USB_CLASS_HUB, 0, 1), },
+{ USB_DEVICE_INFO(USB_CLASS_HUB, 0, 2), },
+{ USB_DEVICE_INFO(USB_CLASS_HUB, 0, 3), },
+{ USB_INTERFACE_INFO(USB_CLASS_MASS_STORAGE, USB_SC_SCSI, USB_PR_BULK), },
+{ USB_INTERFACE_INFO(USB_CLASS_CDC_DATA, USB_CDC_SUBCLASS_NONE,
+	USB_CDC_PROTO_NONE), },
+{ USB_INTERFACE_INFO(USB_CLASS_CDC_DATA, USB_CDC_SUBCLASS_NONE,
+	USB_CDC_ACM_PROTO_AT_V25TER), },
+{ USB_INTERFACE_INFO(USB_CLASS_COMM, USB_CDC_SUBCLASS_ACM, 0), },
+{ USB_INTERFACE_INFO(USB_CLASS_COMM, USB_CDC_SUBCLASS_NCM, 0), },
+{ USB_INTERFACE_INFO(USB_CLASS_HID, 1, 1), },
+{ USB_INTERFACE_INFO(USB_CLASS_HID, 1, 2), },
 
 #ifdef	CONFIG_USB_PRINTER		/* ignoring nonstatic linkage! */
 /* FIXME actually, printers are NOT supposed to use device classes;
@@ -49,10 +63,6 @@ static struct usb_device_id whitelist_table [] = {
 static int is_targeted(struct usb_device *dev)
 {
 	struct usb_device_id	*id = whitelist_table;
-
-	/* possible in developer configs only! */
-	if (!dev->bus->otg_port)
-		return 1;
 
 	/* HNP test device is _never_ targeted (see OTG spec 6.6.6) */
 	if ((le16_to_cpu(dev->descriptor.idVendor) == 0x1a0a &&
@@ -91,6 +101,10 @@ static int is_targeted(struct usb_device *dev)
 
 		if ((id->match_flags & USB_DEVICE_ID_MATCH_DEV_PROTOCOL) &&
 		    (id->bDeviceProtocol != dev->descriptor.bDeviceProtocol))
+			continue;
+
+		if ((id->match_flags & USB_DEVICE_ID_MATCH_INT_INFO) &&
+		    !usb_match_any_interface(dev, id))
 			continue;
 
 		return 1;
