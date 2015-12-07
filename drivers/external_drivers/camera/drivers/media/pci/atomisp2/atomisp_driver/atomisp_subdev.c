@@ -1040,6 +1040,7 @@ static const struct v4l2_ctrl_config ctrl_depth_mode = {
  * isp will default to use ISP2.2.
  * Note: Make sure set this configuration before creating stream.
  */
+#ifdef V4L2_CID_ATOMISP_SELECT_ISP_VERSION
 static const struct v4l2_ctrl_config ctrl_select_isp_version = {
 	.ops = &ctrl_ops,
 	.id = V4L2_CID_ATOMISP_SELECT_ISP_VERSION,
@@ -1050,6 +1051,7 @@ static const struct v4l2_ctrl_config ctrl_select_isp_version = {
 	.step = 1,
 	.def = 0,
 };
+#endif
 
 #ifdef CONFIG_ION
 /*
@@ -1242,11 +1244,12 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *asd)
 			v4l2_ctrl_new_custom(&asd->ctrl_handler,
 					     &ctrl_disable_dz,
 					     NULL);
+#ifdef V4L2_CID_ATOMISP_SELECT_ISP_VERSION
 	asd->select_isp_version =
 			v4l2_ctrl_new_custom(&asd->ctrl_handler,
 					     &ctrl_select_isp_version,
 					     NULL);
-
+#endif
 #ifdef CONFIG_ION
 	asd->ion_dev_fd =
 			v4l2_ctrl_new_custom(&asd->ctrl_handler,

@@ -721,6 +721,7 @@ static void __apply_additional_pipe_config(
 
 		/* the isp default to use ISP2.2 and the camera hal will
 		 * control whether use isp2.7 */
+#ifdef V4L2_CID_ATOMISP_SELECT_ISP_VERSION
 		if (asd->select_isp_version->val ==
 			ATOMISP_CSS_ISP_PIPE_VERSION_2_7)
 			stream_env->pipe_configs[pipe_id].isp_pipe_version =
@@ -728,6 +729,7 @@ static void __apply_additional_pipe_config(
 		else
 			stream_env->pipe_configs[pipe_id].isp_pipe_version =
 				SH_CSS_ISP_PIPE_VERSION_2_2;
+#endif
 		break;
 	case IA_CSS_PIPE_ID_VIDEO:
 		/* enable reduced pipe to have binary
