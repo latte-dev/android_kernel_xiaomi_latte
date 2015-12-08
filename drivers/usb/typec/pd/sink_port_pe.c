@@ -279,8 +279,11 @@ static void snkpe_handle_send_swap(struct sink_port_pe *sink)
 	if (ret == 0) {
 		pr_warn("SNKPE: %s sender response expired\n", __func__);
 		snkpe_update_state(sink, PE_SNK_READY);
-		goto send_swap_out;
+		reinit_completion(&sink->srt_complete);
+		return;
 	}
+	reinit_completion(&sink->srt_complete);
+
 	/* Either accepr or reject received */
 	switch (sink->cur_state) {
 	case PE_PRS_SNK_SRC_SEND_PR_SWAP:
@@ -301,9 +304,6 @@ static void snkpe_handle_send_swap(struct sink_port_pe *sink)
 		pr_warn("SNKPE:%s: unexpected state=%d\n", __func__,
 						sink->cur_state);
 	}
-
-send_swap_out:
-	reinit_completion(&sink->srt_complete);
 }
 
 static void snkpe_handle_dr_swap_transition(struct sink_port_pe *sink,
@@ -346,13 +346,15 @@ static void snkpe_handle_after_dr_swap_sent(struct sink_port_pe *sink)
 		pr_err("SNKPE:%s:SRT time expired, Move to READY\n",
 					__func__);
 		snkpe_update_state(sink, PE_SNK_READY);
-		goto dr_sent_error;
+		reinit_completion(&sink->srt_complete);
+		return;
 	}
+	reinit_completion(&sink->srt_complete);
 
 	if (sink->last_pkt != PE_EVT_RCVD_ACCEPT) {
 		pr_info("SNKPE:%s:DR swap not accepted!!\n", __func__);
 		snkpe_update_state(sink, PE_SNK_READY);
-		goto dr_sent_error;
+		return;
 	}
 	pr_debug("SNKPE:%s:DR swap accepted by port partner\n", __func__);
 	if (sink->cur_state == PE_DRS_DFP_UFP_SEND_DR_SWAP)
@@ -362,10 +364,6 @@ static void snkpe_handle_after_dr_swap_sent(struct sink_port_pe *sink)
 	else
 		pr_err("SNKPE:%s:Unexpected state=%d !!!\n",
 					__func__, sink->cur_state);
-
-dr_sent_error:
-	reinit_completion(&sink->srt_complete);
-	return;
 }
 
 static int snkpe_handle_trigger_dr_swap(struct sink_port_pe *sink)
@@ -409,9 +407,11 @@ static void snkpe_handle_after_dr_swap_accept(struct sink_port_pe *sink)
 		pr_err("SNKPE:%s:SRT time expired, move to RESET\n", __func__);
 		/*Reset pe as role swap failed*/
 		snkpe_update_state(sink, PE_SNK_HARD_RESET);
+		reinit_completion(&sink->srt_complete);
 		schedule_work(&sink->timer_work);
-		goto swap_accept_error;
+		return;
 	}
+	reinit_completion(&sink->srt_complete);
 
 	if (sink->cur_state == PE_DRS_DFP_UFP_ACCEPT_DR_SWAP)
 		snkpe_handle_dr_swap_transition(sink, DATA_ROLE_UFP);
@@ -420,9 +420,6 @@ static void snkpe_handle_after_dr_swap_accept(struct sink_port_pe *sink)
 	else
 		pr_err("SNKPE:%s:Unexpected state=%d !!!\n",
 				__func__, sink->cur_state);
-
-swap_accept_error:
-	reinit_completion(&sink->srt_complete);
 }
 
 static void snkpe_handle_rcv_dr_swap(struct sink_port_pe *sink)
@@ -719,10 +716,13 @@ static void snkpe_handle_pss_transition_off(struct sink_port_pe *sink)
 	 * cur_state */
 	ret = wait_for_completion_timeout(&sink->pssoff_complete,
 						timeout);
-	if (!ret)
+	if (!ret) {
+		reinit_completion(&sink->pssoff_complete);
 		goto trans_off_err;
+	}
+	reinit_completion(&sink->pssoff_complete);
 
-	pr_info("SNKPE: Received PS_RDY\n");
+	pr_info("SNKPE: Received PS_READY\n");
 	/* Pull-up CC (enable Rp) and Vbus 5V enable */
 	ret = policy_set_power_role(&sink->p, POWER_ROLE_SOURCE);
 	if (ret)
@@ -734,7 +734,6 @@ static void snkpe_handle_pss_transition_off(struct sink_port_pe *sink)
 	snkpe_update_state(sink, PE_PRS_SNK_SRC_SOURCE_ON);
 	policy_send_packet(&sink->p, NULL, 0,
 			PD_CTRL_MSG_PS_RDY, PE_EVT_SEND_PS_RDY);
-
 	return;
 
 trans_off_err:
@@ -804,7 +803,9 @@ static void sink_handle_select_cap(struct sink_port_pe *sink)
 	if (ret == 0) {
 		pr_warn("SNKPE: %s sender response expired\n", __func__);
 		snkpe_update_state(sink, PE_SNK_HARD_RESET);
+		reinit_completion(&sink->srt_complete);
 		schedule_work(&sink->timer_work);
+		return;
 	}
 	reinit_completion(&sink->srt_complete);
 }
@@ -971,16 +972,9 @@ static void sinkpe_reset_timers(struct sink_port_pe *sink)
 static void sink_do_reset(struct sink_port_pe *pe)
 {
 	snkpe_do_prot_reset(pe);
-	/* complete the pending timers */
-	if (!completion_done(&pe->wct_complete))
-		complete(&pe->wct_complete);
-	if (!completion_done(&pe->srt_complete))
-		complete(&pe->srt_complete);
-	if (!completion_done(&pe->pstt_complete))
-		complete(&pe->pstt_complete);
-	if (!completion_done(&pe->pssoff_complete))
-		complete(&pe->pssoff_complete); /* PS Source Off timer */
 
+	/* re-init all the timers */
+	snkpe_reinitialize_completion(pe);
 	if (timer_pending(&pe->snk_request_timer)) {
 		del_timer_sync(&pe->snk_request_timer);
 		pe->request_timer_expired = true;
