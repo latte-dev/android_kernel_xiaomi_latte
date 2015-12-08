@@ -819,8 +819,9 @@ static void sink_handle_ready(struct sink_port_pe *sink)
 		schedule_work(&sink->request_timer);
 		goto ready_end;
 	}
-	if (sink->cur_state == PE_SNK_TRANSITION_SINK)
-		snkpe_setup_charging(sink);
+
+	/* enable charging if ps_rdy received */
+	snkpe_setup_charging(sink);
 
 ready_end:
 	sink->p.status = POLICY_STATUS_SUCCESS;
