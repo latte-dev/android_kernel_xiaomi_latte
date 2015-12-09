@@ -232,6 +232,7 @@ sst_ssp_configs_mrfld[SST_NUM_SSPS][SST_MAX_SSP_MUX][SST_MAX_SSP_DOMAINS] = {
 				.fs_frequency = SSP_FS_48_KHZ,
 				.active_slot_map = 0x3,
 				.start_delay = 1,
+				.data_polarity = 1,
 			},
 
 		},
