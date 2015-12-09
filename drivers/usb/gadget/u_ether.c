@@ -75,6 +75,7 @@ struct eth_dev {
 	unsigned		header_len;
 	unsigned		ul_max_pkts_per_xfer;
 	unsigned		dl_max_pkts_per_xfer;
+	unsigned		dl_max_pkts_size;
 	struct sk_buff		*(*wrap)(struct gether *, struct sk_buff *skb);
 	int			(*unwrap)(struct gether *,
 						struct sk_buff *skb,
@@ -578,12 +579,14 @@ static void alloc_tx_buffer(struct eth_dev *dev)
 	struct list_head	*act;
 	struct usb_request	*req;
 
-	dev->tx_req_bufsize = (dev->dl_max_pkts_per_xfer *
-				(dev->net->mtu
+	dev->dl_max_pkts_size = dev->net->mtu
 				+ sizeof(struct ethhdr)
 				/* size of rndis_packet_msg_type */
 				+ 44
-				+ 22));
+				+ 22;
+
+	dev->tx_req_bufsize = (dev->dl_max_pkts_per_xfer *
+				dev->dl_max_pkts_size);
 
 	list_for_each(act, &dev->tx_reqs) {
 		req = container_of(act, struct usb_request, list);
@@ -603,6 +606,7 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 	unsigned long		flags;
 	struct usb_ep		*in;
 	u16			cdc_filter;
+	int			collect_skb = 1;
 
 	spin_lock_irqsave(&dev->lock, flags);
 	if (dev->port_usb) {
@@ -679,92 +683,96 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 			goto drop;
 	}
 
-	spin_lock_irqsave(&dev->req_lock, flags);
-	dev->tx_skb_hold_count++;
-	spin_unlock_irqrestore(&dev->req_lock, flags);
+	while (collect_skb) {
+		if (((skb->len + req->length) > dev->tx_req_bufsize)
+		&& dev->port_usb->multi_pkt_xfer) {
+			spin_lock_irqsave(&dev->lock, flags);
+			dev->no_tx_req_used++;
+			dev->tx_skb_hold_count = 0;
+			spin_unlock_irqrestore(&dev->lock, flags);
+			length = req->length;
+		} else {
+			collect_skb = 0;
+			spin_lock_irqsave(&dev->lock, flags);
+			dev->tx_skb_hold_count++;
+			spin_unlock_irqrestore(&dev->lock, flags);
 
-	if (dev->port_usb->multi_pkt_xfer) {
-		memcpy(req->buf + req->length, skb->data, skb->len);
-		req->length = req->length + skb->len;
-		length = req->length;
-		dev_kfree_skb_any(skb);
+			if (dev->port_usb->multi_pkt_xfer) {
+				memcpy(req->buf + req->length, skb->data,
+					skb->len);
+				req->length = req->length + skb->len;
+				length = req->length;
+				dev_kfree_skb_any(skb);
 
-		spin_lock_irqsave(&dev->req_lock, flags);
-		if (dev->tx_skb_hold_count < dev->dl_max_pkts_per_xfer) {
-			if (dev->no_tx_req_used > TX_REQ_THRESHOLD) {
-				list_add(&req->list, &dev->tx_reqs);
+				spin_lock_irqsave(&dev->req_lock, flags);
+				if ((dev->tx_skb_hold_count <
+					dev->dl_max_pkts_per_xfer)
+				&& (dev->no_tx_req_used > TX_REQ_THRESHOLD)
+				&& (dev->tx_req_bufsize
+				>= (length + dev->dl_max_pkts_size))) {
+					list_add(&req->list, &dev->tx_reqs);
+					spin_unlock_irqrestore(&dev->req_lock,
+						flags);
+					goto success;
+				}
+
+				dev->no_tx_req_used++;
 				spin_unlock_irqrestore(&dev->req_lock, flags);
-				goto success;
+
+				spin_lock_irqsave(&dev->lock, flags);
+				dev->tx_skb_hold_count = 0;
+				spin_unlock_irqrestore(&dev->lock, flags);
+			} else {
+				length = skb->len;
+				req->buf = skb->data;
+				req->context = skb;
 			}
 		}
 
-		dev->no_tx_req_used++;
-		spin_unlock_irqrestore(&dev->req_lock, flags);
+		req->complete = tx_complete;
 
-		spin_lock_irqsave(&dev->lock, flags);
-		dev->tx_skb_hold_count = 0;
-		spin_unlock_irqrestore(&dev->lock, flags);
-	} else {
-		length = skb->len;
-		req->buf = skb->data;
-		req->context = skb;
-	}
+		/* NCM requires no zlp if transfer is dwNtbInMaxSize */
+		if (dev->port_usb->is_fixed &&
+		length == dev->port_usb->fixed_in_len &&
+		(length % in->maxpacket) == 0)
+			req->zero = 0;
+		else
+			req->zero = 1;
 
-	req->complete = tx_complete;
-
-	/* NCM requires no zlp if transfer is dwNtbInMaxSize */
-	if (dev->port_usb->is_fixed &&
-	    length == dev->port_usb->fixed_in_len &&
-	    (length % in->maxpacket) == 0)
-		req->zero = 0;
-	else
-		req->zero = 1;
-
-	/* use zlp framing on tx for strict CDC-Ether conformance,
-	 * though any robust network rx path ignores extra padding.
-	 * and some hardware doesn't like to write zlps.
-	 */
-	if (req->zero && !dev->zlp && (length % in->maxpacket) == 0) {
-		req->zero = 0;
-		length++;
-	}
-
-	req->length = length;
-
-	/* throttle highspeed IRQ rate back slightly */
-	if (gadget_is_dualspeed(dev->gadget) &&
-			 (dev->gadget->speed == USB_SPEED_HIGH)) {
-		dev->tx_qlen++;
-		if (dev->tx_qlen == (dev->qmult/2)) {
-			req->no_interrupt = 0;
-			dev->tx_qlen = 0;
-		} else {
-			req->no_interrupt = 1;
+		/* use zlp framing on tx for strict CDC-Ether conformance,
+		* though any robust network rx path ignores extra padding.
+		* and some hardware doesn't like to write zlps.
+		*/
+		if (req->zero && !dev->zlp && (length % in->maxpacket) == 0) {
+			req->zero = 0;
+			length++;
 		}
-	} else {
+
+		req->length = length;
 		req->no_interrupt = 0;
-	}
 
-	retval = usb_ep_queue(in, req, GFP_ATOMIC);
-	switch (retval) {
-	default:
-		DBG(dev, "tx queue err %d\n", retval);
-		break;
-	case 0:
-		net->trans_start = jiffies;
-	}
 
-	if (retval) {
-		if (!dev->port_usb->multi_pkt_xfer)
-			dev_kfree_skb_any(skb);
+		retval = usb_ep_queue(in, req, GFP_ATOMIC);
+		switch (retval) {
+		default:
+			DBG(dev, "tx queue err %d\n", retval);
+			break;
+		case 0:
+			net->trans_start = jiffies;
+		}
+
+		if (retval) {
+			if (!dev->port_usb->multi_pkt_xfer)
+				dev_kfree_skb_any(skb);
 drop:
-		dev->net->stats.tx_dropped++;
-		spin_lock_irqsave(&dev->req_lock, flags);
-		if (list_empty(&dev->tx_reqs))
-			netif_start_queue(net);
-		list_add(&req->list, &dev->tx_reqs);
-		spin_unlock_irqrestore(&dev->req_lock, flags);
-	}
+			dev->net->stats.tx_dropped++;
+			spin_lock_irqsave(&dev->req_lock, flags);
+			if (list_empty(&dev->tx_reqs))
+				netif_start_queue(net);
+			list_add(&req->list, &dev->tx_reqs);
+			spin_unlock_irqrestore(&dev->req_lock, flags);
+		}
+        }
 success:
 	return NETDEV_TX_OK;
 }
