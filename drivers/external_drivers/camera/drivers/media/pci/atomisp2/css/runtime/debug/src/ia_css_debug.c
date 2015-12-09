@@ -387,8 +387,8 @@ static const char *debug_frame_format2str(const enum ia_css_frame_format frame_f
 		return "YUYV";
 	case IA_CSS_FRAME_FORMAT_YUV444:
 		return "YUV444";
-	case IA_CSS_FRAME_FORMAT_YUV444_16:
-		return "YUV444_16";
+	case IA_CSS_FRAME_FORMAT_YCgCo444_16:
+		return "YCgCo444_16";
 	case IA_CSS_FRAME_FORMAT_YUV_LINE:
 		return "YUV_LINE";
 	case IA_CSS_FRAME_FORMAT_RAW:
@@ -1425,7 +1425,7 @@ void ia_css_debug_frame_print(const struct ia_css_frame *frame,
 	case IA_CSS_FRAME_FORMAT_YV16:
 	case IA_CSS_FRAME_FORMAT_YUV420_16:
 	case IA_CSS_FRAME_FORMAT_YUV422_16:
-	case IA_CSS_FRAME_FORMAT_YUV444_16:
+	case IA_CSS_FRAME_FORMAT_YCgCo444_16:
 		ia_css_debug_dtrace(2, "  Y = %p\n",
 				    data + frame->planes.yuv.y.offset);
 		ia_css_debug_dtrace(2, "  U = %p\n",

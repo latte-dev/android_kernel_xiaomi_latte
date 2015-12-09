@@ -158,7 +158,7 @@ static struct sh_css_hmm_buffer_record hmm_buffer_record[MAX_HMM_BUFFER_NUM];
 static bool fw_explicitly_loaded = false;
 
 static enum ia_css_frame_format primary_hq_stage_out_format[NUM_PRIMARY_HQ27_STAGES] = {
-	IA_CSS_FRAME_FORMAT_YUV444_16,
+	IA_CSS_FRAME_FORMAT_YCgCo444_16,
 	IA_CSS_FRAME_FORMAT_YUV420_16,
 	IA_CSS_FRAME_FORMAT_YUV420
 };
@@ -3639,6 +3639,11 @@ init_out_frameinfo_defaults(struct ia_css_pipe *pipe,
 	ia_css_query_internal_queue_id(IA_CSS_BUFFER_TYPE_OUTPUT_FRAME + idx, thread_id, &queue_id);
 	out_frame->dynamic_queue_id = queue_id;
 	out_frame->buf_type = IA_CSS_BUFFER_TYPE_OUTPUT_FRAME + idx;
+	/* Fix potential division by zero KW issue
+	   raw_bit_depth should have been properly assigned now. Those which containing 0
+	   will not care.*/
+	if (!out_frame->info.raw_bit_depth)
+		out_frame->info.raw_bit_depth = 1;
 	err = ia_css_frame_init_planes(out_frame);
 
 	return err;
@@ -8456,7 +8461,7 @@ sh_css_pipe_get_output_frame_info(struct ia_css_pipe *pipe,
 #endif
 	} else if (pipe->config.isp_pipe_version == IA_CSS_PIPE_VERSION_2_7) {
 		/* Need to set this so the pipegraph can properly display bpp */
-		if (info->format == IA_CSS_FRAME_FORMAT_YUV444_16 ||
+		if (info->format == IA_CSS_FRAME_FORMAT_YCgCo444_16 ||
 		    info->format == IA_CSS_FRAME_FORMAT_YUV420_16)
 			info->raw_bit_depth = 13;
 		else if (info->format == IA_CSS_FRAME_FORMAT_NV12)

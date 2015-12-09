@@ -86,7 +86,7 @@ more details.
 
 #define IMAGEFORMAT_IS_NV11(fmt)		((fmt) == IA_CSS_FRAME_FORMAT_NV11)
 
-#define IMAGEFORMAT_IS_16BIT(fmt)               ((fmt) == IA_CSS_FRAME_FORMAT_YUV420_16 || (fmt) == IA_CSS_FRAME_FORMAT_NV12_16 || (fmt) == IA_CSS_FRAME_FORMAT_YUV422_16 || (fmt) == IA_CSS_FRAME_FORMAT_YUV444_16)
+#define IMAGEFORMAT_IS_16BIT(fmt)               ((fmt) == IA_CSS_FRAME_FORMAT_YUV420_16 || (fmt) == IA_CSS_FRAME_FORMAT_NV12_16 || (fmt) == IA_CSS_FRAME_FORMAT_YUV422_16 || (fmt) == IA_CSS_FRAME_FORMAT_YCgCo444_16)
 
 #endif
 

@@ -400,7 +400,7 @@ enum ia_css_err ia_css_frame_init_planes(struct ia_css_frame *frame)
 	case IA_CSS_FRAME_FORMAT_YUV444:
 		frame_init_yuv_planes(frame, 1, 1, false, 1);
 		break;
-	case IA_CSS_FRAME_FORMAT_YUV444_16:
+	case IA_CSS_FRAME_FORMAT_YCgCo444_16:
 		frame_init_yuv_planes(frame, 1, 1, false, 2);
 		break;
 	case IA_CSS_FRAME_FORMAT_YUV420_16:
@@ -465,7 +465,7 @@ void ia_css_frame_info_set_width(struct ia_css_frame_info *info,
 	else if (info->format == IA_CSS_FRAME_FORMAT_RAW ||
 		 info->format == IA_CSS_FRAME_FORMAT_RAW_PACKED ||
 		 info->format == IA_CSS_FRAME_FORMAT_YUV444 ||
-		 info->format == IA_CSS_FRAME_FORMAT_YUV444_16 ||
+		 info->format == IA_CSS_FRAME_FORMAT_YCgCo444_16 ||
 		 info->format == IA_CSS_FRAME_FORMAT_YUV420_16)
 		info->padded_width = CEIL_MUL(align, 2 * ISP_VEC_NELEMS);
 	else {
@@ -864,7 +864,7 @@ ia_css_elems_bytes_from_info(const struct ia_css_frame_info *info)
 		return 2; /* bytes per pixel */
 	if (info->format == IA_CSS_FRAME_FORMAT_YUV422_16)
 		return 2; /* bytes per pixel */
-	if (info->format == IA_CSS_FRAME_FORMAT_YUV444_16)
+	if (info->format == IA_CSS_FRAME_FORMAT_YCgCo444_16)
 		return 2; /* bytes per pixel */
 	/* Note: Essentially NV12_16 is a 2 bytes per pixel format, this return value is used
 	 * to configure DMA for the output buffer,

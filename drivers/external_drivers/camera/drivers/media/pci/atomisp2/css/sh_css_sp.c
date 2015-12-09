@@ -506,7 +506,7 @@ sh_css_copy_frame_to_spframe(struct ia_css_frame_sp *sp_frame_out,
 	case IA_CSS_FRAME_FORMAT_YUV444:
 	case IA_CSS_FRAME_FORMAT_YUV420_16:
 	case IA_CSS_FRAME_FORMAT_YUV422_16:
-	case IA_CSS_FRAME_FORMAT_YUV444_16:
+	case IA_CSS_FRAME_FORMAT_YCgCo444_16:
 	case IA_CSS_FRAME_FORMAT_YV12:
 	case IA_CSS_FRAME_FORMAT_YV16:
 		sp_frame_out->planes.yuv.y.offset =
@@ -556,7 +556,7 @@ set_input_frame_buffer(const struct ia_css_frame *frame)
 	case IA_CSS_FRAME_FORMAT_RAW_PACKED:
 	case IA_CSS_FRAME_FORMAT_RAW:
 	case IA_CSS_FRAME_FORMAT_YUV420:
-	case IA_CSS_FRAME_FORMAT_YUV444_16:
+	case IA_CSS_FRAME_FORMAT_YCgCo444_16:
 	case IA_CSS_FRAME_FORMAT_YUYV:
 	case IA_CSS_FRAME_FORMAT_YUV_LINE:
 	case IA_CSS_FRAME_FORMAT_NV12:
@@ -590,7 +590,7 @@ set_output_frame_buffer(const struct ia_css_frame *frame,
 	case IA_CSS_FRAME_FORMAT_YV16:
 	case IA_CSS_FRAME_FORMAT_YUV420_16:
 	case IA_CSS_FRAME_FORMAT_YUV422_16:
-	case IA_CSS_FRAME_FORMAT_YUV444_16:
+	case IA_CSS_FRAME_FORMAT_YCgCo444_16:
 	case IA_CSS_FRAME_FORMAT_NV11:
 	case IA_CSS_FRAME_FORMAT_NV12:
 	case IA_CSS_FRAME_FORMAT_NV12_16:

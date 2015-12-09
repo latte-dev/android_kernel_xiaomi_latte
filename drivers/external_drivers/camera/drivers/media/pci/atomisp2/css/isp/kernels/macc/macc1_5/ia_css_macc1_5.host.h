@@ -37,5 +37,11 @@ void
 ia_css_macc1_5_debug_dtrace(
 	const struct ia_css_macc1_5_config *config,
 	unsigned level);
+
+void
+ia_css_macc1_5_table_debug_dtrace(
+	const struct ia_css_macc1_5_table *table,
+	unsigned level);
+
 #endif
 #endif /* __IA_CSS_MACC1_5_HOST_H */

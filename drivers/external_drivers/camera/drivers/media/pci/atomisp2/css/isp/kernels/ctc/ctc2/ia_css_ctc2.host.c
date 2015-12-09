@@ -170,18 +170,18 @@ ia_css_ctc2_debug_dtrace(
 	ia_css_debug_dtrace(level,
 		"config.y_y0=%d, config.y_y1=%d, "
 		"config.y_y2=%d, config.y_y3=%d, "
-		"config.y_y4=%d,  config.y_y5=%d, ",
+		"config.y_y4=%d,  config.y_y5=%d, \n",
 		config->y_y0, config->y_y1,
 		config->y_y2, config->y_y3,
 		config->y_y4, config->y_y5);
 	ia_css_debug_dtrace(level,
 		"config.y_x1=%d, config.y_x2=%d, "
-		"config.y_x3=%d,  config.y_x4=%d, ",
+		"config.y_x3=%d,  config.y_x4=%d, \n",
 		config->y_x1, config->y_x2,
 		config->y_x3, config->y_x4);
 	ia_css_debug_dtrace(level,
 		"config.uv_y0=%d, config.uv_y1=%d, "
-		"config.uv_x0=%d,  config.uv_x1=%d, ",
+		"config.uv_x0=%d,  config.uv_x1=%d, \n",
 		config->uv_y0, config->uv_y1,
 		config->uv_x0, config->uv_x1);
 }

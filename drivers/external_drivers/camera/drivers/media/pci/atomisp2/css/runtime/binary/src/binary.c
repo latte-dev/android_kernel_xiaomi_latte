@@ -1393,6 +1393,15 @@ ia_css_binary_find(struct ia_css_binary_descr *descr,
 				candidate->pipeline.isp_pipe_version, isp_pipe_version);
 			continue;
 		}
+		if (mode == IA_CSS_BINARY_MODE_PRE_DE &&
+			isp_pipe_version == IA_CSS_PIPE_VERSION_2_7 &&
+			candidate->enable.continuous != continuous) {
+			ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE,
+				"ia_css_binary_find() [%d] continue: (%d != %d)\n",
+				__LINE__,
+				continuous, candidate->enable.continuous);
+			continue;
+		}
 		if (!candidate->enable.reduced_pipe && enable_reduced_pipe) {
 			ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE,
 				"ia_css_binary_find() [%d] continue: !%d && %d\n",

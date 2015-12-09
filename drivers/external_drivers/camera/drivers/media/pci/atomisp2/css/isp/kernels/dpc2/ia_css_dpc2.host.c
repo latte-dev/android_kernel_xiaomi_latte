@@ -15,6 +15,10 @@ more details.
 #include "ia_css_dpc2.host.h"
 #include "assert_support.h"
 
+#ifndef IA_CSS_NO_DEBUG
+#include "ia_css_debug.h"
+#endif
+
 void
 ia_css_dpc2_encode(
 	struct ia_css_isp_dpc2_params *to,
@@ -53,13 +57,17 @@ ia_css_init_dpc2_state(
 }
 
 #ifndef IA_CSS_NO_DEBUG
-/* TODO: AM: This needs a proper implementation. */
 void
 ia_css_dpc2_debug_dtrace(
 	const struct ia_css_dpc2_config *config,
 	unsigned level)
 {
-	(void)config;
-	(void)level;
+	ia_css_debug_dtrace(level,
+		"metric1=%d, metric2=%d, metric3=%d, "
+		"wb_gain_gr=%d, wb_gain_r=%d, "
+		"wb_gain_b=%d, wb_gain_gb=%d\n",
+		config->metric1, config->metric2, config->metric3,
+		config->wb_gain_gr, config->wb_gain_r,
+		config->wb_gain_b, config->wb_gain_gb);
 }
 #endif

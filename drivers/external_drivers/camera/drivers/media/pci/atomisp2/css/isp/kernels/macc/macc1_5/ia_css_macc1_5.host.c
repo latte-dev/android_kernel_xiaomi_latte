@@ -48,10 +48,10 @@ ia_css_macc1_5_vmem_encode(
 
 	(void)size;
 
-	for (k = 0; k < 4; k++)
+	for (k = 0; k < IA_CSS_MACC_NUM_COEFS; k++)
 		for (i = 0; i < IA_CSS_MACC_NUM_AXES; i++) {
 			idx = (idx_map[i] + (k*IA_CSS_MACC_NUM_AXES));
-			j   = 4*i;
+			j   = IA_CSS_MACC_NUM_COEFS*i;
 
 			params->data[0][(idx)] = from->data[j];
 			params->data[1][(idx)] = from->data[j+1];
@@ -70,5 +70,22 @@ ia_css_macc1_5_debug_dtrace(
 	ia_css_debug_dtrace(level,
 		"config.exp=%d\n",
 		config->exp);
+}
+
+void
+ia_css_macc1_5_table_debug_dtrace(
+	const struct ia_css_macc1_5_table *table,
+	unsigned level)
+{
+	int axes, coefs;
+	ia_css_debug_dtrace(level, "macc1_5table=[");
+	for (axes = 0; axes < IA_CSS_MACC_NUM_AXES; axes++) {
+		ia_css_debug_dtrace(level, "{");
+		for (coefs = 0; coefs < IA_CSS_MACC_NUM_COEFS; coefs++) {
+			ia_css_debug_dtrace(level, "%d, ", table->data[axes*IA_CSS_MACC_NUM_COEFS + coefs]);
+		}
+		ia_css_debug_dtrace(level, "}, ");
+	}
+	ia_css_debug_dtrace(level, "]\n");
 }
 #endif

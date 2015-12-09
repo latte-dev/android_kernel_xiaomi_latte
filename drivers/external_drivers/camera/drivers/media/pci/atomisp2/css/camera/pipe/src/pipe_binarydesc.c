@@ -775,8 +775,19 @@ void ia_css_pipe_get_pre_de_binarydesc(
 	assert(out_info != NULL);
 	IA_CSS_ENTER_PRIVATE("");
 
-	*in_info = *out_info;
-	in_info->format = IA_CSS_FRAME_FORMAT_RAW;
+	if (pipe->stream->config.continuous && 
+		pipe->stream->config.pack_raw_pixels) {
+		in_info->res = pipe->config.input_effective_res;
+		in_info->padded_width = in_info->res.width;
+		in_info->format = IA_CSS_FRAME_FORMAT_RAW_PACKED;
+	} else if (pipe->stream->config.continuous) {
+		in_info->res = pipe->config.input_effective_res;
+		in_info->padded_width = in_info->res.width;
+		in_info->format = IA_CSS_FRAME_FORMAT_RAW;
+	} else {
+		*in_info = *out_info;
+		in_info->format = IA_CSS_FRAME_FORMAT_RAW;
+	}
 	in_info->raw_bit_depth = ia_css_pipe_util_pipe_input_format_bpp(pipe);
 	out_infos[0] = out_info;
 	for (i = 1; i < IA_CSS_BINARY_MAX_OUTPUT_PORTS; i++)
