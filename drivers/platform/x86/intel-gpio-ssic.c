@@ -101,8 +101,7 @@ static irqreturn_t gpio_ssic_wakeup_irq(int irq, void *__ssic)
 	}
 
 	usb_lock_device(udev);
-	if (!usb_autoresume_device(udev))
-		usb_autosuspend_device(udev);
+	usb_autoresume_device(udev);
 	usb_unlock_device(udev);
 	usb_put_dev(udev);
 
