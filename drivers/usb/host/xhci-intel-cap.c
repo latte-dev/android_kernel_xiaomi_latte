@@ -73,7 +73,7 @@ int xhci_intel_need_disable_stall(struct xhci_hcd *xhci)
 	/* Get modem status from MINF function */
 	modem_status = acpi_evaluate_object(acpi_dev->handle, "MINF",
 			NULL, &buffer);
-	if (ACPI_FAILURE(modem_status) || modem_status != AE_NOT_FOUND) {
+	if (ACPI_FAILURE(modem_status)) {
 		dev_dbg(&pdev->dev, "No MINF method!\n");
 		return 0;
 	}
