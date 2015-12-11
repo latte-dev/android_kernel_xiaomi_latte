@@ -659,10 +659,7 @@ static inline int fusb302_configure_pd(struct fusb300_chip *chip)
 	unsigned int val;
 
 	val = FUSB302_CONTROL3_AUTO_RETRY |
-		(FUSB302_CONTROL3_RETRY3 << FUSB302_CONTROL3_N_RETRY_SHIFT) |
-		FUSB302_CONTROL3_AUTO_SOFT_RST |
-		FUSB302_CONTROL3_AUTO_HARD_RST;
-
+		(FUSB302_CONTROL3_RETRY3 << FUSB302_CONTROL3_N_RETRY_SHIFT);
 	regmap_write(chip->map, FUSB302_CONTROL3_REG, val);
 	return 0;
 }
