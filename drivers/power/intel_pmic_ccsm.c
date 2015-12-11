@@ -965,7 +965,6 @@ static void handle_internal_usbphy_notifications(int mask)
 	case POWER_SUPPLY_CHARGER_TYPE_NONE:
 	default:
 		cap.ma = 0;
-		chc.is_notify_otg = false;
 	}
 
 	dev_dbg(chc.dev, "Notifying OTG ev:%d, evt:%d, chrg_type:%d, mA:%d\n",
