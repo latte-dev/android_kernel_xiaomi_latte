@@ -1121,9 +1121,9 @@ static int fusb300_enable_vconn(struct typec_phy *phy, bool en)
 	mutex_lock(&chip->lock);
 	if (en) {
 		if (phy->valid_cc == TYPEC_PIN_CC1)
-			val = FUSB300_SWITCH0_VCONN_CC1_EN;
-		else if (phy->valid_cc == TYPEC_PIN_CC2)
 			val = FUSB300_SWITCH0_VCONN_CC2_EN;
+		else if (phy->valid_cc == TYPEC_PIN_CC2)
+			val = FUSB300_SWITCH0_VCONN_CC1_EN;
 	}
 
 	ret = regmap_update_bits(chip->map, FUSB300_SWITCH0_REG,
