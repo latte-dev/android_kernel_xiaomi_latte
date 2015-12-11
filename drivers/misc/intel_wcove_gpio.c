@@ -62,6 +62,7 @@ struct wcove_gpio_event {
 	bool is_src_connected;
 };
 
+static struct wcove_gpio_info *wc_info;
 static inline struct power_supply *wcove_gpio_get_psy_charger(void)
 {
 	struct class_dev_iter iter;
@@ -118,6 +119,23 @@ static int wcgpio_update_vbus_state(struct wcove_gpio_info *info, bool state)
 
 	return ret;
 }
+
+int wcgpio_set_vbus_state(bool state)
+{
+	int ret;
+	if (!wc_info)
+		return -EINVAL;
+	ret = wcgpio_update_vbus_state(wc_info, state);
+
+	/* enable/disable vbus based on the provider(source) event */
+	if (!ret) {
+		dev_info(&wc_info->pdev->dev, "%s: VBUS=%d\n",
+						__func__, state);
+		gpiod_set_value_cansleep(wc_info->gpio_otg, state);
+	}
+	return ret;
+}
+EXPORT_SYMBOL(wcgpio_set_vbus_state);
 
 static void wcgpio_ctrl_worker(struct work_struct *work)
 {
@@ -304,6 +322,7 @@ static int wcove_gpio_probe(struct platform_device *pdev)
 
 	/* Enable vconn always to typec chip */
 	gpiod_set_value_cansleep(info->gpio_vconn, 1);
+	wc_info = info;
 
 	return 0;
 
