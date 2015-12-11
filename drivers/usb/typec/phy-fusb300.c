@@ -490,7 +490,8 @@ static int fusb300_switch_mode(struct typec_phy *phy, enum typec_mode mode)
 	return 0;
 }
 
-static int fusb300_set_pu_pd(struct typec_phy *phy, bool pu_pd)
+static int fusb300_set_pu_pd(struct typec_phy *phy,
+					enum typec_cc_pull pull)
 {
 	struct fusb300_chip *chip;
 	u8 val = 0;
@@ -500,13 +501,13 @@ static int fusb300_set_pu_pd(struct typec_phy *phy, bool pu_pd)
 	chip = dev_get_drvdata(phy->dev);
 
 	dev_dbg(phy->dev, "%s cc:%d, pi_pd:%d\n", __func__,
-				phy->valid_cc, pu_pd);
+				phy->valid_cc, pull);
 
 	mutex_lock(&chip->lock);
 	if (phy->valid_cc == TYPEC_PIN_CC1) {
-		if (pu_pd)
+		if (pull == TYPEC_CC_PULL_UP)
 			val |= FUSB300_SWITCH0_PU_CC1_EN;
-		else
+		else if (pull == TYPEC_CC_PULL_DOWN)
 			val |= FUSB300_SWITCH0_PD_CC1_EN;
 
 		regmap_update_bits(chip->map, FUSB300_SWITCH0_REG,
@@ -514,28 +515,34 @@ static int fusb300_set_pu_pd(struct typec_phy *phy, bool pu_pd)
 			val);
 
 	} else if (phy->valid_cc == TYPEC_PIN_CC2) {
-		if (pu_pd)
+		if (pull == TYPEC_CC_PULL_UP)
 			val |= FUSB300_SWITCH0_PU_CC2_EN;
-		else
+		else if (pull == TYPEC_CC_PULL_DOWN)
 			val |= FUSB300_SWITCH0_PD_CC2_EN;
 
 		regmap_update_bits(chip->map, FUSB300_SWITCH0_REG,
 			FUSB300_SWITCH0_PU_CC2_EN | FUSB300_SWITCH0_PD_CC2_EN,
 			val);
+	} else {
+		dev_warn(phy->dev, "%s: Invalid CC\n", __func__);
+		goto pu_pd_error;
 	}
 
 	/* If cc pulled up in UFP state, this pull-up is for pr swap.
 	 * Change the state to TYPEC_STATE_PD_PU_SWAP.
 	 */
-	if (pu_pd && phy->state == TYPEC_STATE_ATTACHED_UFP)
+	if (pull == TYPEC_CC_PULL_UP
+			&& phy->state == TYPEC_STATE_ATTACHED_UFP)
 		phy->state = TYPEC_STATE_PD_PU_SWAP;
 
 	/* If cc pulled down in DFP state, this pull-down is for pr swap.
 	 * Change the state to TYPEC_STATE_PU_PD_SWAP.
 	 */
-	if ((!pu_pd) && (phy->state == TYPEC_STATE_ATTACHED_DFP))
+	if (pull == TYPEC_CC_PULL_DOWN
+			&& phy->state == TYPEC_STATE_ATTACHED_DFP)
 		phy->state = TYPEC_STATE_PU_PD_SWAP;
 
+pu_pd_error:
 	mutex_unlock(&chip->lock);
 	return 0;
 }

@@ -42,6 +42,12 @@ enum typec_state {
 	TYPEC_STATE_PU_PD_SWAP,
 };
 
+enum typec_cc_pull {
+	TYPEC_CC_PULL_NONE,
+	TYPEC_CC_PULL_UP,
+	TYPEC_CC_PULL_DOWN,
+};
+
 enum typec_cc_pin {
 	TYPEC_PIN_CC1 = 1,
 	TYPEC_PIN_CC2 = 2,
@@ -208,7 +214,7 @@ struct typec_phy {
 	void (*notify_protocol)(struct typec_phy *phy, unsigned long event);
 	bool (*is_pd_capable)(struct typec_phy *phy);
 	int (*enable_autocrc)(struct typec_phy *phy, bool en);
-	int (*set_pu_pd)(struct typec_phy *phy, bool pu_pd);
+	int (*set_pu_pd)(struct typec_phy *phy, enum typec_cc_pull pull);
 	int (*enable_detection)(struct typec_phy *phy, bool en);
 	bool (*is_vbus_on)(struct typec_phy *phy);
 	bool (*is_vconn_enabled)(struct typec_phy *phy);
