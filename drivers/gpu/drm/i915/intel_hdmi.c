@@ -1124,7 +1124,8 @@ READ_EDID:
 				goto READ_EDID;
 			}
 
-			DRM_ERROR("Get_hdmi cant read edid\n");
+			if (!force)
+				DRM_ERROR("Get_hdmi cant read edid\n");
 			return NULL;
 		}
 
