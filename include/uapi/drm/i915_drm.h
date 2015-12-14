@@ -60,6 +60,27 @@
 #define I915_ERROR_UEVENT		"ERROR"
 #define I915_RESET_UEVENT		"RESET"
 
+/*
+ * due to SELinux restrictions in Android, uevents are no longer
+ * accessible to usermode processes, so gpu reset events are now
+ * also notified via a generic netlink socket.
+ */
+#define GPU_RESET_GENL_MCAST_GROUP_NAME 	"i915_rst_mcast"
+/* attributes */
+enum {
+	I915_GPU_RST_A_UNSPEC,
+	I915_GPU_RST_A_MCGRP_ID,
+	I915_GPU_RST_A_END,
+};
+
+/* commands */
+enum {
+	I915_GPU_RST_C_UNSPEC,
+	I915_GPU_RST_C_RESET,
+	I915_GPU_RST_C_GET_MCGRP_ID,
+	I915_GPU_RST_C_END,
+};
+
 /* Each region is a minimum of 16k, and there are at most 255 of them.
  */
 #define I915_NR_TEX_REGIONS 255	/* table size 2k - maximum due to use

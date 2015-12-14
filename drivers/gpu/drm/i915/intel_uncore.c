@@ -23,6 +23,7 @@
 
 #include "i915_drv.h"
 #include "intel_drv.h"
+#include <net/genetlink.h>
 
 #define FORCEWAKE_ACK_TIMEOUT_MS(dev_priv) (IS_CHERRYVIEW(dev_priv->dev) ? \
 					    30 : 2)
@@ -40,6 +41,9 @@
 #define __raw_i915_write64(dev_priv__, reg__, val__) writeq(val__, (dev_priv__)->regs + (reg__))
 
 #define __raw_posting_read(dev_priv__, reg__) (void)__raw_i915_read32(dev_priv__, reg__)
+
+static int intel_uncore_setup_netlink(void);
+static void intel_uncore_reset_notification(void);
 
 static void
 assert_device_not_suspended(struct drm_i915_private *dev_priv)
@@ -994,6 +998,12 @@ void intel_uncore_init(struct drm_device *dev)
 		dev_priv->uncore.funcs.mmio_readq  = gen4_read64;
 		break;
 	}
+
+	/*
+	 * setup the generic netlink protocol family to use for
+	 * sending messages to userspace apps
+	 */
+	(void) intel_uncore_setup_netlink();
 }
 
 void intel_uncore_fini(struct drm_device *dev)
@@ -1270,6 +1280,7 @@ int intel_gpu_reset(struct drm_device *dev)
 		kobject_uevent_env(&dev->primary->kdev->kobj,
 				KOBJ_CHANGE, reset_event);
 		kfree(reset_event[0]);
+		intel_uncore_reset_notification();
 	}
 
 	return ret;
@@ -1369,6 +1380,7 @@ int intel_gpu_engine_reset(struct drm_device *dev, enum intel_ring_id engine)
 	case 7:
 	case 6:
 		ret = gen6_do_engine_reset(dev, engine);
+		intel_uncore_reset_notification();
 		break;
 	default:
 		DRM_ERROR("Per Engine Reset not supported on Gen%d\n",
@@ -1400,4 +1412,160 @@ void i915_write_bits32(struct drm_i915_private *dev_priv,
 	val &= mask;
 	val |= tmp;
 	I915_WRITE(reg, val);
+}
+
+
+/*
+ * The i915 driver needs to be able to alert userspace to any gpu resets.
+ * The selinux policy enforced in Android means that unprivileged userspace
+ * processes can no longer listen to uevents. So we create our own
+ * generic netlink family and send multicast messages over that.
+ * Our generic netlink family handles one command, I915_GPU_RST_C_GET_MCGRP_ID.
+ * When we recieve this we reply with the multicast group id we will use
+ * for gpu reset notifcations. A userspace process can then listen to this
+ * multicast group to receive gpu reset notifications.
+ */
+
+/* attribute policy - defines the types of the attributes we can send*/
+static struct nla_policy i915_gpu_rst_genl_policy[I915_GPU_RST_A_END] = {
+	[I915_GPU_RST_A_MCGRP_ID] = { .type = NLA_U32 },
+};
+
+/* define a single multicast group - userspace processes can listen to this */
+static const struct genl_multicast_group gpu_rst_mcgrps[] = {
+	{ .name = GPU_RESET_GENL_MCAST_GROUP_NAME, },
+};
+
+/* declare function to handle a request for the multicast group id*/
+static int intel_uncore_send_mcgrp_id(struct sk_buff *skb, struct genl_info *info);
+
+/* operation definitions for the commands we support, just one of these*/
+static struct genl_ops i915_gpu_rst_genl_ops[] = {
+	{
+		.cmd = I915_GPU_RST_C_GET_MCGRP_ID,
+		.flags = 0,
+		.policy = i915_gpu_rst_genl_policy,
+		.doit = intel_uncore_send_mcgrp_id,
+		.dumpit = NULL,
+	}
+};
+
+/* generic netlink family definition */
+static struct genl_family i915_gpu_rst_genl_family = {
+	.id = GENL_ID_GENERATE,
+	.hdrsize = 0,
+	.name = GPU_RESET_GENL_MCAST_GROUP_NAME,
+	.version = 1,
+	.ops = i915_gpu_rst_genl_ops,
+	.n_ops = ARRAY_SIZE(i915_gpu_rst_genl_ops),
+	.mcgrps = gpu_rst_mcgrps,
+	.n_mcgrps = ARRAY_SIZE(gpu_rst_mcgrps),
+	.maxattr = I915_GPU_RST_A_END - 1,
+};
+
+/*
+ * intel_uncore_send_mcgrp_id:
+ * reply to the sender, informing them of our multicast group id.
+ * When we registered our generic netlink family, the netlink system set
+ * the mcgrp_offset member to the group id of the first multicast group
+ * allocated to us. We only use one mulicast group, so this is the id
+ * of that group.
+ */
+static int intel_uncore_send_mcgrp_id(struct sk_buff *skb, struct genl_info *info)
+{
+	struct sk_buff *reply_skb;
+	void *msg_head;
+	int ret;
+
+	/* allocate our reply message, with space for a single u32 attribute */
+	reply_skb = genlmsg_new(nla_total_size(sizeof(u32)), GFP_KERNEL);
+	if (!reply_skb) {
+		DRM_DEBUG("failed to allocate new nlmsg\n");
+		return -ENOMEM;
+	}
+
+	/* add the generic netlink message header */
+	msg_head = genlmsg_put(reply_skb, info->snd_portid, 0,
+		&i915_gpu_rst_genl_family, GFP_KERNEL, I915_GPU_RST_C_GET_MCGRP_ID);
+	if (!msg_head) {
+		DRM_ERROR("failed to allocate new msg_head\n");
+		nlmsg_free(reply_skb);
+		return ENOSPC;
+	}
+
+	/* insert the attribute specifying our multicast group id */
+	ret = nla_put_u32(reply_skb, I915_GPU_RST_A_MCGRP_ID,
+		i915_gpu_rst_genl_family.mcgrp_offset);
+	if (ret) {
+		DRM_ERROR("failed to put attribute in message\n");
+		genlmsg_cancel(reply_skb, msg_head);
+		nlmsg_free(reply_skb);
+		return ret;
+	}
+	/* finalize and send message - this is a unicast to the original sender */
+	genlmsg_end(reply_skb, msg_head);
+	genlmsg_reply(reply_skb, info);
+	return 0;
+}
+
+/*
+ * intel_uncore_setup_netlink:
+ * Start of day setup - create our own generic netlink family,
+ * used to send netlink multicast messages to userspace.
+ */
+static int intel_uncore_setup_netlink(void) {
+	/*
+	 *  define the generic netlink protocol family. This allows
+	 *  us to have our own netlink communication channel.
+	 */
+	int rc = 0;
+	rc = genl_register_family(&i915_gpu_rst_genl_family);
+	if (rc != 0) {
+		DRM_ERROR("Error registering generic netlink family for gpu resets, ret=%d\n", rc);
+		return rc;
+	}
+	return 0;
+}
+
+/*
+ * intel_uncore_reset_notification:
+ * Send a generic netlink multicast message to notify userspace that a
+ * gpu reset has been done.
+ */
+static void intel_uncore_reset_notification(void)
+{
+	struct sk_buff *skb;
+	int rc;
+	void *msg_head;
+	unsigned int mc_group = 0;    /* index into gpu_rst_mcgrps */
+	gfp_t msg_flags = 0;
+
+	skb = genlmsg_new(0, GFP_KERNEL); /* zero payload space allocated */
+	if (!skb) {
+		DRM_DEBUG("failed to allocate new nlmsg\n");
+		return;
+	}
+	/*
+	 * Fill in message header. Since we are multicasting we just use 0
+	 * for the port id. Also set seq to 0 as we dont use sequence numbers.
+	*/
+	msg_head = genlmsg_put(skb, 0, 0, &i915_gpu_rst_genl_family,
+			msg_flags, I915_GPU_RST_C_RESET);
+	if (!msg_head) {
+		DRM_ERROR("failed to allocate new msg_head\n");
+		nlmsg_free(skb);
+		return;
+	}
+	genlmsg_end(skb, msg_head);
+
+	/* Note, the "group" we specify here is the index within our array of
+	 * of multicast groups, viz gpu_rst_mcgrps. This is different from the
+	 * group id that the userspace listens to, which is this index PLUS the
+	 * mcgrp_offset for our generic netlink family. Our netlink portid is always 0
+	 */
+	rc = genlmsg_multicast(&i915_gpu_rst_genl_family, skb, 0, mc_group, GFP_KERNEL);
+	if (rc != 0) {
+		DRM_ERROR("failed to multicast netlink message, rc=%d\n", rc);
+		return;
+	}
 }
