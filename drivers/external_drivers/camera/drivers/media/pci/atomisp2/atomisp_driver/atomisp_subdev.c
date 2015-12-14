@@ -57,8 +57,12 @@ const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[] = {
 	/* no valid V4L2 MBUS code for metadata format, so leave it 0. */
 	{ 0, 0, 0, ATOMISP_INPUT_FORMAT_EMBEDDED, 0, IA_CSS_STREAM_FORMAT_EMBEDDED },
 	/* only for ISP2.7*/
+#ifdef V4L2_MBUS_FMT_CUSTOM_YCgCo444_16
 	{ V4L2_MBUS_FMT_CUSTOM_YCgCo444_16, 16, 16, CSS_FRAME_FORMAT_YCgCo444_16, 0, CSS_FRAME_FORMAT_YCgCo444_16 },
+#endif
+#ifdef V4L2_MBUS_FMT_CUSTOM_YUV420_16
 	{ V4L2_MBUS_FMT_CUSTOM_YUV420_16, 16, 16, CSS_FRAME_FORMAT_YUV420_16, 0, CSS_FRAME_FORMAT_YUV420_16 },
+#endif
 	{}
 };
 
