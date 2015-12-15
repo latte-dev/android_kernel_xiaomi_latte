@@ -65,12 +65,12 @@ static struct rt5670_init_reg init_list[] = {
 	{ RT5670_DIG_MISC	, 0xc019 }, /* fa[0]=1, fa[3]=1'b MCLK det,
 						fa[15:14]=11'b for pdm */
 	{ RT5670_IL_CMD2	, 0x0010 }, /* set Inline Command Window */
-	{ RT5670_IL_CMD3	, 0x0009 },
 	{ RT5670_A_JD_CTRL1     , 0x0001 }, /* set JD1 mode 1 (1 port) */
 	{ RT5670_PRIV_INDEX	, 0x0014 },
 	{ RT5670_PRIV_DATA	, 0x9a8a },
 	{ RT5670_PRIV_INDEX	, 0x003d },
 	{ RT5670_PRIV_DATA	, 0x3640 },
+	{ RT5670_PWR_MIXER	, 0x0001 },
 	/* playback */
 	{ RT5670_STO_DAC_MIXER	, 0x1616 }, /* Dig inf 1 -> Sto
 							DAC mixer -> DACL */
@@ -81,7 +81,7 @@ static struct rt5670_init_reg init_list[] = {
 	{ RT5670_CHARGE_PUMP	, 0x0c00 },
 	{ RT5670_GPIO_CTRL3	, 0x0d00 }, /* for stereo SPK */
 	/* record */
-	{ RT5670_GEN_CTRL3	, 0x0884},
+	{ RT5670_GEN_CTRL3	, 0x0880},
 	{ RT5670_REC_L2_MIXER	, 0x007d }, /* Mic1 -> RECMIXL */
 	{ RT5670_REC_R2_MIXER	, 0x007d }, /* Mic1 -> RECMIXR */
 	{ RT5670_STO1_ADC_MIXER	, 0x5940 }, /* DMIC2 setting */
@@ -191,7 +191,7 @@ static const u16 rt5670_reg[RT5670_VENDOR_ID2 + 1] = {
 	[RT5670_SV_ZCD1] = 0x0809,
 	[RT5670_IL_CMD] = 0x0001,
 	[RT5670_IL_CMD2] = 0x0049,
-	[RT5670_IL_CMD3] = 0x0024,
+	[RT5670_IL_CMD3] = 0x0009,
 	[RT5670_DRC_HL_CTRL1] = 0x8000,
 	[RT5670_ADC_MONO_HP_CTRL1] = 0xb300,
 	[RT5670_ADC_STO2_HP_CTRL1] = 0xb300,
@@ -502,63 +502,59 @@ static int rt5670_readable_register(
 
 int rt5670_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 {
-	int val;
-	int i = 0, sleep_time[5] = {100, 5, 5, 5, 5};
-	struct rt5670_priv *rt5670 = snd_soc_codec_get_drvdata(codec);
+	int jack_type, val;
+	int i = 0, sleep_time[5] = {300, 150, 100, 50, 25};
 
 	if (jack_insert) {
-		rt5670_index_update_bits(codec, RT5670_REC_R2_MIXER, 0x40, 0x0);
-		snd_soc_update_bits(codec, RT5670_MICBIAS, 0x10, 0x10);
-		snd_soc_update_bits(codec, RT5670_GEN_CTRL3, 0x4, 0x4);
-
+		snd_soc_update_bits(codec, RT5670_GEN_CTRL3, 0x4, 0x0);
+		snd_soc_update_bits(codec, RT5670_CJ_CTRL2,
+			RT5670_CBJ_DET_MODE | RT5670_CBJ_MN_JD,
+			RT5670_CBJ_MN_JD);
 		snd_soc_update_bits(codec, RT5670_PWR_ANLG2,
 			RT5670_PWR_JD1, RT5670_PWR_JD1);
+		snd_soc_update_bits(codec, RT5670_PWR_VOL,
+			RT5670_PWR_MIC_DET, RT5670_PWR_MIC_DET);
 		snd_soc_update_bits(codec, RT5670_DIG_MISC, 0x1, 0x1);
 		snd_soc_write(codec, RT5670_GPIO_CTRL2, 0x0004);
 		snd_soc_update_bits(codec, RT5670_GPIO_CTRL1,
 			RT5670_GP1_PIN_MASK, RT5670_GP1_PIN_IRQ);
+
 		snd_soc_update_bits(codec, RT5670_CJ_CTRL1,
 			RT5670_CBJ_BST1_EN, RT5670_CBJ_BST1_EN);
-		if (rt5670->hs_type == RT5670_HS_RING4_MICBIAS2)
-			snd_soc_write(codec, RT5670_CJ_CTRL2, 0x0b27);
-		else
-			snd_soc_write(codec, RT5670_CJ_CTRL2, 0x0d27);
-
 		snd_soc_write(codec, RT5670_JD_CTRL3, 0x00f0);
-		snd_soc_write(codec, RT5670_IL_CMD, 0x0059);
-		val = snd_soc_read(codec, RT5670_IL_CMD);
-		snd_soc_write(codec, RT5670_IL_CMD, val);
+		snd_soc_update_bits(codec, RT5670_CJ_CTRL2,
+			RT5670_CBJ_MN_JD, RT5670_CBJ_MN_JD);
+		snd_soc_update_bits(codec, RT5670_CJ_CTRL2,
+			RT5670_CBJ_MN_JD, 0);
 		while (i < 5) {
 			msleep(sleep_time[i]);
-			val = snd_soc_read(codec, RT5670_IL_CMD);
-			snd_soc_write(codec, RT5670_IL_CMD, val);
-			pr_debug("%d sleep %d\n", i, sleep_time[i]);
+			val = snd_soc_read(codec, RT5670_CJ_CTRL3) & 0x7;
+			pr_debug("%s: %d MX-0C val=%d sleep %d\n",
+				__func__, i, val, sleep_time[i]);
 			i++;
-			if (val == 0x0059) /* Headset is detected */
+			if (val == 0x1 || val == 0x2 || val == 0x4)
 				break;
 		}
 
-		if (val == 0x0059) {
-			rt5670->jack_type = SND_JACK_HEADSET;
+		pr_debug("val=%d\n", val);
+		if (val == 0x1 || val == 0x2) {
+			jack_type = SND_JACK_HEADSET;
 			/* for push button */
 			snd_soc_update_bits(codec, RT5670_INT_IRQ_ST, 0x8, 0x8);
 			snd_soc_update_bits(codec, RT5670_IL_CMD, 0x40, 0x40);
 			snd_soc_read(codec, RT5670_IL_CMD);
 		} else {
 			snd_soc_update_bits(codec, RT5670_GEN_CTRL3, 0x4, 0x4);
-			rt5670->jack_type = SND_JACK_HEADPHONE;
+			jack_type = SND_JACK_HEADPHONE;
 		}
-		rt5670_index_update_bits(codec, 0x3e, 0x40, 0x40);
-		snd_soc_update_bits(codec, RT5670_MICBIAS, 0x10, 0x0);
-		snd_soc_update_bits(codec, RT5670_IL_CMD, 0x1f, 0x5);
 	} else {
-		snd_soc_update_bits(codec, RT5670_INT_IRQ_ST, 0x8, 0x0);
-		rt5670->jack_type = 0;
 		snd_soc_update_bits(codec, RT5670_GEN_CTRL3, 0x4, 0x4);
+		snd_soc_update_bits(codec, RT5670_INT_IRQ_ST, 0x8, 0x0);
+		jack_type = 0;
 	}
 
-	pr_debug("jack_type = %d\n", rt5670->jack_type);
-	return rt5670->jack_type;
+	pr_debug("jack_type=%d\n", jack_type);
+	return jack_type;
 }
 EXPORT_SYMBOL(rt5670_headset_detect);
 
@@ -1873,7 +1869,6 @@ static int rt5670_bst1_event(struct snd_soc_dapm_widget *w,
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
-		snd_soc_update_bits(codec, RT5670_GEN_CTRL3, 0x4, 0x4);
 		snd_soc_update_bits(codec, RT5670_PWR_ANLG2,
 			RT5670_PWR_BST1_P, 0);
 		break;
@@ -3342,6 +3337,7 @@ static ssize_t rt5670_codec_show(struct device *dev,
 	unsigned int val;
 	int cnt = 0, i;
 
+	codec->cache_bypass = 1;
 	for (i = 0; i <= RT5670_VENDOR_ID2; i++) {
 		if (cnt + RT5670_REG_DISP_LEN >= PAGE_SIZE)
 			break;
@@ -3351,7 +3347,7 @@ static ssize_t rt5670_codec_show(struct device *dev,
 		cnt += snprintf(buf + cnt, RT5670_REG_DISP_LEN,
 				"#rng%02x  #rv%04x  #rd0\n", i, val);
 	}
-
+	codec->cache_bypass = 0;
 	if (cnt >= PAGE_SIZE)
 		cnt = PAGE_SIZE - 1;
 
@@ -3532,7 +3528,8 @@ static int rt5670_probe(struct snd_soc_codec *codec)
 			RT5670_GP9_OUT_MASK | RT5670_GP8_OUT_MASK,
 			RT5670_GP9_OUT_LO | RT5670_GP8_OUT_HI);
 
-
+	snd_soc_update_bits(codec, RT5670_CJ_CTRL1,
+			RT5670_CBJ_BST1_EN, RT5670_CBJ_BST1_EN);
 #ifdef JD1_FUNC
 	snd_soc_update_bits(codec, RT5670_PWR_ANLG1,
 			RT5670_PWR_MB | RT5670_PWR_BG,
