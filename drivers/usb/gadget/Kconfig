@@ -549,6 +549,9 @@ config USB_F_MTP
 config USB_F_PTP
         tristate
 
+config USB_F_MIDI
+        tristate
+
 choice
 	tristate "USB Gadget Drivers"
 	default USB_ETH
