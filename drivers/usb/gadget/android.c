@@ -30,6 +30,7 @@
 
 #include "gadget_chips.h"
 #include "u_fs.h"
+#include "u_midi.h"
 
 #include "f_audio_source.c"
 #include "f_mtp.c"
@@ -51,6 +52,12 @@ static const char longname[] = "Gadget Android";
 /* Default vendor and product IDs, overridden by userspace */
 #define VENDOR_ID		0x18D1
 #define PRODUCT_ID		0x0001
+
+/* f_midi configuration */
+#define MIDI_INPUT_PORTS    1
+#define MIDI_OUTPUT_PORTS   1
+#define MIDI_BUFFER_SIZE    256
+#define MIDI_QUEUE_LENGTH   32
 
 struct android_usb_function {
 	char *name;
@@ -1113,6 +1120,112 @@ static struct android_usb_function audio_source_function = {
 	.attributes	= audio_source_function_attributes,
 };
 
+struct midi_function_config {
+	struct usb_function *f_midi;
+	struct usb_function_instance *f_midi_inst;
+	int card;
+	int device;
+};
+
+static int midi_function_init(struct android_usb_function *f,
+					struct usb_composite_dev *cdev)
+{
+	struct midi_function_config *config;
+	struct f_midi_opts *midi_opts;
+
+	config = kzalloc(sizeof(*config), GFP_KERNEL);
+	f->config = config;
+	if (!config)
+		return -ENOMEM;
+	config->card = -1;
+	config->device = -1;
+
+	config->f_midi_inst = usb_get_function_instance("midi");
+	if (IS_ERR(config->f_midi_inst)) {
+		kfree(config);
+		return PTR_ERR(config->f_midi_inst);
+	}
+
+	midi_opts = container_of(config->f_midi_inst, struct f_midi_opts,
+								func_inst);
+	midi_opts->index = SNDRV_DEFAULT_IDX1;
+	midi_opts->id = SNDRV_DEFAULT_STR1;
+	midi_opts->in_ports = MIDI_INPUT_PORTS;
+	midi_opts->out_ports = MIDI_OUTPUT_PORTS;
+	midi_opts->buflen = MIDI_BUFFER_SIZE;
+	midi_opts->qlen = MIDI_QUEUE_LENGTH;
+
+	return 0;
+}
+
+static void midi_function_cleanup(struct android_usb_function *f)
+{
+	struct midi_function_config *config = f->config;
+
+	usb_put_function_instance(config->f_midi_inst);
+	kfree(f->config);
+	f->config = NULL;
+}
+
+static int midi_function_bind_config(struct android_usb_function *f,
+						struct usb_configuration *c)
+{
+	struct midi_function_config *config = f->config;
+	int ret;
+
+	config->f_midi = usb_get_function(config->f_midi_inst);
+	if (IS_ERR(config->f_midi)) {
+		pr_err("Could not get midi function\n");
+		return PTR_ERR(config->f_midi);
+	}
+
+	ret = usb_add_function(c, config->f_midi);
+	if (ret < 0) {
+		pr_err("Could not add midi function\n");
+		usb_put_function(config->f_midi);
+		return ret;
+	}
+
+	midi_get_alsa_config(config->f_midi, &config->card, &config->device);
+
+	return 0;
+}
+
+static void midi_function_unbind_config(struct android_usb_function *f,
+						struct usb_configuration *c)
+{
+	struct midi_function_config *config = f->config;
+
+	usb_put_function(config->f_midi);
+	config->f_midi = NULL;
+}
+
+static ssize_t midi_alsa_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct android_usb_function *f = dev_get_drvdata(dev);
+	struct midi_function_config *config = f->config;
+
+	/* print ALSA card and device numbers */
+	return sprintf(buf, "%d %d\n", config->card, config->device);
+}
+
+static DEVICE_ATTR(alsa, S_IRUGO, midi_alsa_show, NULL);
+
+static struct device_attribute *midi_function_attributes[] = {
+	&dev_attr_alsa,
+	NULL
+};
+
+static struct android_usb_function midi_function = {
+	.name		= "midi",
+	.init		= midi_function_init,
+	.cleanup		= midi_function_cleanup,
+	.bind_config	= midi_function_bind_config,
+	.unbind_config	= midi_function_unbind_config,
+	.attributes	= midi_function_attributes,
+};
+
 static struct android_usb_function *supported_functions[] = {
 	&ffs_function,
 	&acm_function,
@@ -1122,6 +1235,7 @@ static struct android_usb_function *supported_functions[] = {
 	&mass_storage_function,
 	&accessory_function,
 	&audio_source_function,
+	&midi_function,
 	NULL
 };
 
