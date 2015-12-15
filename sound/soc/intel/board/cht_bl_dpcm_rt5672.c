@@ -48,7 +48,7 @@
 #define CHT_HS_DET_POLL_INTRVL          100
 #define CHT_BUTTON_EN_DELAY             1500
 
-#define CHT_HS_DET_RETRY_COUNT          1
+#define CHT_HS_DET_RETRY_COUNT          0
 
 struct cht_mc_private {
 	struct snd_soc_jack jack;
