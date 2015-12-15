@@ -36,4 +36,6 @@ struct f_midi_opts {
 	 int				refcnt;
 };
 
+void midi_get_alsa_config(struct usb_function *f, int *card, int *device);
+
 #endif /* U_MIDI_H */

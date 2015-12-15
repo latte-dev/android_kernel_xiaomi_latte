@@ -94,6 +94,14 @@ static inline struct f_midi *func_to_midi(struct usb_function *f)
 	return container_of(f, struct f_midi, func);
 }
 
+void midi_get_alsa_config(struct usb_function *f, int *card, int *device)
+{
+	struct f_midi *midi = func_to_midi(f);
+
+	*card = midi->rmidi->card->number;
+	*device = midi->rmidi->device;
+}
+
 static void f_midi_transmit(struct f_midi *midi, struct usb_request *req);
 
 DECLARE_UAC_AC_HEADER_DESCRIPTOR(1);
