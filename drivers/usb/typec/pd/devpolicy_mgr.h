@@ -91,6 +91,8 @@ enum devpolicy_mgr_events {
 	DEVMGR_EVENT_UFP_DISCONNECTED,
 	DEVMGR_EVENT_PR_SWAP,
 	DEVMGR_EVENT_DR_SWAP,
+	DEVMGR_EVENT_VBUS_ON,
+	DEVMGR_EVENT_VBUS_OFF,
 };
 
 enum policy_type {
@@ -163,7 +165,7 @@ struct devpolicy_mgr {
 	enum pwr_role prev_prole;
 	enum data_role cur_drole;
 	enum data_role prev_drole;
-	struct policy_engine *pe;
+	struct policy *p;
 	/* power delivery class device*/
 	struct device *pd_dev;
 	struct work_struct cable_notify_work;
@@ -171,6 +173,9 @@ struct devpolicy_mgr {
 	struct list_head cable_notify_list;
 	struct power_supply *charger_psy;
 	struct power_supply *battery_psy;
+	struct notifier_block psy_nb;
+	struct work_struct psy_work;
+	int battery_capacity;
 };
 
 struct dpm_interface {
@@ -204,8 +209,109 @@ struct dpm_interface {
 	int (*set_display_port_state)(struct devpolicy_mgr *dpm,
 					enum cable_state state,
 					enum typec_dp_cable_type type);
-	bool (*get_vbus_state)(struct devpolicy_mgr *dpm);
 };
+
+#ifdef CONFIG_INTEL_WCOVE_GPIO
+extern int wcgpio_set_vbus_state(bool state);
+static inline int devpolicy_set_vbus_state(struct devpolicy_mgr *dpm,
+						bool state)
+{
+	if (!dpm)
+		return -ENODEV;
+	return wcgpio_set_vbus_state(state);
+}
+#else /* CONFIG_INTEL_WCOVE_GPIO */
+static inline int devpolicy_set_vbus_state(struct devpolicy_mgr *dpm,
+						bool state)
+{
+	return -ENODEV;
+}
+#endif /* CONFIG_INTEL_WCOVE_GPIO */
+
+#ifdef CONFIG_PINCTRL_CHERRYVIEW
+
+/* Cherryview display hpd gpio pin*/
+#define CHV_HPD_GPIO		409
+#define CHV_HPD_INV_BIT		(1 << 6)
+
+void chv_gpio_cfg_inv(int gpio, int inv, int en);
+static inline int devpolicy_set_hpd_state(struct devpolicy_mgr *dpm,
+						bool state)
+{
+	if (!dpm)
+		return -ENODEV;
+	chv_gpio_cfg_inv(CHV_HPD_GPIO, CHV_HPD_INV_BIT, !state);
+	return 0;
+}
+#else /* CONFIG_PINCTRL_CHERRYVIEW */
+static inline int devpolicy_set_hpd_state(struct devpolicy_mgr *dpm,
+						bool state)
+{
+	return 0;
+}
+#endif /* CONFIG_PINCTRL_CHERRYVIEW */
+
+static inline int devpolicy_enable_pd(struct devpolicy_mgr *dpm,
+						bool state)
+{
+	if (dpm && dpm->phy)
+		return typec_enable_autocrc(dpm->phy, state);
+	return -ENODEV;
+}
+
+static inline int devpolicy_set_dp_state(struct devpolicy_mgr *dpm,
+						enum cable_state state,
+						enum typec_dp_cable_type type)
+{
+	if (dpm && dpm->interface && dpm->interface->set_display_port_state)
+		return dpm->interface->set_display_port_state(dpm,
+							state, type);
+
+	return -ENODEV;
+}
+
+static inline void devpolicy_set_cc_pu_pd(struct devpolicy_mgr *dpm,
+					enum typec_cc_pull pull)
+{
+	if (dpm && dpm->phy && dpm->phy->set_pu_pd)
+		dpm->phy->set_pu_pd(dpm->phy, pull);
+}
+
+static inline bool devpolicy_get_vbus_state(struct devpolicy_mgr *dpm)
+{
+	if (dpm && dpm->phy && dpm->phy->is_vbus_on)
+		return dpm->phy->is_vbus_on(dpm->phy);
+	return false;
+}
+
+static inline bool devpolicy_get_vconn_state(struct devpolicy_mgr *dpm)
+{
+	if (dpm && dpm->phy && dpm->phy->enable_vconn)
+		return dpm->phy->is_vconn_enabled(dpm->phy);
+	return false;
+}
+
+static inline int devpolicy_set_vconn_state(struct devpolicy_mgr *dpm,
+								bool state)
+{
+	if (dpm && dpm->phy && dpm->phy->enable_vconn)
+		return dpm->phy->enable_vconn(dpm->phy, state);
+	return -EINVAL;
+}
+
+static inline void devpolicy_update_data_role(struct devpolicy_mgr *dpm,
+					enum data_role role)
+{
+	if (dpm && dpm->interface && dpm->interface->update_data_role)
+		dpm->interface->update_data_role(dpm, role);
+}
+
+static inline void devpolicy_update_power_role(struct devpolicy_mgr *dpm,
+					enum pwr_role role)
+{
+	if (dpm && dpm->interface && dpm->interface->update_power_role)
+		dpm->interface->update_power_role(dpm, role);
+}
 
 static inline int devpolicy_get_max_srcpwr_cap(struct devpolicy_mgr *dpm,
 					struct power_cap *caps)

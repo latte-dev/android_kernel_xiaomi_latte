@@ -33,7 +33,8 @@
 #include <linux/extcon.h>
 #include <linux/usb_typec_phy.h>
 #include "devpolicy_mgr.h"
-#include "policy_engine.h"
+#include "pd_policy.h"
+#include "protocol.h"
 
 static struct power_cap spcaps[] = {
 	{
@@ -56,6 +57,26 @@ struct dpm_cable_state {
 	char *cbl_type;
 	bool cbl_state;
 };
+
+
+static int dpm_handle_psy_notification(struct notifier_block *nb,
+				   unsigned long event, void *data)
+{
+	struct devpolicy_mgr *dpm = container_of(nb, struct devpolicy_mgr,
+					psy_nb);
+	struct power_supply *psy;
+
+	if (data == NULL)
+		return NOTIFY_DONE;
+	pr_debug("DPM: PSY Event=%lu\n", event);
+	psy = data;
+	if (IS_BATTERY(psy) &&
+		event == PSY_EVENT_PROP_CHANGED)
+		schedule_work(&dpm->psy_work);
+
+	return NOTIFY_OK;
+}
+
 
 static struct power_supply *dpm_get_psy(struct devpolicy_mgr *dpm,
 							enum psy_type type)
@@ -93,22 +114,24 @@ static struct power_supply *dpm_get_psy(struct devpolicy_mgr *dpm,
 	return NULL;
 }
 
-/* Reading the state of charge value of the battery */
-static int dpm_read_soc(struct devpolicy_mgr *dpm, int *soc)
+static void dpm_psy_worker(struct work_struct *work)
 {
+	struct devpolicy_mgr *dpm = container_of(work, struct devpolicy_mgr,
+							psy_work);
 	struct power_supply *psy;
 	union power_supply_propval val;
 	int ret;
 
 	psy = dpm_get_psy(dpm, PSY_TYPE_BATTERY);
 	if (!psy)
-		return -EINVAL;
-
+		return;
 	ret = psy->get_property(psy, POWER_SUPPLY_PROP_CAPACITY, &val);
-	if (!ret)
-		*soc = val.intval;
-
-	return ret;
+	if (ret) {
+		pr_err("DPM: Failed to read battery soc\n");
+		return;
+	}
+	dpm->battery_capacity = val.intval;
+	pr_debug("DPM: battery_capacity=%d\n", dpm->battery_capacity);
 }
 
 static int dpm_get_max_srcpwr_cap(struct devpolicy_mgr *dpm,
@@ -154,13 +177,7 @@ static enum batt_soc_status dpm_get_batt_status(struct devpolicy_mgr *dpm)
 {
 	int soc;
 
-	if (dpm_read_soc(dpm, &soc)) {
-		pr_err("DPM: Error in getting soc\n");
-		return -ENODATA;
-	} else {
-		pr_debug("DPM: capacity = %d\n", soc);
-	}
-
+	soc = dpm->battery_capacity;
 	if (IS_BATT_SOC_FULL(soc))
 		return BATT_SOC_FULL;
 	else if (IS_BATT_SOC_GOOD(soc))
@@ -326,10 +343,13 @@ static int dpm_get_sink_pr_swap_status(struct devpolicy_mgr *dpm)
 static int dpm_is_pr_swapped(struct devpolicy_mgr *dpm,
 					enum pwr_role prole)
 {
-	if (prole == POWER_ROLE_SINK)
-		return dpm_get_sink_pr_swap_status(dpm);
+	int ret = 0;
 
-	return 0;
+	if (prole == POWER_ROLE_SINK)
+		ret = dpm_get_sink_pr_swap_status(dpm);
+	else if (prole == POWER_ROLE_SOURCE)
+		ret = true;
+	return ret;
 }
 
 static int dpm_get_min_current(struct devpolicy_mgr *dpm,
@@ -353,22 +373,9 @@ static enum cable_state dpm_get_cable_state(struct devpolicy_mgr *dpm,
 static void dpm_notify_policy_evt(struct devpolicy_mgr *dpm,
 					enum devpolicy_mgr_events evt)
 {
-	if (dpm && dpm->pe && dpm->pe->ops && dpm->pe->ops->notify_dpm_evt)
-		dpm->pe->ops->notify_dpm_evt(dpm->pe, evt);
+	if (dpm && dpm->p)
+		pe_notify_dpm_evt(dpm->p, evt);
 
-}
-
-static void dpm_set_pu_pd(struct devpolicy_mgr *dpm, bool pu_pd)
-{
-	if (dpm && dpm->phy && dpm->phy->set_pu_pd)
-		dpm->phy->set_pu_pd(dpm->phy, pu_pd);
-}
-
-static bool dpm_get_vbus_state(struct devpolicy_mgr *dpm)
-{
-	if (dpm && dpm->phy && dpm->phy->is_vbus_on)
-		return dpm->phy->is_vbus_on(dpm->phy);
-	return false;
 }
 
 static void dpm_notify_cable_state_worker(struct work_struct *work)
@@ -488,8 +495,6 @@ static void dpm_update_power_role(struct devpolicy_mgr *dpm,
 	enum pwr_role prev_prole;
 	char *cbl_type = NULL;
 	bool cbl_state = false;
-	bool set_pu_pd = false;
-	bool pu_pd = false;
 
 	mutex_lock(&dpm->role_lock);
 	cur_prole = dpm->cur_prole;
@@ -504,19 +509,11 @@ static void dpm_update_power_role(struct devpolicy_mgr *dpm,
 			/* Role swap from SRC to SNK, Send SRC disconnect */
 			cbl_type = "USB_TYPEC_SRC";
 			cbl_state = CABLE_DETACHED;
-			/* Pull-Down the CC line */
-			set_pu_pd = true;
-			pu_pd = false;
 		} else if (cur_prole == POWER_ROLE_SINK) {
 			dpm->consumer_state = CABLE_DETACHED;
 			/* Role swap from SNK to SRC, Send SNK disconnect */
 			cbl_type = "USB_TYPEC_SNK";
 			cbl_state = CABLE_DETACHED;
-			/* PR SWAP from SNK to SRC.
-			 * Pull-Up the CC line
-			 */
-			set_pu_pd = true;
-			pu_pd = true;
 		} else {
 			pr_warn("DPM:%s:PR_SWAP cann't be processed\n",
 					__func__);
@@ -556,8 +553,6 @@ static void dpm_update_power_role(struct devpolicy_mgr *dpm,
 
 	if (cbl_type != NULL)
 		dpm_notify_cable_state(dpm, cbl_type, cbl_state);
-	if (set_pu_pd)
-		dpm_set_pu_pd(dpm, pu_pd);
 
 update_prole_err:
 	mutex_unlock(&dpm->role_lock);
@@ -636,9 +631,6 @@ static void dpm_handle_ext_cable_event(struct devpolicy_mgr *dpm,
 			mutex_unlock(&dpm->role_lock);
 
 			dpm_notify_policy_evt(dpm, dpm_evt);
-			typec_enable_autocrc(dpm->phy,
-				dpm_evt == DEVMGR_EVENT_UFP_CONNECTED
-				|| dpm_evt == DEVMGR_EVENT_DFP_CONNECTED);
 
 		} else
 			mutex_unlock(&dpm->role_lock);
@@ -1125,7 +1117,6 @@ static struct dpm_interface interface = {
 	.update_power_role = dpm_update_power_role,
 	.is_pr_swapped = dpm_is_pr_swapped,
 	.set_display_port_state = dpm_set_display_port_state,
-	.get_vbus_state = dpm_get_vbus_state,
 };
 
 struct devpolicy_mgr *dpm_register_syspolicy(struct typec_phy *phy,
@@ -1198,6 +1189,15 @@ struct devpolicy_mgr *dpm_register_syspolicy(struct typec_phy *phy,
 		goto pd_dev_reg_fail;
 	}
 
+	dpm->psy_nb.notifier_call = dpm_handle_psy_notification;
+	ret = power_supply_reg_notifier(&dpm->psy_nb);
+	if (ret) {
+		pr_err("DPM: Unable to register psy\n");
+		goto pd_dev_reg_fail;
+	}
+	INIT_WORK(&dpm->psy_work, dpm_psy_worker);
+	schedule_work(&dpm->psy_work);
+
 	return dpm;
 
 pd_dev_reg_fail:
@@ -1223,6 +1223,7 @@ void dpm_unregister_syspolicy(struct devpolicy_mgr *dpm)
 		protocol_unbind_dpm(dpm->phy);
 		extcon_unregister_interest(&dpm->provider_cable_nb);
 		extcon_unregister_interest(&dpm->consumer_cable_nb);
+		power_supply_unreg_notifier(&dpm->psy_nb);
 		kfree(dpm);
 	}
 }
