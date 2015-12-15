@@ -564,17 +564,12 @@ static inline bool policy_get_vbus_state(struct policy *p)
 	return false;
 }
 
-#if defined(CONFIG_USBC_PD) && defined(CONFIG_USBC_PD_POLICY)
-extern int policy_engine_bind_dpm(struct devpolicy_mgr *dpm);
-extern void policy_engine_unbind_dpm(struct devpolicy_mgr *dpm);
-#else /* CONFIG_USBC_PD && CONFIG_USBC_PD_POLICY */
 static inline int policy_engine_bind_dpm(struct devpolicy_mgr *dpm)
 {
 	return 0;
 }
 static inline void policy_engine_unbind_dpm(struct devpolicy_mgr *dpm)
 { }
-#endif /* CONFIG_USBC_PD && CONFIG_USBC_PD_POLICY */
 
 static inline int pe_process_cmd(struct policy_engine *pe, enum pe_event cmd)
 {
