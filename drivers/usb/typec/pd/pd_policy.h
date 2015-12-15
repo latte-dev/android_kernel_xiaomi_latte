@@ -1,3 +1,26 @@
+/*
+ * pd_policy.h: Intel USB Power Delivery Policy Header
+ *
+ * Copyright (C) 2015 Intel Corporation
+ *
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; version 2 of the License.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. Seee the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program.
+ *
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ * Author: Venkataramana Kotakonda <venkataramana.kotakonda@intel.com>
+ */
+
 #ifndef __PD_POLICY_H__
 #define __PD_POLICY_H__
 
@@ -123,10 +146,15 @@ static inline int pe_notify_dpm_evt(struct policy *p,
 	return -ENOTSUPP;
 }
 
+#if defined(CONFIG_USBC_PD) && defined(CONFIG_USBC_PD_POLICY)
+extern int policy_engine_bind_dpm(struct devpolicy_mgr *dpm);
+extern void policy_engine_unbind_dpm(struct devpolicy_mgr *dpm);
+#else /* CONFIG_USBC_PD && CONFIG_USBC_PD_POLICY */
 static inline int policy_engine_bind_dpm(struct devpolicy_mgr *dpm)
 {
 	return 0;
 }
 static inline void policy_engine_unbind_dpm(struct devpolicy_mgr *dpm)
 { }
+#endif /* CONFIG_USBC_PD && CONFIG_USBC_PD_POLICY */
 #endif /* __PD_POLICY_H__ */

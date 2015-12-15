@@ -7,6 +7,7 @@
 #include <linux/extcon.h>
 #include <linux/usb_typec_phy.h>
 #include "message.h"
+#include "pd_policy.h"
 
 #define PD_MAX_MSG_ID	7
 
