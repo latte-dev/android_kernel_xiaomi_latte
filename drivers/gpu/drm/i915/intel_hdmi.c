@@ -1281,13 +1281,14 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 		if ((status != i915_hdmi_state) && (IS_VALLEYVIEW(dev))) {
 			if (intel_hdmi->has_audio)
 				intel_hdmi->notify_had = 1;
+			i915_hdmi_state = status;
 		}
 #endif
 		if (intel_hdmi->force_audio != HDMI_AUDIO_AUTO)
 			intel_hdmi->has_audio =
 				(intel_hdmi->force_audio == HDMI_AUDIO_ON);
 		intel_encoder->type = INTEL_OUTPUT_HDMI;
-	} else if (dev_priv->audio_port == intel_dig_port->port) {
+	} else if (dev_priv->audio_port == intel_dig_port) {
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 		if ((status != i915_hdmi_state) && (IS_VALLEYVIEW(dev))) {
 #ifdef CONFIG_EXTCON
@@ -1301,18 +1302,14 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 			DRM_DEBUG_DRIVER("Sending event to audio");
 			mid_hdmi_audio_signal_event(dev_priv->dev,
 				HAD_EVENT_HOT_UNPLUG);
+			i915_hdmi_state = status;
 		}
 #endif
-		dev_priv->audio_port = 0;
+		dev_priv->audio_port = NULL;
 	}
 
 det_out:
 	intel_display_power_put(dev_priv, power_domain);
-
-#ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
-	if (IS_VALLEYVIEW(dev))
-		i915_hdmi_state = status;
-#endif
 
 	return status;
 }
@@ -1338,12 +1335,12 @@ static int intel_hdmi_get_modes(struct drm_connector *connector)
 
 	/* No need to read modes if no connection */
 	if ((connector->status != connector_status_connected) &&
-		(dev_priv->audio_port == intel_dig_port->port)) {
+		(dev_priv->audio_port == intel_dig_port)) {
 #ifdef CONFIG_EXTCON
 		if (strlen(dev_priv->hotplug_switch.name) != 0)
 			extcon_set_state(&dev_priv->hotplug_switch, 0);
 #endif
-		dev_priv->audio_port = 0;
+		dev_priv->audio_port = NULL;
 		goto e_out;
 	}
 
@@ -1358,8 +1355,8 @@ static int intel_hdmi_get_modes(struct drm_connector *connector)
 	if (edid) {
 		drm_mode_connector_update_edid_property(connector, edid);
 		ret = drm_add_edid_modes(connector, edid);
-		if (dev_priv->audio_port == 0) {
-			dev_priv->audio_port = intel_dig_port->port;
+		if (!dev_priv->audio_port) {
+			dev_priv->audio_port = intel_dig_port;
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 			drm_edid_to_eld(connector, edid);
 			if (intel_hdmi->notify_had) {

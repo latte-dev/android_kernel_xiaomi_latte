@@ -1746,7 +1746,7 @@ struct drm_i915_private {
 #ifdef CONFIG_EXTCON
 	/* Android uses switch to inform userspace about hotplug events. */
 	struct extcon_dev hotplug_switch;
-	int audio_port;
+	struct intel_digital_port *audio_port;
 #endif
 
 	/* Atomicity fixes */

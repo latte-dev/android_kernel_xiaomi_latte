@@ -4762,11 +4762,11 @@ intel_dp_get_edid_modes(struct drm_connector *connector, struct i2c_adapter *ada
 		if (IS_ERR(intel_connector->edid))
 			return 0;
 
-		if (dev_priv->audio_port == 0) {
+		if (!dev_priv->audio_port) {
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 			drm_edid_to_eld(connector, intel_connector->edid);
 			if (intel_dp->notify_had) {
-				dev_priv->audio_port = intel_dig_port->port;
+				dev_priv->audio_port = intel_dig_port;
 				chv_set_lpe_audio_reg_pipe(dev, INTEL_OUTPUT_DISPLAYPORT,
 						intel_dig_port->port);
 				hdmi_get_eld(connector->eld);
@@ -4903,7 +4903,8 @@ out:
 		if (status == connector_status_connected) {
 			if (intel_dp->has_audio)
 				intel_dp->notify_had = true;
-		} else if (intel_dig_port->port == dev_priv->audio_port) {
+			i915_hdmi_state = status;
+		} else if (intel_dig_port == dev_priv->audio_port) {
 #ifdef CONFIG_EXTCON
 			if (strlen(dev_priv->hotplug_switch.name) != 0)
 				extcon_set_state(
@@ -4915,9 +4916,9 @@ out:
 			DRM_DEBUG_DRIVER("Sending event to audio");
 			mid_hdmi_audio_signal_event(dev_priv->dev,
 						HAD_EVENT_HOT_UNPLUG);
-			dev_priv->audio_port = 0;
+			dev_priv->audio_port = NULL;
+			i915_hdmi_state = status;
 		}
-		i915_hdmi_state = status;
 	}
 #endif
 
