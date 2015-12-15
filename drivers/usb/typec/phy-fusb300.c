@@ -273,8 +273,9 @@
 #define FUSB300_MAX_INT_STAT		3
 #define FUSB302_MAX_INT_STAT		7
 #define MAX_FIFO_SIZE	64
-#define PD_DEBOUNCE_MIN	10000	/* 10ms */
-#define PD_DEBOUNCE_MAX	15000	/* 15ms */
+#define PD_DEBOUNCE_MIN_TIME		10	/* 10ms */
+#define PD_DEBOUNCE_MAX_TIME		20	/* 20ms */
+#define VALID_DISCONN_RETRY_TIME	20	/* 20ms */
 
 static int host_cur[4] = {
 	TYPEC_CURRENT_UNKNOWN,
@@ -301,7 +302,7 @@ struct fusb300_chip {
 	struct typec_phy phy;
 	struct completion vbus_complete;
 	struct work_struct tog_work;
-	struct work_struct dfp_disconn_work;
+	struct delayed_work dfp_disconn_work;
 	struct fusb300_int_stat int_stat;
 	spinlock_t irqlock;
 	int activity_count;
@@ -886,6 +887,8 @@ static void fusb300_handle_vbus_int(struct fusb300_chip *chip, int vbus_on)
 	mutex_unlock(&chip->lock);
 	dev_dbg(chip->dev, "%s: state=%d, vbus=%d\n", __func__, state, vbus_on);
 	if (vbus_on) {
+		/* cancel the work since vbus is present */
+		cancel_delayed_work(&chip->dfp_disconn_work);
 		if (state == TYPEC_STATE_PU_PD_SWAP) {
 			mutex_lock(&chip->lock);
 			phy->state = TYPEC_STATE_ATTACHED_UFP;
@@ -902,7 +905,7 @@ static void fusb300_handle_vbus_int(struct fusb300_chip *chip, int vbus_on)
 		/* TOG_DONE will be used with FUSB302 */
 	} else {
 		if (state == TYPEC_STATE_ATTACHED_UFP)
-			schedule_work(&chip->dfp_disconn_work);
+			schedule_delayed_work(&chip->dfp_disconn_work, 0);
 	}
 }
 
@@ -979,7 +982,7 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 		 */
 		if ((phy_state == TYPEC_STATE_ATTACHED_UFP) ||
 			(phy_state == TYPEC_STATE_ATTACHED_DFP)) {
-			schedule_work(&chip->dfp_disconn_work);
+			schedule_delayed_work(&chip->dfp_disconn_work, 0);
 		}
 	}
 
@@ -1452,16 +1455,16 @@ err_measure:
 static void fusb300_valid_disconnect(struct work_struct *work)
 {
 	struct fusb300_chip *chip = container_of(work, struct fusb300_chip,
-						dfp_disconn_work);
-
+						dfp_disconn_work.work);
 	struct typec_phy *phy = &chip->phy;
 	unsigned int val, stat;
 
 	/*
 	 * According to TypeC Spec DFP transistion to unattached state
-	 * if CC open for tPDDebounce period (10ms)
+	 * if CC open for tPDDebounce period (10ms - 20ms)
 	 */
-	usleep_range(PD_DEBOUNCE_MIN, PD_DEBOUNCE_MAX);
+	msleep(PD_DEBOUNCE_MAX_TIME);
+
 	/*
 	 * do measurement on the already setup cc and
 	 * check whether the disconnect is a valid one
@@ -1475,14 +1478,30 @@ static void fusb300_valid_disconnect(struct work_struct *work)
 	regmap_read(chip->map, FUSB300_STAT0_REG, &stat);
 
 	dev_dbg(chip->dev, "%s: stat0 %x", __func__, stat);
-	if ((stat & FUSB300_STAT0_COMP) ||
-		(phy->state == TYPEC_STATE_ATTACHED_UFP &&
-		!(stat & FUSB300_STAT0_VBUS_OK) &&
-		!(stat & FUSB300_STAT0_BC_LVL))) {
+	if (stat & FUSB300_STAT0_COMP) {
 		fusb300_reset_valid_cc(phy);
 		atomic_notifier_call_chain(&phy->notifier,
 						 TYPEC_EVENT_NONE, phy);
 		fusb300_flush_fifo(phy, FIFO_TYPE_TX | FIFO_TYPE_RX);
+		return;
+	}
+
+	if (phy->state == TYPEC_STATE_ATTACHED_UFP) {
+		if (!(stat & FUSB300_STAT0_VBUS_OK) &&
+			!(stat & FUSB300_STAT0_BC_LVL)) {
+			fusb300_reset_valid_cc(phy);
+			atomic_notifier_call_chain(&phy->notifier,
+							TYPEC_EVENT_NONE, phy);
+			fusb300_flush_fifo(phy, FIFO_TYPE_TX | FIFO_TYPE_RX);
+		} else {
+			/*
+			 * retry the task to identify the valid disconnect, as
+			 * the cc is not dropping into the default level when
+			 * unpluging the charger from source side.
+			 */
+			schedule_delayed_work(&chip->dfp_disconn_work,
+				msecs_to_jiffies(VALID_DISCONN_RETRY_TIME));
+		}
 	}
 }
 
@@ -1769,7 +1788,7 @@ static int fusb300_probe(struct i2c_client *client,
 	init_completion(&chip->vbus_complete);
 	i2c_set_clientdata(client, chip);
 	INIT_WORK(&chip->tog_work, fusb300_tog_stat_work);
-	INIT_WORK(&chip->dfp_disconn_work, fusb300_valid_disconnect);
+	INIT_DELAYED_WORK(&chip->dfp_disconn_work, fusb300_valid_disconnect);
 
 	typec_add_phy(&chip->phy);
 
