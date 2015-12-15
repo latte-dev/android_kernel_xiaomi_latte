@@ -7,7 +7,6 @@
 #include <linux/extcon.h>
 #include <linux/usb_typec_phy.h>
 #include "message.h"
-#include "policy_engine.h"
 
 #define PD_MAX_MSG_ID	7
 
@@ -29,7 +28,7 @@ enum prot_tx_fsm {
 
 struct pd_prot {
 	struct typec_phy *phy;
-	struct policy_engine *pe;
+	struct policy *p;
 	u32 retry_count;
 	u8 pd_version;
 

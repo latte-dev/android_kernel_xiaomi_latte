@@ -29,6 +29,7 @@
 #include <linux/errno.h>
 #include "message.h"
 #include "protocol.h"
+#include "pd_policy.h"
 
 struct prot_msg {
 	struct list_head node;
@@ -158,7 +159,7 @@ static int pd_prot_handle_reset(struct pd_prot *pd, enum typec_phy_evts evt)
 
 	if (evt == PROT_PHY_EVENT_HARD_RST)
 		/* notify policy */
-		pe_process_cmd(pd->pe, PE_EVT_RCVD_HARD_RESET);
+		pe_process_cmd(pd->p, PE_EVT_RCVD_HARD_RESET);
 
 	return 0;
 }
@@ -291,7 +292,7 @@ static int prot_fwd_ctrlmsg_to_pe(struct pd_prot *pd, struct prot_msg *msg)
 
 	if (event != PE_EVT_RCVD_NONE) {
 		/* Forward the msg to policy engine. */
-		pe_process_ctrl_msg(pd->pe, event, &msg->pkt);
+		pe_process_ctrl_msg(pd->p, event, &msg->pkt);
 		return 0;
 	}
 	return -EINVAL;
@@ -324,7 +325,7 @@ static int prot_fwd_datamsg_to_pe(struct pd_prot *pd, struct prot_msg *msg)
 
 	if (event != PE_EVT_RCVD_NONE) {
 		/* Forward the msg to policy engine */
-		pe_process_data_msg(pd->pe, event, &msg->pkt);
+		pe_process_data_msg(pd->p, event, &msg->pkt);
 		return 0;
 	}
 	return -EINVAL;
@@ -501,7 +502,7 @@ static void pd_notify_protocol(struct typec_phy *phy, unsigned long event)
 		dev_dbg(phy->dev, "%s: PROT_PHY_EVENT_TX_HARD_RST\n",
 				__func__);
 		/* Hard reset complete signaling */
-		pe_process_cmd(pd->pe, PE_EVT_RCVD_HARD_RESET_COMPLETE);
+		pe_process_cmd(pd->p, PE_EVT_RCVD_HARD_RESET_COMPLETE);
 		break;
 	default:
 		break;
@@ -515,18 +516,18 @@ static void prot_role_chnage_worker(struct work_struct *work)
 	pd_prot_setup_role(prot, prot->data_role, prot->pwr_role);
 }
 
-int protocol_bind_pe(struct policy_engine *pe)
+int protocol_bind_pe(struct policy *p)
 {
 	struct typec_phy *phy;
 	struct pd_prot *prot;
 
-	if (!pe)
+	if (!p)
 		return -EINVAL;
 
-	if (pe->prot)
+	if (p->prot)
 		return -EEXIST;
 
-	phy = pe_get_phy(pe);
+	phy = pe_get_phy(p);
 	if (!phy || !phy->proto)
 		return -ENODEV;
 
@@ -534,19 +535,19 @@ int protocol_bind_pe(struct policy_engine *pe)
 	if (!prot)
 		return -ENODEV;
 
-	pe->prot = prot;
-	prot->pe = pe;
+	p->prot = prot;
+	prot->p = p;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(protocol_bind_pe);
 
-void protocol_unbind_pe(struct policy_engine *pe)
+void protocol_unbind_pe(struct policy *p)
 {
-	if (!pe)
+	if (!p)
 		return;
 
-	pe->prot->pe = NULL;
-	pe->prot = NULL;
+	p->prot->p = NULL;
+	p->prot = NULL;
 }
 EXPORT_SYMBOL_GPL(protocol_unbind_pe);
 
