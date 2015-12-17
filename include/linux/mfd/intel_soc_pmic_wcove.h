@@ -28,7 +28,6 @@ extern struct i2c_adapter *wcove_pmic_i2c_adapter;
 #define WC_LOWBATTDET0_ADDR	0x6E23
 #define WC_LOWBATTDET1_ADDR	0x6E24
 #define WC_BATTDETCTRL_ADDR	0x6EF0
-#define WC_VBUSDETCTRL_ADDR	0x6E25
 #define WC_VDCINDETCTRL_ADDR	0x6E25
 #define WC_CHGRIRQ0_ADDR	0x6E0A
 #define WC_MCHGRIRQ0_ADDR	0x6E17
@@ -48,6 +47,7 @@ extern struct i2c_adapter *wcove_pmic_i2c_adapter;
 #define WC_MTHRMIRQ2_ADDR	0x6E13
 #define WC_STHRMIRQ2_ADDR	0x4F1B
 
+#define WC_VBUSDETCTRL_ADDR	0x5E1D
 #define WC_USBPATH_ADDR		0x5E19
 #define WC_USBPHYCTRL_ADDR	0x5E07
 #define WC_USBIDCTRL_ADDR	0x5E05

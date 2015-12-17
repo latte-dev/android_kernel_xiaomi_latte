@@ -41,6 +41,8 @@
 #include <linux/mfd/intel_soc_pmic.h>
 #include <linux/extcon.h>
 #include <linux/wakelock.h>
+#include <linux/sysfs.h>
+#include <linux/miscdevice.h>
 #include "intel_pmic_ccsm.h"
 
 /* Macros */
@@ -1810,6 +1812,91 @@ static int get_pmic_model(const char *name)
 	return INTEL_PMIC_UNKNOWN;
 }
 
+static ssize_t pmic_ccsm_set_vbus_det_type(struct device *dev,
+						struct device_attribute *attr,
+						const char *buf,
+						size_t count)
+{
+	u8 data;
+	int ret = -EINVAL;
+
+	if (!strncmp(buf, VBUSDET_TYPE_EDGE_TEXT, count - 1))
+		data = VBUSDETCTRL_VBUSDETTYPE_EDGE;
+	else if (!strncmp(buf, VBUSDET_TYPE_LEVEL_TEXT, count - 1))
+		data = VBUSDETCTRL_VBUSDETTYPE_LEVEL;
+	else
+		goto error;
+
+	ret = intel_soc_pmic_update(chc.reg_map->pmic_vbusdetctrl, data,
+					VBUSDETCTRL_VBUSDETTYPE_MASK);
+	if (ret < 0) {
+		dev_err(chc.dev,
+			"%s Error in updating vbus detecting type(%d)\n",
+			__func__, data);
+		goto update_error;
+	}
+	return count;
+
+error:
+	dev_err(chc.dev, "%s Wrong input data{%s}\n", __func__, buf);
+update_error:
+	return ret;
+}
+
+static ssize_t pmic_ccsm_get_vbus_det_type(struct device *dev,
+						struct device_attribute *attr,
+						char *buf)
+{
+	u8 val;
+	u8 type;
+	size_t count = 0;
+
+	if (pmic_read_reg(chc.reg_map->pmic_vbusdetctrl, &val))
+		return -EIO;
+
+	type = val & VBUSDETCTRL_VBUSDETTYPE_MASK;
+	if (type ==  VBUSDETCTRL_VBUSDETTYPE_EDGE) {
+		count = snprintf(buf, VBUSDET_TYPE_TEXT_MAX_LEN,
+					"%s\n", VBUSDET_TYPE_EDGE_TEXT);
+	} else if (type == VBUSDETCTRL_VBUSDETTYPE_LEVEL) {
+		count = snprintf(buf, VBUSDET_TYPE_TEXT_MAX_LEN,
+					"%s\n", VBUSDET_TYPE_LEVEL_TEXT);
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR(vbus_det_type, S_IWUSR | S_IRUGO,
+	pmic_ccsm_get_vbus_det_type, pmic_ccsm_set_vbus_det_type);
+
+static const struct attribute *pmic_ccsm_attrs[] = {
+	&dev_attr_vbus_det_type.attr,
+	NULL,
+};
+
+static void pmic_ccsm_sysfs_init(struct pmic_chrgr_drv_context *info)
+{
+	int ret;
+
+	info->misc_dev.minor = MISC_DYNAMIC_MINOR;
+	info->misc_dev.name = "pmic";
+	info->misc_dev.mode = (S_IWUSR | S_IRUGO);
+	ret = misc_register(&info->misc_dev);
+	if (ret) {
+		dev_err(info->dev,
+				"Error(%d) in registering misc class", ret);
+		return;
+	}
+
+	/* create sysfs file for vbus_det_type */
+	ret = sysfs_create_files(&info->misc_dev.this_device->kobj,
+					pmic_ccsm_attrs);
+	if (ret) {
+		dev_err(info->dev, "cannot create sysfs entry\n");
+		misc_deregister(&info->misc_dev);
+	}
+}
+
 /* vbus control cooling device callbacks */
 static int vbus_get_max_state(struct thermal_cooling_device *tcd,
 				unsigned long *state)
@@ -2179,6 +2266,9 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 		goto cdev_reg_fail;
 	}
 
+	/* Register and create sysfs interfaces */
+	pmic_ccsm_sysfs_init(&chc);
+
 	return 0;
 
 cdev_reg_fail:
@@ -2226,6 +2316,13 @@ static int pmic_chrgr_remove(struct platform_device *pdev)
 	struct pmic_chrgr_drv_context *chc = platform_get_drvdata(pdev);
 
 	if (chc) {
+
+		if (!IS_ERR_OR_NULL(chc->misc_dev.this_device)) {
+			sysfs_remove_files(&chc->misc_dev.this_device->kobj,
+						pmic_ccsm_attrs);
+			misc_deregister(&chc->misc_dev);
+		}
+
 		if (IS_ERR_OR_NULL(chc->vbus_cdev))
 			ret = PTR_ERR(chc->vbus_cdev);
 		else

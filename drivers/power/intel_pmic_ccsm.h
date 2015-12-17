@@ -91,6 +91,10 @@
 #define SHRT_GND_DET			(1 << 3)
 #define SHRT_FLT_DET			(1 << 4)
 
+#define VBUSDETCTRL_VBUSDETTYPE_LEVEL	0
+#define VBUSDETCTRL_VBUSDETTYPE_EDGE	(1 << 1)
+#define VBUSDETCTRL_VBUSDETTYPE_MASK	(1 << 1)
+
 #define PMIC_CHRGR_INT0_MASK		0xB1
 #define PMIC_CHRGR_CCSM_INT0_MASK	0xB0
 #define PMIC_CHRGR_EXT_CHRGR_INT_MASK	0x01
@@ -282,6 +286,10 @@
 
 #define PMIC_CCSM_IRQ_MAX 6
 
+#define VBUSDET_TYPE_TEXT_MAX_LEN	8
+#define VBUSDET_TYPE_EDGE_TEXT		"edge"
+#define VBUSDET_TYPE_LEVEL_TEXT		"level"
+
 enum pmic_models {
 	INTEL_PMIC_UNKNOWN = 0,
 	INTEL_PMIC_BCOVE,
@@ -439,5 +447,6 @@ struct pmic_chrgr_drv_context {
 	struct notifier_block cable_nb;
 	struct work_struct extcon_work;
 	struct list_head cable_evt_list;
+	struct miscdevice misc_dev;
 	spinlock_t cable_event_queue_lock;
 };
