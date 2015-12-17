@@ -3165,15 +3165,17 @@ struct drm_i915_gem_request *i915_gem_request_find_by_seqno(struct intel_engine_
 		if (req->seqno == seqno)
 			break;
 
-		if (i915_seqno_passed(seqno, req->seqno)) {
+		if (i915_seqno_passed(req->seqno, seqno)) {
 			DRM_DEBUG_DRIVER("Searching for missing seqno!\n");
-			break;
+			req = NULL;
+			goto unlock;
 		}
 	}
 
 	if (&req->list == &ring->request_list)
 		req = NULL;
 
+unlock:
 	spin_unlock_irqrestore(&ring->reqlist_lock, flags);
 
 	return req;
