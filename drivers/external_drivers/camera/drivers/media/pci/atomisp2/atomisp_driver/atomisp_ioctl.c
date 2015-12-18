@@ -2179,6 +2179,7 @@ static int atomisp_streamoff(struct file *file, void *fh,
 	rval = __atomisp_streamoff(file, fh, type);
 	rt_mutex_unlock(&isp->mutex);
 	mutex_unlock(&isp->streamoff_mutex);
+	flush_work(&isp->wdt_work);
 
 	return rval;
 }
