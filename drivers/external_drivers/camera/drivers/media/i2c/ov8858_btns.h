@@ -631,6 +631,7 @@ static struct ov8858_reg ov8858_BasicSettings[] = {
 	{OV8858_8BIT, 0x4300, 0xFF}, /* clip_max[11:4] = 0xFFF */
 	{OV8858_8BIT, 0x4301, 0x00}, /* clip_min[11:4] = 0 */
 	{OV8858_8BIT, 0x4302, 0x0F}, /* clip_min/max[3:0] */
+	{OV8858_8BIT, 0x4307, 0x31}, /* Unknown */
 	{OV8858_8BIT, 0x4316, 0x00}, /* CTRL16 = default */
 	{OV8858_8BIT, 0x4503, 0x18}, /* Unknown */
 /*	{OV8858_8BIT, 0x4500, 0x38}, */ /* Unknown */
