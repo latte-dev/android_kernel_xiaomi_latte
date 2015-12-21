@@ -377,44 +377,6 @@ static enum typec_current fusb300_get_host_current(struct typec_phy *phy)
 	return fusb300_get_negotiated_cur(FUSB300_HOST_CUR(val));
 }
 
-
-static int fusb300_en_pu(struct fusb300_chip *chip, bool en_pu, int cur)
-{
-	unsigned int val = 0;
-	int ret;
-
-	ret = fusb300_set_host_current(&chip->phy, cur);
-	if (ret < 0) {
-		dev_err(&chip->client->dev,
-			"error setting host cur%d", ret);
-		return ret;
-	}
-	mutex_lock(&chip->lock);
-	ret = regmap_read(chip->map, FUSB300_SWITCH0_REG, &val);
-	if (ret < 0) {
-		dev_err(&chip->client->dev, "error(%d) reading %x\n",
-				ret, FUSB300_SWITCH0_REG);
-		mutex_unlock(&chip->lock);
-		return ret;
-	}
-
-	if (en_pu) {
-		val &= ~FUSB300_SWITCH0_PD_EN;
-		val |= FUSB300_SWITCH0_PU_EN;
-	} else {
-		val &= ~FUSB300_SWITCH0_PU_EN;
-	}
-	dev_dbg(chip->dev, "%s: switch0 %x = %x", __func__,
-				FUSB300_SWITCH0_REG, val);
-	ret = regmap_write(chip->map, FUSB300_SWITCH0_REG, val);
-	if (ret < 0)
-		dev_err(&chip->client->dev, "error(%d) writing %x\n",
-				ret, FUSB300_SWITCH0_REG);
-	mutex_unlock(&chip->lock);
-
-	return ret;
-}
-
 static int fusb300_en_pd(struct fusb300_chip *chip, bool en_pd)
 {
 	unsigned int val = 0;
@@ -480,7 +442,7 @@ static int fusb300_switch_mode(struct typec_phy *phy, enum typec_mode mode)
 			regmap_write(chip->map, FUSB300_MEAS_REG, 0x1f);*/
 		}
 		mutex_unlock(&chip->lock);
-		fusb300_en_pu(chip, true, cur);
+		fusb300_set_host_current(phy, cur);
 	} else if (mode == TYPEC_MODE_DRP) {
 		/* In DRP mode, clear vconn, pu and pd */
 		regmap_write(chip->map, FUSB300_SWITCH0_REG, 0);
