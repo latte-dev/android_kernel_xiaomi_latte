@@ -279,6 +279,9 @@ static void pe_handle_gcrc_received(struct policy_engine *pe)
 			pe_cancel_timer(pe, NO_RESPONSE_TIMER);
 		pe->hard_reset_counter = 0;
 		pe->src_caps_couner = 0;
+		/* Start sender response timer */
+		pe_start_timer(pe, SENDER_RESPONSE_TIMER,
+					PE_TIME_SENDER_RESPONSE);
 		break;
 
 	case PE_SRC_NEGOTIATE_CAPABILITY:
@@ -1381,11 +1384,8 @@ static void pe_timer_expire_worker(struct work_struct *work)
 
 	case CRC_RECEIVE_TIMER:
 		if (pe->cur_state == PE_SRC_SEND_CAPABILITIES) {
-			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
-			if (!pe->is_pp_pd_capable) {
-				pe_change_state(pe, PE_SRC_DISCOVERY);
-				break;
-			}
+			pe_change_state(pe, PE_SRC_DISCOVERY);
+			break;
 		} else if (pe->cur_state == PE_PRS_SRC_SNK_WAIT_SOURCE_ON) {
 			log_err("PS_RDY Sent fail during pr_swap");
 			pe_change_state(pe, PE_ERROR_RECOVERY);
@@ -1796,9 +1796,6 @@ pe_process_state_pe_src_send_capabilities(struct policy_engine *pe)
 		pe_change_state(pe, PE_SRC_DISCOVERY);
 		return;
 	}
-	/* SrcCap sent successfuly, start sender response timer*/
-	pe_start_timer(pe, SENDER_RESPONSE_TIMER, PE_TIME_SENDER_RESPONSE);
-
 }
 
 static void
