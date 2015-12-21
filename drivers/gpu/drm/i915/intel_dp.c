@@ -1074,8 +1074,8 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 			DRM_DEBUG_KMS("using min %02x link bw per VBT\n",
 				      bws[min_clock]);
 		}
-	}
-
+	} else
+		min_lane_count = max_lane_count;
 	/*
 	 * Walk through all bpp values. Luckily they're all nicely spaced with 2
 	 * bpc in between.
