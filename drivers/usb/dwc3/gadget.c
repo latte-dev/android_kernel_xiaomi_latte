@@ -322,6 +322,7 @@ int dwc3_send_gadget_ep_cmd(struct dwc3 *dwc, unsigned ep,
 	struct dwc3_ep		*dep = dwc->eps[ep];
 	u32			timeout = 500;
 	u32			reg;
+	u32			phycfg_val;
 
 	dev_vdbg(dwc->dev, "%s: cmd '%s' params %08x %08x %08x\n",
 			dep->name,
@@ -332,12 +333,18 @@ int dwc3_send_gadget_ep_cmd(struct dwc3 *dwc, unsigned ep,
 	dwc3_writel(dwc->regs, DWC3_DEPCMDPAR1(ep), params->param1);
 	dwc3_writel(dwc->regs, DWC3_DEPCMDPAR2(ep), params->param2);
 
+	phycfg_val = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(0));
+
+	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0),
+		(phycfg_val & ~DWC3_GUSB2PHYCFG_SUSPHY));
+
 	dwc3_writel(dwc->regs, DWC3_DEPCMD(ep), cmd | DWC3_DEPCMD_CMDACT);
 	do {
 		reg = dwc3_readl(dwc->regs, DWC3_DEPCMD(ep));
 		if (!(reg & DWC3_DEPCMD_CMDACT)) {
 			dev_vdbg(dwc->dev, "Command Complete --> %d\n",
 					DWC3_DEPCMD_STATUS(reg));
+			dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), phycfg_val);
 			if (DWC3_DEPCMD_STATUS(reg))
 				return -EINVAL;
 
@@ -952,6 +959,7 @@ static int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep, u16 cmd_param,
 	struct dwc3			*dwc = dep->dwc;
 	int				ret;
 	u32				cmd;
+	u32				reg;
 
 	if (start_new && (dep->flags & DWC3_EP_BUSY)) {
 		dev_vdbg(dwc->dev, "%s: endpoint busy\n", dep->name);
@@ -988,6 +996,16 @@ static int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep, u16 cmd_param,
 		params.param0 = upper_32_bits(req->trb_dma);
 		params.param1 = lower_32_bits(req->trb_dma);
 		cmd = DWC3_DEPCMD_STARTTRANSFER;
+		if ((dwc3_readl(dwc->regs, DWC3_DSTS)
+			& DWC3_DSTS_USBLNKST_MASK) != 0) {
+			reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+			reg &= ~(DWC3_DCTL_ULSTCHNGREQ_MASK);
+			dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+			reg |= DWC3_DCTL_ULSTCHNG_RECOVERY;
+			dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+			reg &= ~(DWC3_DCTL_ULSTCHNGREQ_MASK);
+			dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+		}
 	} else {
 		cmd = DWC3_DEPCMD_UPDATETRANSFER;
 	}
