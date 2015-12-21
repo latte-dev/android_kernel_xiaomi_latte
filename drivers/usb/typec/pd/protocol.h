@@ -64,6 +64,9 @@ struct pd_prot {
 					enum data_role drole);
 	void (*policy_update_power_role)(struct pd_prot *prot,
 					enum pwr_role prole);
+	void (*protocol_enable_pd)(struct pd_prot *prot, bool en);
+
+	bool is_pd_enabled;
 };
 
 static inline int pd_prot_send_phy_packet(struct pd_prot *pd, void *buf,
@@ -106,6 +109,15 @@ static inline int pd_prot_setup_role(struct pd_prot *pd,
 		return pd->phy->setup_role(pd->phy,
 				data_role, power_role);
 
+	return -ENOTSUPP;
+}
+
+static inline int pd_prot_enable_pd(struct pd_prot *pd, bool en)
+{
+	if (pd && pd->protocol_enable_pd) {
+		pd->protocol_enable_pd(pd, en);
+		return 0;
+	}
 	return -ENOTSUPP;
 }
 

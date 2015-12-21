@@ -410,6 +410,12 @@ static void pd_prot_phy_rcv(struct pd_prot *pd)
 		goto phy_rcv_end;
 
 	msg_type = PD_MSG_TYPE(&rcv_buf.header);
+	if (!pd->is_pd_enabled) {
+		dev_dbg(pd->phy->dev, "%s:PD disabled, Ignore the pkt=%d\n",
+					__func__, msg_type);
+		goto phy_rcv_end;
+	}
+
 	if (msg_type == PD_CTRL_MSG_RESERVED_0)
 		goto phy_rcv_end;
 
@@ -516,6 +522,15 @@ static void prot_role_chnage_worker(struct work_struct *work)
 	pd_prot_setup_role(prot, prot->data_role, prot->pwr_role);
 }
 
+static void pd_protocol_enable_pd(struct pd_prot *prot, bool en)
+{
+	mutex_lock(&prot->rx_data_lock);
+	prot->is_pd_enabled = en;
+	mutex_unlock(&prot->rx_data_lock);
+	prot_clear_rx_msg_list(prot);
+	typec_enable_autocrc(prot->phy, en);
+}
+
 int protocol_bind_pe(struct policy *p)
 {
 	struct typec_phy *phy;
@@ -593,6 +608,7 @@ int protocol_bind_dpm(struct typec_phy *phy)
 	prot->policy_fwd_pkt = pd_prot_rcv_pkt_from_policy;
 	prot->policy_update_data_role = pd_policy_update_data_role;
 	prot->policy_update_power_role = pd_policy_update_power_role;
+	prot->protocol_enable_pd = pd_protocol_enable_pd;
 
 	/* Init Rx list and the worker to preocess rx msgs */
 	INIT_LIST_HEAD(&prot->rx_list);

@@ -66,6 +66,16 @@ static void pe_deactivate_all_timers(struct policy_engine *pe)
 
 }
 
+static void pe_enable_pd(struct policy_engine *pe, bool en)
+{
+	if (pe->is_pd_enabled == en)
+		return;
+	if (pe->p.prot) {
+		pd_prot_enable_pd(pe->p.prot, en);
+		pe->is_pd_enabled = en;
+	}
+}
+
 static void pe_do_self_reset(struct policy_engine *pe)
 {
 	pe_deactivate_all_timers(pe);
@@ -99,8 +109,7 @@ static void pe_do_self_reset(struct policy_engine *pe)
 	memset(&pe->pp_caps, 0, sizeof(struct pe_port_partner_caps));
 
 	/* Disable PD, auto crc */
-	devpolicy_enable_pd(pe->p.dpm, false);
-	pe->is_pd_enabled = false;
+	pe_enable_pd(pe, false);
 }
 
 static void pe_do_dpm_reset_entry(struct policy_engine *pe)
@@ -321,6 +330,12 @@ static void pe_handle_gcrc_received(struct policy_engine *pe)
 
 	case PE_PRS_SNK_SRC_SOURCE_ON:
 		log_info("PR_SWAP SNK -> SRC success!!");
+		/*
+		 * Disable PD if enabled, till PE is
+		 * ready to receive src_caps
+		 */
+		pe_enable_pd(pe, false);
+
 		pe_change_state(pe, PE_SRC_STARTUP);
 		break;
 
@@ -453,6 +468,11 @@ static int policy_engine_process_ctrl_msg(struct policy *p,
 		} else if (pe->cur_state == PE_PRS_SRC_SNK_WAIT_SOURCE_ON) {
 			log_info("PR_SWAP SRC -> SNK Success!!");
 			pe_cancel_timer(pe, PS_SOURCE_ON_TIMER);
+			/*
+			 * Disable PD if enabled, till PE is
+			 * ready to receive src_caps
+			 */
+			pe_enable_pd(pe, false);
 			pe_set_power_role(pe, POWER_ROLE_SINK);
 			pe_change_state(pe, PE_SNK_STARTUP);
 
@@ -1511,6 +1531,9 @@ static void pe_timer_expire_callback(unsigned long data)
 
 static void pe_process_state_pe_snk_startup(struct policy_engine *pe)
 {
+	/* Disable PD if enabled, till PE is ready to receive src_caps */
+	pe_enable_pd(pe, false);
+
 	/* Reset protocol layer */
 	pe_send_packet(pe, NULL, 0, PD_CMD_PROTOCOL_RESET,
 				PE_EVT_SEND_PROTOCOL_RESET);
@@ -1573,11 +1596,7 @@ pe_process_state_pe_snk_wait_for_capabilities(struct policy_engine *pe)
 		pe_change_state(pe, ERROR_RECOVERY);
 		return;
 	}
-
-	if (!pe->is_pd_enabled) {
-		devpolicy_enable_pd(pe->p.dpm, true);
-		pe->is_pd_enabled = true;
-	}
+	pe_enable_pd(pe, true);
 
 	/* Start SinkWaitCapTimer */
 	if (pe->is_typec_port)
@@ -1714,6 +1733,10 @@ static void pe_process_state_pe_src_wait_for_vbus(struct policy_engine *pe)
 
 static void pe_process_state_pe_src_startup(struct policy_engine *pe)
 {
+
+	/* Disable PD if enabled, till PE is ready to send src_caps */
+	pe_enable_pd(pe, false);
+
 	/* Reset caps counter */
 	pe->src_caps_couner = 0;
 	/* Reset protocol layer */
@@ -1764,11 +1787,7 @@ pe_process_state_pe_src_send_capabilities(struct policy_engine *pe)
 		pe_change_state(pe, ERROR_RECOVERY);
 		return;
 	}
-
-	if (!pe->is_pd_enabled) {
-		devpolicy_enable_pd(pe->p.dpm, true);
-		pe->is_pd_enabled = true;
-	}
+	pe_enable_pd(pe, true);
 	pe->src_caps_couner++;
 
 	if (pe_send_srccap_cmd(pe)) {
@@ -1838,6 +1857,8 @@ pe_process_state_pe_src_capability_response(struct policy_engine *pe)
 }
 static void pe_process_state_pe_src_disabled(struct policy_engine *pe)
 {
+	/* Disable PD, auto crc */
+	pe_enable_pd(pe, false);
 	log_err("Source port in disable mode!!");
 }
 

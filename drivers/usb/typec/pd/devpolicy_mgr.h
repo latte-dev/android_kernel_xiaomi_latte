@@ -251,14 +251,6 @@ static inline int devpolicy_set_hpd_state(struct devpolicy_mgr *dpm,
 }
 #endif /* CONFIG_PINCTRL_CHERRYVIEW */
 
-static inline int devpolicy_enable_pd(struct devpolicy_mgr *dpm,
-						bool state)
-{
-	if (dpm && dpm->phy)
-		return typec_enable_autocrc(dpm->phy, state);
-	return -ENODEV;
-}
-
 static inline int devpolicy_set_dp_state(struct devpolicy_mgr *dpm,
 						enum cable_state state,
 						enum typec_dp_cable_type type)
