@@ -12225,7 +12225,8 @@ intel_pipe_config_compare(struct drm_device *dev,
 	    IS_VALLEYVIEW(dev))
 		PIPE_CONF_CHECK_I(limited_color_range);
 
-	PIPE_CONF_CHECK_I(has_audio);
+	if (!IS_VALLEYVIEW(dev))
+		PIPE_CONF_CHECK_I(has_audio);
 
 	PIPE_CONF_CHECK_FLAGS(adjusted_mode.flags,
 			      DRM_MODE_FLAG_INTERLACE);
