@@ -1371,6 +1371,9 @@ static int max17042_resume(struct device *dev)
 		max17042_set_soc_threshold(chip, 1);
 	}
 
+	/* trigger the updation of battery status in user space */
+	power_supply_changed(&chip->battery);
+
 	return 0;
 }
 #endif
