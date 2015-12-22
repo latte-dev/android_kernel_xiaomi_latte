@@ -54,7 +54,7 @@ static void pe_change_state(struct policy_engine *pe, enum pe_states state)
 {
 	pe->prev_state = pe->cur_state;
 	pe->cur_state = state;
-	schedule_work(&pe->policy_state_work);
+	pe_schedule_work_pd_wq(&pe->p, &pe->policy_state_work);
 }
 
 static void pe_deactivate_all_timers(struct policy_engine *pe)
@@ -2647,8 +2647,18 @@ int policy_engine_bind_dpm(struct devpolicy_mgr *dpm)
 	if (!pe)
 		return -ENOMEM;
 
-	pe->p.dpm = dpm;
 
+	/*
+	 * As PD negotiation is time bound, create work queue with
+	 * WQ_HIGHPRI  to schedule the work as soon as possible.
+	 */
+	pe->p.pd_wq = alloc_workqueue("pd_wq", WQ_HIGHPRI, 0);
+	if (!pe->p.pd_wq) {
+		log_err("Failed to allocate pd work queue");
+		return -ENOMEM;
+	}
+
+	pe->p.dpm = dpm;
 	ret = protocol_bind_pe(&pe->p);
 	if (ret) {
 		log_err("Failed to bind pe to protocol\n");
@@ -2664,6 +2674,7 @@ int policy_engine_bind_dpm(struct devpolicy_mgr *dpm)
 	return 0;
 
 bind_error:
+	destroy_workqueue(pe->p.pd_wq);
 	kfree(pe);
 	return ret;
 }
@@ -2689,6 +2700,8 @@ void policy_engine_unbind_dpm(struct devpolicy_mgr *dpm)
 
 	/* Unbind from protocol layer */
 	protocol_unbind_pe(&pe->p);
+	if (pe->p.pd_wq)
+		destroy_workqueue(pe->p.pd_wq);
 	mutex_unlock(&pe->pe_lock);
 
 	kfree(pe);

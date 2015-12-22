@@ -81,7 +81,7 @@ static void pd_policy_update_data_role(struct pd_prot *prot,
 	else if (drole == DATA_ROLE_DFP)
 		prot->data_role = PD_DATA_ROLE_DFP;
 
-	schedule_work(&prot->role_chng_work);
+	pe_schedule_work_pd_wq(prot->p, &prot->role_chng_work);
 }
 
 static void pd_policy_update_power_role(struct pd_prot *prot,
@@ -95,7 +95,7 @@ static void pd_policy_update_power_role(struct pd_prot *prot,
 	else if (prole == POWER_ROLE_SOURCE)
 		prot->pwr_role = PD_POWER_ROLE_PROVIDER;
 
-	schedule_work(&prot->role_chng_work);
+	pe_schedule_work_pd_wq(prot->p, &prot->role_chng_work);
 }
 
 static struct prot_msg *prot_alloc_msg(void)
@@ -393,7 +393,7 @@ static int pd_prot_add_msg_rx_list(struct pd_prot *pd,
 	/* Add the message to the rx list */
 	list_add_tail(&msg->node, &pd->rx_list);
 	mutex_unlock(&pd->rx_list_lock);
-	schedule_work(&pd->proc_rx_msg);
+	pe_schedule_work_pd_wq(pd->p, &pd->proc_rx_msg);
 	return 0;
 }
 static bool pd_prot_is_valid_ctrl_msg(struct pd_packet *pkt)

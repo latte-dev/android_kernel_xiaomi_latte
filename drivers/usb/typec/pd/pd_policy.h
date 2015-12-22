@@ -105,6 +105,8 @@ struct policy {
 	struct pd_prot *prot;
 	struct devpolicy_mgr *dpm;
 	struct pe_operations *ops;
+	/* work queue for pd framework */
+	struct workqueue_struct *pd_wq;
 };
 
 #define pe_get_phy(x)	((x) ?  x->dpm->phy : NULL)
@@ -143,6 +145,14 @@ static inline int pe_notify_dpm_evt(struct policy *p,
 	if (p && p->ops && p->ops->notify_dpm_evt)
 		return p->ops->notify_dpm_evt(p, evt);
 
+	return -ENOTSUPP;
+}
+
+static inline int
+pe_schedule_work_pd_wq(struct policy *p, struct work_struct *work)
+{
+	if (p && p->pd_wq)
+		return queue_work(p->pd_wq, work);
 	return -ENOTSUPP;
 }
 
