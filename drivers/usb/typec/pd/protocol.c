@@ -396,6 +396,45 @@ static int pd_prot_add_msg_rx_list(struct pd_prot *pd,
 	schedule_work(&pd->proc_rx_msg);
 	return 0;
 }
+static bool pd_prot_is_valid_ctrl_msg(struct pd_packet *pkt)
+{
+	int msg_type = PD_MSG_TYPE(&pkt->header);
+
+	switch (msg_type) {
+	case PD_CTRL_MSG_GOODCRC:
+	case PD_CTRL_MSG_GOTOMIN:
+	case PD_CTRL_MSG_ACCEPT:
+	case PD_CTRL_MSG_REJECT:
+	case PD_CTRL_MSG_PING:
+	case PD_CTRL_MSG_PS_RDY:
+	case PD_CTRL_MSG_GET_SRC_CAP:
+	case PD_CTRL_MSG_GET_SINK_CAP:
+	case PD_CTRL_MSG_DR_SWAP:
+	case PD_CTRL_MSG_PR_SWAP:
+	case PD_CTRL_MSG_VCONN_SWAP:
+	case PD_CTRL_MSG_WAIT:
+	case PD_CTRL_MSG_SOFT_RESET:
+		return true;
+	}
+	pr_debug("%s: Invalid ctrl msg=%d\n", __func__, msg_type);
+	return false;
+}
+
+static bool pd_prot_is_valid_data_msg(struct pd_packet *pkt)
+{
+	int msg_type = PD_MSG_TYPE(&pkt->header);
+
+	switch (msg_type) {
+	case PD_DATA_MSG_SRC_CAP:
+	case PD_DATA_MSG_REQUEST:
+	case PD_DATA_MSG_BIST:
+	case PD_DATA_MSG_SINK_CAP:
+	case PD_DATA_MSG_VENDOR_DEF:
+		return true;
+	}
+	pr_debug("%s: Invalid data msg=%d\n", __func__, msg_type);
+	return false;
+}
 
 static void pd_prot_phy_rcv(struct pd_prot *pd)
 {
@@ -423,6 +462,9 @@ static void pd_prot_phy_rcv(struct pd_prot *pd)
 	send_good_crc = 1;
 
 	if (IS_CTRL_MSG(&rcv_buf.header)) {
+		if (!pd_prot_is_valid_ctrl_msg(&rcv_buf))
+			goto phy_rcv_end;
+
 		if (msg_type == PD_CTRL_MSG_SOFT_RESET)
 			prot_rx_reset(pd);
 		else if (msg_type == PD_CTRL_MSG_GOODCRC) {
@@ -434,6 +476,8 @@ static void pd_prot_phy_rcv(struct pd_prot *pd)
 				dev_warn(pd->phy->dev, "GCRC msg id not matching\n");
 			complete(&pd->tx_complete);
 		}
+	} else if (!pd_prot_is_valid_data_msg(&rcv_buf)) {
+			goto phy_rcv_end;
 	}
 
 	if (send_good_crc) {
