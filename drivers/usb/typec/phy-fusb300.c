@@ -884,6 +884,7 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 	unsigned int reg_start;
 	size_t count;
 	int phy_state;
+	bool process_pd;
 
 	pm_runtime_get_sync(chip->dev);
 
@@ -897,9 +898,11 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 		count = FUSB302_MAX_INT_STAT;
 	}
 
+	mutex_lock(&chip->lock);
 	ret = regmap_bulk_read(chip->map, reg_start, int_ptr, count);
 	if (ret < 0) {
 		dev_err(phy->dev, "bulk read reg failed %d", ret);
+		mutex_unlock(&chip->lock);
 		pm_runtime_put_sync(chip->dev);
 		return IRQ_NONE;
 	}
@@ -910,7 +913,7 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 			chip->int_stat.inta_reg, chip->int_stat.intb_reg,
 			chip->int_stat.stat0a_reg, chip->int_stat.stat1a_reg);
 
-	mutex_lock(&chip->lock);
+	process_pd = chip->process_pd;
 	phy_state = phy->state;
 	mutex_unlock(&chip->lock);
 
@@ -952,7 +955,7 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 		}
 	}
 
-	if (chip->process_pd &&
+	if (process_pd &&
 		(chip->int_stat.int_reg & FUSB300_INT_ACTIVITY) &&
 		(chip->int_stat.int_reg & FUSB300_INT_COLLISION) &&
 		!(chip->int_stat.stat_reg & FUSB300_STAT0_ACTIVITY)) {
@@ -963,7 +966,7 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 			phy->notify_protocol(phy, PROT_PHY_EVENT_COLLISION);
 	}
 
-	if (chip->process_pd && (chip->int_stat.int_reg & FUSB300_INT_CRCCHK)) {
+	if (process_pd && (chip->int_stat.int_reg & FUSB300_INT_CRCCHK)) {
 		if (phy->notify_protocol)
 			phy->notify_protocol(phy, PROT_PHY_EVENT_MSG_RCV);
 	}
@@ -985,7 +988,7 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 		}
 	}
 
-	if (!chip->is_fusb300 && chip->process_pd) {
+	if (!chip->is_fusb300 && process_pd) {
 		if (chip->int_stat.intb_reg & FUSB302_INTB_GCRC_SENT) {
 			dev_dbg(phy->dev, "GoodCRC sent");
 			if (phy->notify_protocol)
@@ -1006,7 +1009,7 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 						PROT_PHY_EVENT_TX_SENT);
 		}
 	}
-	if (!chip->is_fusb300 && chip->process_pd) {
+	if (!chip->is_fusb300 && process_pd) {
 		/* handle FUSB302 specific interrupt */
 
 		if (chip->int_stat.inta_reg & FUSB302_INTA_HARD_RST) {
@@ -1657,6 +1660,12 @@ static int fusb300_enable_autocrc(struct typec_phy *phy, bool en)
 
 
 	regmap_update_bits(chip->map, FUSB300_SOFT_POR_REG, 2, 2);
+	/* TX FLUSH */
+	regmap_update_bits(chip->map, FUSB300_CONTROL0_REG,
+			FUSB300_CONTROL0_TX_FLUSH, FUSB300_CONTROL0_TX_FLUSH);
+	/* RX FLUSH */
+	regmap_update_bits(chip->map, FUSB300_CONTROL1_REG,
+			FUSB300_CONTROL1_RX_FLUSH, FUSB300_CONTROL1_RX_FLUSH);
 
 	ret = regmap_write(chip->map, FUSB300_SWITCH1_REG, val);
 
@@ -1670,8 +1679,6 @@ static int fusb300_enable_autocrc(struct typec_phy *phy, bool en)
 	chip->process_pd = en;
 
 	mutex_unlock(&chip->lock);
-	fusb300_flush_fifo(phy, FIFO_TYPE_TX);
-	fusb300_flush_fifo(phy, FIFO_TYPE_RX);
 	return ret;
 err:
 	chip->process_pd = false;
