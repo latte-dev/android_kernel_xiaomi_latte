@@ -12645,6 +12645,7 @@ static int __intel_set_mode(struct drm_crtc *crtc,
 
 	*saved_mode = crtc->mode;
 
+	intel_update_maxfifo(dev_priv, crtc, false);
 	/* Hack: Because we don't (yet) support global modeset on multiple
 	 * crtcs, we don't keep track of the new mode for more than one crtc.
 	 * Hence simply check whether any bit is set in modeset_pipes in all the
