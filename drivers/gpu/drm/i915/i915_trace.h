@@ -611,6 +611,7 @@ DECLARE_EVENT_CLASS(i915_gem_request,
 			     __field(u32, ring)
 			     __field(u32, uniq)
 			     __field(u32, seqno)
+			     __field(u32, completed)
 			     ),
 
 	    TP_fast_assign(
@@ -620,11 +621,11 @@ DECLARE_EVENT_CLASS(i915_gem_request,
 			   __entry->ring = ring->id;
 			   __entry->uniq = req ? req->uniq : 0;
 			   __entry->seqno = i915_gem_request_get_seqno(req);
+			   __entry->completed = i915_gem_request_completed(req);
 			   ),
-
-	    TP_printk("dev=%u, ring=%u, uniq=%u, seqno=%u",
-		      __entry->dev, __entry->ring, __entry->uniq,
-		      __entry->seqno)
+	    TP_printk("dev=%u, ring=%u, uniq=%u, seqno=%u, completed=%u",
+			__entry->dev, __entry->ring, __entry->uniq,
+			__entry->seqno, __entry->completed)
 );
 
 DEFINE_EVENT(i915_gem_request, i915_gem_request_add,
@@ -658,6 +659,11 @@ DEFINE_EVENT(i915_gem_request, i915_gem_request_retire,
 );
 
 DEFINE_EVENT(i915_gem_request, i915_gem_request_complete,
+	    TP_PROTO(struct drm_i915_gem_request *req),
+	    TP_ARGS(req)
+);
+
+DEFINE_EVENT(i915_gem_request, i915_gem_request_complete_loop,
 	    TP_PROTO(struct drm_i915_gem_request *req),
 	    TP_ARGS(req)
 );
@@ -1320,6 +1326,27 @@ TRACE_EVENT(queue_retire_work,
 		__entry->time, __entry->bSuccess)
 );
 /* queue_retire_work - end */
+
+TRACE_EVENT(i915_gem_request_complete_begin,
+	TP_PROTO(struct intel_engine_cs *ring, u32 seqno),
+
+	TP_ARGS(ring, seqno),
+
+	TP_STRUCT__entry(
+		__field(u32, ring)
+		__field(u32, seqno)
+		__field(u32, last_seqno)
+	),
+
+	TP_fast_assign(
+	    __entry->ring = ring->id;
+	    __entry->seqno = seqno;
+	    __entry->last_seqno = ring->last_read_seqno;
+	),
+
+	TP_printk("ring=%u,seqno=%d,last_seqno=%d",
+		__entry->ring, __entry->seqno, __entry->last_seqno)
+);
 
 #endif /* _I915_TRACE_H_ */
 

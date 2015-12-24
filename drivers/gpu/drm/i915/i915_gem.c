@@ -3120,6 +3120,7 @@ void i915_gem_complete_requests_ring(struct intel_engine_cs *ring,
 	u32 seqno;
 
 	seqno = ring->get_seqno(ring, lazy_coherency);
+	trace_i915_gem_request_complete_begin(ring, seqno);
 	if (!seqno)
 		return;
 
@@ -3129,6 +3130,7 @@ void i915_gem_complete_requests_ring(struct intel_engine_cs *ring,
 
 	spin_lock_irqsave(&ring->reqlist_lock, flags);
 	list_for_each_entry(req, &ring->request_list, list) {
+		trace_i915_gem_request_complete_loop(req);
 		if (req->complete)
 			continue;
 
