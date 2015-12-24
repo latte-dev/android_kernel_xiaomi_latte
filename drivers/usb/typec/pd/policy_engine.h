@@ -535,10 +535,6 @@ struct policy_engine {
 	enum pe_event last_rcv_evt;
 	enum pe_event last_sent_evt;
 
-	/* WA as DPM doesnt have VBUS notification*/
-	struct delayed_work vbus_poll_work;
-	bool vbus_status;
-
 	struct delayed_work post_ready_work;
 	enum pe_alt_mode_state	alt_state;
 	struct pe_pp_alt_caps pp_alt_caps;

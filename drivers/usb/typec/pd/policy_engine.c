@@ -89,7 +89,6 @@ static void pe_do_self_reset(struct policy_engine *pe)
 		devpolicy_set_dp_state(pe->p.dpm, CABLE_DETACHED,
 						TYPEC_DP_TYPE_NONE);
 
-	cancel_delayed_work(&pe->vbus_poll_work);
 	/* Reset all counter exept reset counter */
 	pe->retry_counter = 0;
 	pe->src_caps_couner = 0;
@@ -153,7 +152,6 @@ static void pe_do_complete_reset(struct policy_engine *pe)
 	/* Reset things that should not be cleared on normal reset*/
 	pe->hard_reset_counter = 0;
 	pe->is_pp_pd_capable = 0;
-	pe->vbus_status = 0;
 }
 
 static int policy_engine_process_data_msg(struct policy *p,
@@ -822,7 +820,6 @@ static void pe_handle_dpm_event(struct policy_engine *pe,
 			pe_change_state(pe, PE_SNK_DISCOVERY);
 		} else if (pe->cur_state == PE_PRS_SRC_SNK_TRANSITION_TO_OFF) {
 			pe_cancel_timer(pe, VBUS_CHECK_TIMER);
-			cancel_delayed_work(&pe->vbus_poll_work);
 			pe_change_state(pe, PE_PRS_SRC_SNK_ASSERT_RD);
 		}
 		break;
@@ -831,18 +828,15 @@ static void pe_handle_dpm_event(struct policy_engine *pe,
 		log_dbg("VBUS turned ON");
 		if (pe->cur_state == PE_SNK_DISCOVERY) {
 			/* VBUS on, wait for scrcap*/
-			cancel_delayed_work(&pe->vbus_poll_work);
 			pe_change_state(pe, PE_SNK_WAIT_FOR_CAPABILITIES);
 		} else if (pe->cur_state == PE_SRC_WAIT_FOR_VBUS) {
 			/* VBUS on, send SrcCap*/
 			pe_cancel_timer(pe, VBUS_CHECK_TIMER);
-			cancel_delayed_work(&pe->vbus_poll_work);
 			pe_change_state(pe, PE_SRC_SEND_CAPABILITIES);
 
 		} else if (pe->cur_state == PE_PRS_SNK_SRC_SOURCE_ON) {
 			/* VBUS on, send PS_RDY*/
 			pe_cancel_timer(pe, VBUS_CHECK_TIMER);
-			cancel_delayed_work(&pe->vbus_poll_work);
 			pe_send_packet(pe, NULL, 0,
 					PD_CTRL_MSG_PS_RDY, PE_EVT_SEND_PS_RDY);
 		}
@@ -1456,19 +1450,16 @@ static void pe_timer_expire_worker(struct work_struct *work)
 	case VBUS_CHECK_TIMER:
 		if (pe->cur_state == PE_SRC_WAIT_FOR_VBUS) {
 			log_warn("System did not enable vbus in source mode");
-			cancel_delayed_work(&pe->vbus_poll_work);
 			if (pe->hard_reset_counter > PE_N_HARD_RESET_COUNT)
 				pe_change_state(pe, ERROR_RECOVERY);
 			else
 				pe_change_state(pe, PE_SRC_HARD_RESET);
 
 		} else if (pe->cur_state == PE_PRS_SRC_SNK_TRANSITION_TO_OFF) {
-			cancel_delayed_work(&pe->vbus_poll_work);
 			log_warn("VBUS not off!!!");
 			pe_change_state(pe, ERROR_RECOVERY);
 
 		} else if (pe->cur_state == PE_PRS_SNK_SRC_SOURCE_ON) {
-			cancel_delayed_work(&pe->vbus_poll_work);
 			log_warn("VBUS not on!!!");
 			pe_change_state(pe, PE_ERROR_RECOVERY);
 
@@ -1476,7 +1467,6 @@ static void pe_timer_expire_worker(struct work_struct *work)
 				PE_SNK_WAIT_FOR_HARD_RESET_VBUS_OFF) {
 			log_warn("Vbus not off for %dmsec, moving to state=%d",
 					T_SRC_RECOVER_MIN, PE_SNK_DISCOVERY);
-			cancel_delayed_work(&pe->vbus_poll_work);
 			pe_change_state(pe, PE_SNK_DISCOVERY);
 
 		} else
@@ -1498,14 +1488,10 @@ static void pe_timer_expire_worker(struct work_struct *work)
 				PD_CTRL_MSG_PS_RDY, PE_EVT_SEND_PS_RDY);
 
 		} else if (pe->cur_state == PE_PRS_SRC_SNK_TRANSITION_TO_OFF) {
-			pe->vbus_status = devpolicy_get_vbus_state(pe->p.dpm);
 			/* Turn off the VBUS */
 			devpolicy_set_vbus_state(pe->p.dpm, false);
 
 			pe_start_timer(pe, VBUS_CHECK_TIMER, T_SAFE_0V_MAX);
-			/* WA as DPM doesnt have VBUS notifier */
-			schedule_delayed_work(&pe->vbus_poll_work,
-					msecs_to_jiffies(VBUS_POLL_TIME));
 			pe_set_power_role(pe, POWER_ROLE_SWAP);
 		} else
 			log_warn("%s expired in wrong state=%d",
@@ -1555,14 +1541,8 @@ static void pe_process_state_pe_snk_startup(struct policy_engine *pe)
 static void
 pe_process_state_pe_snk_wait_for_hard_reset_vbus_off(struct policy_engine *pe)
 {
-	pe->vbus_status = devpolicy_get_vbus_state(pe->p.dpm);
-
-	if (pe->vbus_status) {
+	if (devpolicy_get_vbus_state(pe->p.dpm)) {
 		log_info("Vbus present, wait for VBUS off due to reset");
-		/* WA as DPM doesnt have VBUS notifier */
-		schedule_delayed_work(&pe->vbus_poll_work,
-				msecs_to_jiffies(VBUS_POLL_TIME));
-
 		pe_start_timer(pe, VBUS_CHECK_TIMER, T_SRC_RECOVER_MIN);
 		return;
 	}
@@ -1572,9 +1552,7 @@ pe_process_state_pe_snk_wait_for_hard_reset_vbus_off(struct policy_engine *pe)
 
 static void pe_process_state_pe_snk_discovery(struct policy_engine *pe)
 {
-	pe->vbus_status = devpolicy_get_vbus_state(pe->p.dpm);
-
-	if (!pe->vbus_status) {
+	if (!devpolicy_get_vbus_state(pe->p.dpm)) {
 		log_info("Vbus not present, wait for VBUS On");
 		return;
 	}
@@ -1716,15 +1694,10 @@ pe_process_state_pe_snk_hard_reset_received(struct policy_engine *pe)
 /********** Source Port State Handlers **********************/
 static void pe_process_state_pe_src_wait_for_vbus(struct policy_engine *pe)
 {
-	pe->vbus_status = devpolicy_get_vbus_state(pe->p.dpm);
-
-	if (!pe->vbus_status) {
+	if (!devpolicy_get_vbus_state(pe->p.dpm)) {
 		log_dbg("VBUS not present, Start %s",
 				timer_to_str(VBUS_CHECK_TIMER));
 		pe_start_timer(pe, VBUS_CHECK_TIMER, T_SAFE_5V_MAX);
-		/* WA as DPM doesnt have VBUS notifier */
-		schedule_delayed_work(&pe->vbus_poll_work,
-				msecs_to_jiffies(VBUS_POLL_TIME));
 	} else {
 		log_dbg("VBUS present, move to PE_SRC_SEND_CAPABILITIES");
 		pe_change_state(pe, PE_SRC_SEND_CAPABILITIES);
@@ -2111,15 +2084,11 @@ pe_process_state_pe_prs_snk_src_assert_rp(struct policy_engine *pe)
 static void
 pe_process_state_pe_prs_snk_src_source_on(struct policy_engine *pe)
 {
-	pe->vbus_status = devpolicy_get_vbus_state(pe->p.dpm);
 	/* Turn on the VBUS */
 	devpolicy_set_vbus_state(pe->p.dpm, true);
 	pe_set_power_role(pe, POWER_ROLE_SOURCE);
 
 	pe_start_timer(pe, VBUS_CHECK_TIMER, T_SAFE_5V_MAX);
-	/* WA as DPM doesnt have VBUS notifier */
-	schedule_delayed_work(&pe->vbus_poll_work,
-			msecs_to_jiffies(VBUS_POLL_TIME));
 }
 
 /******* Dual Role state ************/
@@ -2472,37 +2441,6 @@ static void pe_state_change_worker(struct work_struct *work)
 	log_dbg("Processing state %d complete\n", state);
 }
 
-static void pe_vbus_pole_handler(struct work_struct *work)
-{
-	struct policy_engine *pe = container_of(work, struct policy_engine,
-					vbus_poll_work.work);
-	bool vbus;
-	enum devpolicy_mgr_events evt = DEVMGR_EVENT_NONE;
-
-	vbus = devpolicy_get_vbus_state(pe->p.dpm);
-	mutex_lock(&pe->pe_lock);
-	if (pe->cur_state == PE_STATE_NONE) {
-		mutex_unlock(&pe->pe_lock);
-		return;
-	}
-
-	log_dbg("VBUS=%d", vbus);
-	if (vbus != pe->vbus_status) {
-		log_dbg("VBUS changed %d -> %d", pe->vbus_status, vbus);
-		pe->vbus_status = vbus;
-		if (vbus)
-			evt = DEVMGR_EVENT_VBUS_ON;
-		else
-			evt = DEVMGR_EVENT_VBUS_OFF;
-	}
-	mutex_unlock(&pe->pe_lock);
-	schedule_delayed_work(&pe->vbus_poll_work,
-				msecs_to_jiffies(VBUS_POLL_TIME));
-
-	if (evt != DEVMGR_EVENT_NONE)
-		pe_handle_dpm_event(pe, evt);
-}
-
 static void
 pe_alt_mode_initiator(struct policy_engine *pe)
 {
@@ -2621,7 +2559,6 @@ static void pe_init_policy(struct work_struct *work)
 	/* Initialize pe timers */
 	pe_init_timers(pe);
 	INIT_WORK(&pe->policy_state_work, pe_state_change_worker);
-	INIT_DELAYED_WORK(&pe->vbus_poll_work, pe_vbus_pole_handler);
 	INIT_DELAYED_WORK(&pe->post_ready_work, pe_post_ready_worker);
 	pe->cur_state = PE_STATE_NONE;
 	pe->alt_state = PE_ALT_STATE_NONE;
