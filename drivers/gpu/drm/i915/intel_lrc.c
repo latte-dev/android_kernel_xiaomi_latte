@@ -319,6 +319,7 @@ static void execlists_elsp_write(struct intel_engine_cs *ring,
 	desc[3] = (u32)(temp >> 32);
 	desc[2] = (u32)temp;
 
+	trace_execlists_elsp_write(ring, desc[0], desc[1], desc[2], desc[3]);
 	/* Set Force Wakeup bit to prevent GT from entering C6 while ELSP writes
 	 * are in progress.
 	 *
@@ -802,6 +803,7 @@ static void execlists_context_unqueue(struct intel_engine_cs *ring)
 		return;
 
 	execlists_fetch_requests(ring, &req0, &req1);
+	trace_execlists_context_unqueue(ring, req0, req1);
 
 	/* check for a simulated hang request */
 	if (intel_ring_stopped(ring)) {
@@ -1111,6 +1113,8 @@ int intel_execlists_handle_ctx_events(struct intel_engine_cs *ring, bool do_lock
 	if (read_pointer > write_pointer)
 		write_pointer += GEN8_CSB_ENTRIES;
 
+	trace_intel_execlists_handle_ctx_events(ring, status_pointer,
+		    read_pointer);
 	while (read_pointer < write_pointer) {
 		read_pointer++;
 
@@ -1191,6 +1195,7 @@ static int execlists_context_queue(struct intel_engine_cs *ring,
 	req->ring = ring;
 	req->tail = tail;
 
+	trace_execlists_context_queue(req);
 	if (IS_GEN8(ring->dev)) {
 		struct intel_ringbuffer *ringbuf = to->engine[ring->id].ringbuf;
 		/*

@@ -1190,6 +1190,106 @@ DEFINE_EVENT(i915_suspend_resume_exit, intel_runtime_resume_exit,
 	TP_ARGS(dev, ret)
 );
 
+TRACE_EVENT(execlists_elsp_write,
+	TP_PROTO(struct intel_engine_cs *ring, u32 desc0,
+			u32 desc1, u32 desc2, u32 desc3),
+
+	TP_ARGS(ring, desc0, desc1, desc2, desc3),
+
+	TP_STRUCT__entry(
+		__field(u32, ring)
+		__field(u32, desc0)
+		__field(u32, desc1)
+		__field(u32, desc2)
+		__field(u32, desc3)
+	),
+
+	TP_fast_assign(
+		__entry->ring = ring->id;
+		__entry->desc0 = desc0;
+		__entry->desc1 = desc1;
+		__entry->desc2 = desc2;
+		__entry->desc3 = desc3;
+	),
+
+	TP_printk("ring=%u,desc0=%u,desc1=%u,desc2=%u,desc3=%u",
+		__entry->ring, __entry->desc0, __entry->desc1,
+		__entry->desc2, __entry->desc3)
+);
+
+
+TRACE_EVENT(execlists_context_unqueue,
+	TP_PROTO(struct intel_engine_cs *ring,
+		 struct intel_ctx_submit_request *req0,
+		 struct intel_ctx_submit_request *req1),
+
+	TP_ARGS(ring, req0, req1),
+
+	TP_STRUCT__entry(
+		__field(u32, ring)
+		__field(struct intel_context *, ctx0)
+		__field(u32, req0_tail)
+		__field(struct intel_context *, ctx1)
+		__field(u32, req1_tail)
+	),
+
+	TP_fast_assign(
+		__entry->ring = ring->id;
+		__entry->ctx0 = req0 ? req0->ctx : NULL;
+		__entry->req0_tail = req0 ? req0->tail : 0;
+		__entry->ctx1 = req1 ? req1->ctx : NULL;
+		__entry->req1_tail = req1 ? req1->tail : 0;
+	),
+
+	TP_printk("ring=%u,req0->ctx=%p,req0->tail=%u,req1->ctx=%p,req1->tail=%u",
+		__entry->ring, __entry->ctx0, __entry->req0_tail,
+		__entry->ctx1, __entry->req1_tail)
+);
+
+TRACE_EVENT(intel_execlists_handle_ctx_events,
+	TP_PROTO(struct intel_engine_cs *ring, u32 status_pointer,
+			u32 read_pointer),
+
+	TP_ARGS(ring, status_pointer, read_pointer),
+
+	TP_STRUCT__entry(
+		__field(u32, ring)
+		__field(u32, status_pointer)
+		__field(u32, read_pointer)
+	),
+
+	TP_fast_assign(
+		__entry->ring = ring->id;
+		__entry->status_pointer = status_pointer;
+		__entry->read_pointer = read_pointer;
+	),
+
+	TP_printk("ring=%d,read_pointer=%d,write_pointer=%d,status=0x%x",
+		__entry->ring, __entry->read_pointer,
+		__entry->status_pointer & 0x07, __entry->status_pointer)
+);
+
+TRACE_EVENT(execlists_context_queue,
+	TP_PROTO(struct intel_ctx_submit_request *req),
+
+	TP_ARGS(req),
+
+	TP_STRUCT__entry(
+		__field(struct intel_context *, ctx)
+		__field(u32, ring)
+		__field(u32, tail)
+	),
+
+	TP_fast_assign(
+		__entry->ctx  = req->ctx;
+		__entry->ring = req->ring->id;
+		__entry->tail = req->tail;
+	),
+
+	TP_printk("ring=%u,ctx=%p,req->tail=%u",
+		__entry->ring, __entry->ctx, __entry->tail)
+);
+
 #endif /* _I915_TRACE_H_ */
 
 /* This part must be outside protection */
