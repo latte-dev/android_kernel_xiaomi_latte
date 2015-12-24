@@ -410,6 +410,8 @@ extern struct class *power_delivery_class;
 extern struct devpolicy_mgr *dpm_register_syspolicy(struct typec_phy *phy,
 				struct pd_policy *policy);
 extern void dpm_unregister_syspolicy(struct devpolicy_mgr *dpm);
+extern void dpm_handle_phy_event(struct typec_phy *phy,
+					enum typec_phy_dpm_evts evt);
 #else /* CONFIG_USBC_PD && CONFIG_USBC_PD_POLICY */
 static inline
 struct devpolicy_mgr *dpm_register_syspolicy(struct typec_phy *phy,
@@ -418,6 +420,9 @@ struct devpolicy_mgr *dpm_register_syspolicy(struct typec_phy *phy,
 	return ERR_PTR(-ENOTSUPP);
 }
 static inline void dpm_unregister_syspolicy(struct devpolicy_mgr *dpm)
+{ }
+static inline void dpm_handle_phy_event(struct typec_phy *phy,
+					enum typec_phy_dpm_evts evt)
 { }
 #endif /* CONFIG_USBC_PD && CONFIG_USBC_PD_POLICY */
 

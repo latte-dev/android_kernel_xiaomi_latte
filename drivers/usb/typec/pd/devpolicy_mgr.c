@@ -574,6 +574,31 @@ static int dpm_set_display_port_state(struct devpolicy_mgr *dpm,
 	return 0;
 }
 
+void dpm_handle_phy_event(struct typec_phy *phy,
+				enum typec_phy_dpm_evts evt)
+{
+	enum devpolicy_mgr_events dpm_evt = DEVMGR_EVENT_NONE;
+
+	if (!phy || !phy->proto || !phy->proto->p || !phy->proto->p->dpm)
+		return;
+
+	switch (evt) {
+	case PHY_DPM_EVENT_VBUS_ON:
+		dpm_evt = DEVMGR_EVENT_VBUS_ON;
+		break;
+	case PHY_DPM_EVENT_VBUS_OFF:
+		dpm_evt = DEVMGR_EVENT_VBUS_OFF;
+		break;
+	default:
+		pr_info("DPM:%s: Unknown phy event=%d", __func__, evt);
+	}
+
+	if (dpm_evt != DEVMGR_EVENT_NONE)
+		dpm_notify_policy_evt(phy->proto->p->dpm, dpm_evt);
+
+}
+EXPORT_SYMBOL(dpm_handle_phy_event);
+
 static void dpm_handle_ext_cable_event(struct devpolicy_mgr *dpm,
 					struct cable_event *evt)
 {
