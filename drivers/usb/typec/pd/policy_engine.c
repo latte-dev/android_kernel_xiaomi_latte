@@ -1427,8 +1427,18 @@ static void pe_timer_expire_worker(struct work_struct *work)
 				timer_to_str(type), pe->cur_state);
 		break;
 
-	case SWAP_RECOVERY_TIMER:
 	case SWAP_SOURCE_START_TIMER:
+		if (pe->cur_state == PE_SRC_STARTUP) {
+			/*
+			 * Move to PE_SRC_WAIT_FOR_VBUS to check
+			 * VBUS before sending SrcCap.
+			 */
+			pe_change_state(pe, PE_SRC_WAIT_FOR_VBUS);
+		} else
+			log_warn("%s expired in wrong state=%d",
+				timer_to_str(type), pe->cur_state);
+		break;
+	case SWAP_RECOVERY_TIMER:
 	case VCONN_ON_TIMER:
 	case VDM_MODE_ENTRY_TIMER:
 	case VDM_MODE_EXIT_TIMER:
@@ -1716,9 +1726,17 @@ static void pe_process_state_pe_src_startup(struct policy_engine *pe)
 	pe_send_packet(pe, NULL, 0, PD_CMD_PROTOCOL_RESET,
 				PE_EVT_SEND_PROTOCOL_RESET);
 
-	/* TODO: start swap src start timer ( only after pw swap) */
-	/* Move to PE_SRC_WAIT_FOR_VBUS to check VBUS before sending SrcCap*/
-	pe_change_state(pe, PE_SRC_WAIT_FOR_VBUS);
+	/* Start swap src start timer ( only after pr swap) */
+	if (pe->prev_state == PE_PRS_SNK_SRC_SOURCE_ON) {
+		pe_start_timer(pe, SWAP_SOURCE_START_TIMER,
+					PE_TIME_SWAP_SOURCE_START);
+	} else {
+		/*
+		 * Move to PE_SRC_WAIT_FOR_VBUS to check
+		 * VBUS before sending SrcCap.
+		 */
+		pe_change_state(pe, PE_SRC_WAIT_FOR_VBUS);
+	}
 }
 
 static void pe_process_state_pe_src_discovery(struct policy_engine *pe)
