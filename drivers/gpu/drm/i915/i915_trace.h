@@ -1118,6 +1118,78 @@ TRACE_EVENT(switch_mm,
 		  __entry->dev, __entry->ring, __entry->to, __entry->vm)
 );
 
+DECLARE_EVENT_CLASS(i915_suspend_resume_enter,
+	TP_PROTO(struct drm_device *dev),
+	TP_ARGS(dev),
+
+	TP_STRUCT__entry(
+			__field(u32, dev)
+	),
+
+	TP_fast_assign(
+			__entry->dev = dev ? dev->primary->index : -1;
+	),
+
+	TP_printk("dev = %u", __entry->dev)
+);
+
+DECLARE_EVENT_CLASS(i915_suspend_resume_exit,
+	TP_PROTO(struct drm_device *dev, int ret),
+	TP_ARGS(dev, ret),
+
+	TP_STRUCT__entry(
+			__field(u32, dev)
+			__field(int, ret)
+	),
+
+	TP_fast_assign(
+			__entry->dev = dev ? dev->primary->index : -1;
+			__entry->ret = ret;
+	),
+
+	TP_printk("dev = %u, ret = %d", __entry->dev, __entry->ret)
+);
+
+DEFINE_EVENT(i915_suspend_resume_enter, i915_pm_suspend_enter,
+	TP_PROTO(struct drm_device *dev),
+	TP_ARGS(dev)
+);
+
+DEFINE_EVENT(i915_suspend_resume_exit, i915_pm_suspend_exit,
+	TP_PROTO(struct drm_device *dev, int ret),
+	TP_ARGS(dev, ret)
+);
+
+DEFINE_EVENT(i915_suspend_resume_enter, i915_pm_resume_enter,
+	TP_PROTO(struct drm_device *dev),
+	TP_ARGS(dev)
+);
+
+DEFINE_EVENT(i915_suspend_resume_exit, i915_pm_resume_exit,
+	TP_PROTO(struct drm_device *dev, int ret),
+	TP_ARGS(dev, ret)
+);
+
+DEFINE_EVENT(i915_suspend_resume_enter, intel_runtime_suspend_enter,
+	TP_PROTO(struct drm_device *dev),
+	TP_ARGS(dev)
+);
+
+DEFINE_EVENT(i915_suspend_resume_exit, intel_runtime_suspend_exit,
+	TP_PROTO(struct drm_device *dev, int ret),
+	TP_ARGS(dev, ret)
+);
+
+DEFINE_EVENT(i915_suspend_resume_enter, intel_runtime_resume_enter,
+	TP_PROTO(struct drm_device *dev),
+	TP_ARGS(dev)
+);
+
+DEFINE_EVENT(i915_suspend_resume_exit, intel_runtime_resume_exit,
+	TP_PROTO(struct drm_device *dev, int ret),
+	TP_ARGS(dev, ret)
+);
+
 #endif /* _I915_TRACE_H_ */
 
 /* This part must be outside protection */

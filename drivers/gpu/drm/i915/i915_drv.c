@@ -1479,16 +1479,23 @@ static int i915_pm_suspend(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	int ret;
 
+	trace_i915_pm_suspend_enter(drm_dev);
 	if (!drm_dev || !drm_dev->dev_private) {
 		dev_err(dev, "DRM not initialized, aborting suspend.\n");
+		trace_i915_pm_suspend_exit(drm_dev, -ENODEV);
 		return -ENODEV;
 	}
 
-	if (drm_dev->switch_power_state == DRM_SWITCH_POWER_OFF)
+	if (drm_dev->switch_power_state == DRM_SWITCH_POWER_OFF) {
+		trace_i915_pm_suspend_exit(drm_dev, 0);
 		return 0;
+	}
 
-	return i915_drm_freeze(drm_dev);
+	ret = i915_drm_freeze(drm_dev);
+	trace_i915_pm_suspend_exit(drm_dev, ret);
+	return ret;
 }
 
 static int i915_pm_suspend_late(struct device *dev)
@@ -1526,8 +1533,13 @@ static int i915_pm_resume(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	int ret;
 
-	return i915_resume(drm_dev);
+	trace_i915_pm_resume_enter(drm_dev);
+	ret = i915_resume(drm_dev);
+	trace_i915_pm_resume_exit(drm_dev, ret);
+
+	return ret;
 }
 
 static int i915_pm_freeze(struct device *dev)
@@ -1979,11 +1991,16 @@ static int intel_runtime_suspend(struct device *device)
 	char *envp_d3[] = { "GSTATE=3", NULL };
 	char *envp_d0[] = { "GSTATE=0", NULL };
 
-	if (WARN_ON_ONCE(!(dev_priv->rps.enabled && intel_enable_rc6(dev))))
+	trace_intel_runtime_suspend_enter(dev);
+	if (WARN_ON_ONCE(!(dev_priv->rps.enabled && intel_enable_rc6(dev)))) {
+		trace_intel_runtime_suspend_exit(dev, -ENODEV);
 		return -ENODEV;
+	}
 
-	if (WARN_ON_ONCE(!HAS_RUNTIME_PM(dev)))
+	if (WARN_ON_ONCE(!HAS_RUNTIME_PM(dev))) {
+		trace_intel_runtime_suspend_exit(dev, -ENODEV);
 		return -ENODEV;
+	}
 
 	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp_d3);
 	assert_force_wake_inactive(dev_priv);
@@ -2005,7 +2022,7 @@ static int intel_runtime_suspend(struct device *device)
 		 * be rescheduled.
 		 */
 		pm_runtime_mark_last_busy(device);
-
+		trace_intel_runtime_suspend_exit(dev, -EAGAIN);
 		return -EAGAIN;
 	}
 
@@ -2036,6 +2053,7 @@ static int intel_runtime_suspend(struct device *device)
 		DRM_ERROR("Runtime suspend failed, disabling it (%d)\n", ret);
 		intel_runtime_pm_restore_interrupts(dev);
 
+		trace_intel_runtime_suspend_exit(dev, ret);
 		return ret;
 	}
 
@@ -2053,6 +2071,7 @@ static int intel_runtime_suspend(struct device *device)
 	 */
 	intel_opregion_notify_adapter(dev, PCI_D1);
 
+	trace_intel_runtime_suspend_exit(dev, 0);
 	DRM_DEBUG_KMS("Device suspended\n");
 	return 0;
 }
@@ -2071,8 +2090,11 @@ static int intel_runtime_resume(struct device *device)
 	u32 gtfifodbg;
 	char *envp[] = { "GSTATE=0", NULL };
 
-	if (WARN_ON_ONCE(!HAS_RUNTIME_PM(dev)))
+	trace_intel_runtime_resume_enter(dev);
+	if (WARN_ON_ONCE(!HAS_RUNTIME_PM(dev))) {
+		trace_intel_runtime_resume_exit(dev, -ENODEV);
 		return -ENODEV;
+	}
 
 	DRM_DEBUG_KMS("Resuming device\n");
 
@@ -2109,7 +2131,7 @@ static int intel_runtime_resume(struct device *device)
 	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
 
 	schedule_work(&dev_priv->probe_hotplug_work);
-
+	trace_intel_runtime_resume_exit(dev, ret);
 	return ret;
 }
 
