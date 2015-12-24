@@ -866,12 +866,17 @@ static void fusb300_handle_vbus_int(struct fusb300_chip *chip, int vbus_on)
 		}
 		complete(&chip->vbus_complete);
 
+		/* Nofity Detect driver */
 		atomic_notifier_call_chain(&phy->notifier,
 				 TYPEC_EVENT_VBUS, phy);
 		/* TOG_DONE will be used with FUSB302 */
+		/* Notify DPM */
+		dpm_handle_phy_event(phy, PHY_DPM_EVENT_VBUS_ON);
 	} else {
 		if (state == TYPEC_STATE_ATTACHED_UFP)
 			schedule_delayed_work(&chip->dfp_disconn_work, 0);
+		/* Notify DPM */
+		dpm_handle_phy_event(phy, PHY_DPM_EVENT_VBUS_OFF);
 	}
 }
 

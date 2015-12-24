@@ -116,6 +116,11 @@ enum typec_phy_evts {
 	PROT_PHY_EVENT_MSG_RCV,
 };
 
+enum typec_phy_dpm_evts {
+	PHY_DPM_EVENT_VBUS_ON,
+	PHY_DPM_EVENT_VBUS_OFF,
+};
+
 enum {
 	PD_DATA_ROLE_UFP,
 	PD_DATA_ROLE_DFP,
