@@ -979,21 +979,31 @@ TRACE_EVENT(i915_scheduler_node_state_change,
 		      __entry->ring, __entry->uniq, __entry->seqno, __entry->status)
 );
 
+
 TRACE_EVENT(i915_scheduler_irq,
-	    TP_PROTO(struct intel_engine_cs *ring, uint32_t seqno),
-	    TP_ARGS(ring, seqno),
+	TP_PROTO(struct i915_scheduler *scheduler,
+		 struct intel_engine_cs *ring,
+		 uint32_t seqno, bool direct_submit),
+	TP_ARGS(scheduler, ring, seqno, direct_submit),
 
-	    TP_STRUCT__entry(
-			     __field(u32, ring)
-			     __field(u32, seqno)
-			     ),
+	TP_STRUCT__entry(
+		__field(u32, ring_id)
+		__field(u32, seqno)
+		__field(u32, last_seqno)
+		__field(bool, direct_submit)
+		),
 
-	    TP_fast_assign(
-			   __entry->ring   = ring->id;
-			   __entry->seqno  = seqno;
-			   ),
+	TP_fast_assign(
+		__entry->ring_id    = ring->id;
+		__entry->seqno	    = seqno;
+		__entry->last_seqno =
+		    direct_submit ? 0 : scheduler->last_irq_seqno[ring->id];
+		__entry->direct_submit = direct_submit;
+		),
 
-	    TP_printk("ring=%d, seqno=%d", __entry->ring, __entry->seqno)
+	TP_printk("ring=%d,seqno=%d,last_seqno=%d, direct_submit=%d",
+		__entry->ring_id, __entry->seqno, __entry->last_seqno,
+		__entry->direct_submit)
 );
 
 TRACE_EVENT(i915_gem_ring_queue,

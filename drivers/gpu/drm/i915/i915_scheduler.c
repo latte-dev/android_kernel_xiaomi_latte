@@ -643,7 +643,8 @@ int i915_scheduler_handle_irq(struct intel_engine_cs *ring)
 
 	seqno = ring->get_seqno(ring, false);
 
-	trace_i915_scheduler_irq(ring, seqno);
+	trace_i915_scheduler_irq(scheduler, ring, seqno,
+			i915.scheduler_override & i915_so_direct_submit);
 
 	if (i915.scheduler_override & i915_so_direct_submit)
 		return 0;
