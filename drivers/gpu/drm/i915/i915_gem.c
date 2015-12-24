@@ -2744,6 +2744,9 @@ static void queue_retire_work(struct drm_i915_private *dev_priv,
 		 * scheduling more.
 		 */
 		dev_priv->mm.retire_work_timestamp = jiffies;
+		trace_queue_retire_work(time, true);
+	} else {
+		trace_queue_retire_work(time, false);
 	}
 }
 

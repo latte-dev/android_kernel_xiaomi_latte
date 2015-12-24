@@ -1290,6 +1290,27 @@ TRACE_EVENT(execlists_context_queue,
 		__entry->ring, __entry->ctx, __entry->tail)
 );
 
+/* queue_retire_work - begin */
+TRACE_EVENT(queue_retire_work,
+	TP_PROTO(u64 time, bool bSuccess),
+
+	TP_ARGS(time, bSuccess),
+
+	TP_STRUCT__entry(
+			__field(u64, time)
+			__field(bool, bSuccess)
+	),
+
+	TP_fast_assign(
+			__entry->time = time;
+			__entry->bSuccess = bSuccess;
+	),
+
+	TP_printk("time=%lld, queue retire work sucess=%d",
+		__entry->time, __entry->bSuccess)
+);
+/* queue_retire_work - end */
+
 #endif /* _I915_TRACE_H_ */
 
 /* This part must be outside protection */
