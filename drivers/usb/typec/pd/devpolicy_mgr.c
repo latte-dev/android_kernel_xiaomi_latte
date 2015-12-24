@@ -519,6 +519,7 @@ static void dpm_update_power_role(struct devpolicy_mgr *dpm,
 					__func__);
 			goto update_prole_err;
 		}
+		typec_set_swap_state(dpm->phy, true);
 		break;
 	case POWER_ROLE_SINK:
 		dpm->consumer_state = CABLE_ATTACHED;
@@ -548,6 +549,8 @@ static void dpm_update_power_role(struct devpolicy_mgr *dpm,
 		pr_debug("DPM:%s: unknown pwr role!!\n", __func__);
 		goto update_prole_err;
 	}
+	if (dpm->prev_prole == POWER_ROLE_SWAP)
+		typec_set_swap_state(dpm->phy, false);
 	dpm->prev_prole = cur_prole;
 	dpm->cur_prole = prole;
 
