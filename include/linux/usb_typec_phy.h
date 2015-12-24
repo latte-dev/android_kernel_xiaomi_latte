@@ -220,6 +220,7 @@ struct typec_phy {
 	bool (*is_pd_capable)(struct typec_phy *phy);
 	int (*enable_autocrc)(struct typec_phy *phy, bool en);
 	int (*set_pu_pd)(struct typec_phy *phy, enum typec_cc_pull pull);
+	int (*set_swap_state)(struct typec_phy *phy, bool swap);
 	int (*enable_detection)(struct typec_phy *phy, bool en);
 	bool (*is_vbus_on)(struct typec_phy *phy);
 	bool (*is_vconn_enabled)(struct typec_phy *phy);
@@ -324,6 +325,14 @@ static inline int typec_enable_autocrc(struct typec_phy *phy, bool en)
 {
 	if (phy && phy->enable_autocrc)
 		return phy->enable_autocrc(phy, en);
+
+	return -ENOTSUPP;
+}
+
+static inline int typec_set_swap_state(struct typec_phy *phy, bool swap)
+{
+	if (phy && phy->set_swap_state)
+		return phy->set_swap_state(phy, swap);
 
 	return -ENOTSUPP;
 }

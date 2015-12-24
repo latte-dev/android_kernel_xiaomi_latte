@@ -452,11 +452,40 @@ static int fusb300_switch_mode(struct typec_phy *phy, enum typec_mode mode)
 	return 0;
 }
 
+static int fusb300_set_swap_state(struct typec_phy *phy,
+						bool swap)
+{
+	struct fusb300_chip *chip;
+
+	if (!phy)
+		return -ENODEV;
+	chip = dev_get_drvdata(phy->dev);
+
+	dev_dbg(phy->dev, "%s cur_state=%d, swap=%d\n", __func__,
+				phy->state, swap);
+
+	mutex_lock(&chip->lock);
+	if (swap) {
+		if (phy->state == TYPEC_STATE_ATTACHED_UFP)
+			phy->state = TYPEC_STATE_PD_PU_SWAP;
+		else if (phy->state == TYPEC_STATE_ATTACHED_DFP)
+			phy->state = TYPEC_STATE_PU_PD_SWAP;
+	} else {
+		if (phy->state == TYPEC_STATE_PD_PU_SWAP)
+			phy->state = TYPEC_STATE_ATTACHED_DFP;
+		else if (phy->state == TYPEC_STATE_PU_PD_SWAP)
+			phy->state = TYPEC_STATE_ATTACHED_UFP;
+	}
+	mutex_unlock(&chip->lock);
+	return 0;
+}
+
 static int fusb300_set_pu_pd(struct typec_phy *phy,
 					enum typec_cc_pull pull)
 {
 	struct fusb300_chip *chip;
 	u8 val = 0;
+	int ret = 0;
 
 	if (!phy)
 		return -ENODEV;
@@ -487,26 +516,11 @@ static int fusb300_set_pu_pd(struct typec_phy *phy,
 			val);
 	} else {
 		dev_warn(phy->dev, "%s: Invalid CC\n", __func__);
-		goto pu_pd_error;
+		ret = -EINVAL;
 	}
 
-	/* If cc pulled up in UFP state, this pull-up is for pr swap.
-	 * Change the state to TYPEC_STATE_PD_PU_SWAP.
-	 */
-	if (pull == TYPEC_CC_PULL_UP
-			&& phy->state == TYPEC_STATE_ATTACHED_UFP)
-		phy->state = TYPEC_STATE_PD_PU_SWAP;
-
-	/* If cc pulled down in DFP state, this pull-down is for pr swap.
-	 * Change the state to TYPEC_STATE_PU_PD_SWAP.
-	 */
-	if (pull == TYPEC_CC_PULL_DOWN
-			&& phy->state == TYPEC_STATE_ATTACHED_DFP)
-		phy->state = TYPEC_STATE_PU_PD_SWAP;
-
-pu_pd_error:
 	mutex_unlock(&chip->lock);
-	return 0;
+	return ret;
 }
 
 static int fusb300_setup_cc(struct typec_phy *phy, enum typec_cc_pin cc,
@@ -1439,6 +1453,14 @@ static void fusb300_valid_disconnect(struct work_struct *work)
 	 */
 	msleep(PD_DEBOUNCE_MAX_TIME);
 
+	if (phy->state == TYPEC_STATE_PD_PU_SWAP
+		 || phy->state == TYPEC_STATE_PU_PD_SWAP) {
+		dev_dbg(chip->dev,
+			"%s: In pr swap state, ignore vbud/comp change",
+			__func__);
+		return;
+	}
+
 	/*
 	 * do measurement on the already setup cc and
 	 * check whether the disconnect is a valid one
@@ -1751,6 +1773,7 @@ static int fusb300_probe(struct i2c_client *client,
 	chip->phy.recv_packet = fusb300_recv_pkt;
 	chip->phy.is_vbus_on = fusb300_is_vbus_on;
 	chip->phy.set_pu_pd = fusb300_set_pu_pd;
+	chip->phy.set_swap_state = fusb300_set_swap_state;
 	chip->phy.is_vconn_enabled = fusb300_is_vconn_enabled;
 	chip->phy.enable_vconn = fusb300_enable_vconn;
 	if (!chip->is_fusb300) {
