@@ -3350,7 +3350,7 @@ i915_gem_retire_work_handler(struct work_struct *work)
 		idle = i915_gem_retire_requests(dev);
 		mutex_unlock(&dev->struct_mutex);
 	}
-
+	trace_i915_gem_retire_work_handler(dev, idle);
 	if (!idle)
 		queue_retire_work(dev_priv, round_jiffies_up_relative(HZ));
 }

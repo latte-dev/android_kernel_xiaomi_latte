@@ -1348,6 +1348,25 @@ TRACE_EVENT(i915_gem_request_complete_begin,
 		__entry->ring, __entry->seqno, __entry->last_seqno)
 );
 
+TRACE_EVENT(i915_gem_retire_work_handler,
+	TP_PROTO(struct drm_device *dev, bool idle),
+
+	TP_ARGS(dev, idle),
+
+	TP_STRUCT__entry(
+		__field(struct drm_device *, dev)
+		__field(bool, idle)
+	),
+
+	TP_fast_assign(
+		__entry->dev = dev;
+		__entry->idle = idle;
+	),
+
+	TP_printk("dev=%p,idle=%d",
+		__entry->dev, __entry->idle)
+);
+
 #endif /* _I915_TRACE_H_ */
 
 /* This part must be outside protection */
