@@ -583,7 +583,7 @@ static struct ov8858_reg ov8858_BasicSettings[] = {
 	{OV8858_8BIT, 0x3814, 0x01}, /* h_odd_inc */
 	{OV8858_8BIT, 0x3815, 0x01}, /* h_even_inc */
 	{OV8858_8BIT, 0x3820, 0x00}, /* format1 */
-	{OV8858_8BIT, 0x3821, 0x46}, /* format2 */
+	{OV8858_8BIT, 0x3821, 0x40}, /* format2 */
 	{OV8858_8BIT, 0x382A, 0x01}, /* v_odd_inc */
 	{OV8858_8BIT, 0x382B, 0x01}, /* v_even_inc */
 	{OV8858_8BIT, 0x382D, 0xFF},
@@ -774,7 +774,7 @@ static const struct ov8858_reg ov8858_8M[] = {
 	{OV8858_8BIT, 0x3813, 0x08},
 	{OV8858_8BIT, 0x3814, 0x01}, /* h_odd_inc */
 	{OV8858_8BIT, 0x3815, 0x01}, /* h_even_inc */
-	{OV8858_8BIT, 0x3821, 0x46}, /* format2 */
+	{OV8858_8BIT, 0x3821, 0x40}, /* format2 */
 	{OV8858_8BIT, 0x382A, 0x01}, /* v_odd_inc */
 	{OV8858_8BIT, 0x382B, 0x01}, /* v_even_inc */
 	{OV8858_8BIT, 0x382D, 0xFF},
@@ -825,7 +825,7 @@ static const struct ov8858_reg ov8858_6M[] = {
 	{OV8858_8BIT, 0x3813, 0x08},
 	{OV8858_8BIT, 0x3814, 0x01}, /* h_odd_inc */
 	{OV8858_8BIT, 0x3815, 0x01}, /* h_even_inc */
-	{OV8858_8BIT, 0x3821, 0x46}, /* format2 */
+	{OV8858_8BIT, 0x3821, 0x40}, /* format2 */
 	{OV8858_8BIT, 0x382A, 0x01}, /* v_odd_inc */
 	{OV8858_8BIT, 0x382B, 0x01}, /* v_even_inc */
 	{OV8858_8BIT, 0x382D, 0xFF},
@@ -876,7 +876,7 @@ static const struct ov8858_reg ov8858_1080P[] = {
 	{OV8858_8BIT, 0x3813, 0x02},
 	{OV8858_8BIT, 0x3814, 0x01}, /* h_odd_inc */
 	{OV8858_8BIT, 0x3815, 0x01}, /* h_even_inc */
-	{OV8858_8BIT, 0x3821, 0x46}, /* format2 */
+	{OV8858_8BIT, 0x3821, 0x40}, /* format2 */
 	{OV8858_8BIT, 0x382A, 0x01}, /* v_odd_inc */
 	{OV8858_8BIT, 0x382B, 0x01}, /* v_even_inc */
 	{OV8858_8BIT, 0x382D, 0xFF},
@@ -927,7 +927,7 @@ static const struct ov8858_reg ov8858_1640x1232[] = {
 	{OV8858_8BIT, 0x3813, 0x04},
 	{OV8858_8BIT, 0x3814, 0x03}, /* h_odd_inc */
 	{OV8858_8BIT, 0x3815, 0x01}, /* h_even_inc */
-	{OV8858_8BIT, 0x3821, 0x67}, /* format2 */
+	{OV8858_8BIT, 0x3821, 0x61}, /* format2 */
 	{OV8858_8BIT, 0x382A, 0x03}, /* v_odd_inc */
 	{OV8858_8BIT, 0x382B, 0x01}, /* v_even_inc */
 	{OV8858_8BIT, 0x382D, 0x7F},
@@ -977,7 +977,7 @@ static const struct ov8858_reg ov8858_1640x1096[] = {
 	{OV8858_8BIT, 0x3813, 0x48},
 	{OV8858_8BIT, 0x3814, 0x03}, /* h_odd_inc */
 	{OV8858_8BIT, 0x3815, 0x01}, /* h_even_inc */
-	{OV8858_8BIT, 0x3821, 0x67}, /* format2 */
+	{OV8858_8BIT, 0x3821, 0x61}, /* format2 */
 	{OV8858_8BIT, 0x382A, 0x03}, /* v_odd_inc */
 	{OV8858_8BIT, 0x382B, 0x01}, /* v_even_inc */
 	{OV8858_8BIT, 0x382D, 0x7F},
@@ -1029,7 +1029,7 @@ static const struct ov8858_reg ov8858_1640x926[] = {
 	{OV8858_8BIT, 0x3813, 0x9C},
 	{OV8858_8BIT, 0x3814, 0x03}, /* h_odd_inc */
 	{OV8858_8BIT, 0x3815, 0x01}, /* h_even_inc */
-	{OV8858_8BIT, 0x3821, 0x67}, /* format2 */
+	{OV8858_8BIT, 0x3821, 0x61}, /* format2 */
 	{OV8858_8BIT, 0x382A, 0x03}, /* v_odd_inc */
 	{OV8858_8BIT, 0x382B, 0x01}, /* v_even_inc */
 	{OV8858_8BIT, 0x382D, 0x7F},
