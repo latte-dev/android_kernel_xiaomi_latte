@@ -187,11 +187,11 @@ static void pd_prot_tx_work(struct pd_prot *prot)
 
 }
 
-static inline int prot_rx_reset(struct pd_prot *pd)
+static void pd_prot_reset_protocol(struct pd_prot *prot)
 {
-	pd_reset_counters(pd);
-	/* Reset the phy */
-	return pd_prot_reset_phy(pd);
+	pd_prot_flush_fifo(prot, FIFO_TYPE_RX | FIFO_TYPE_TX);
+	pd_reset_counters(prot);
+	prot_clear_rx_msg_list(prot);
 }
 
 static int pd_prot_rcv_pkt_from_policy(struct pd_prot *prot, u8 msg_type,
@@ -200,14 +200,13 @@ static int pd_prot_rcv_pkt_from_policy(struct pd_prot *prot, u8 msg_type,
 	struct pd_packet *pkt;
 
 	if (msg_type == PD_CMD_HARD_RESET) {
-		pd_prot_flush_fifo(prot, FIFO_TYPE_RX);
-		prot_clear_rx_msg_list(prot);
-		return prot_rx_reset(prot);
+		pd_prot_reset_protocol(prot);
+		return pd_prot_reset_phy(prot);
 	} else if (msg_type == PD_CMD_PROTOCOL_RESET) {
-		pd_prot_flush_fifo(prot, FIFO_TYPE_RX);
-		pd_reset_counters(prot);
-		prot_clear_rx_msg_list(prot);
+		pd_prot_reset_protocol(prot);
 		return pd_tx_fsm_state(prot, PROT_TX_PHY_LAYER_RESET);
+	} else if (msg_type == PD_CTRL_MSG_SOFT_RESET) {
+		pd_prot_reset_protocol(prot);
 	}
 
 	pkt = &prot->tx_buf;
@@ -466,7 +465,7 @@ static void pd_prot_phy_rcv(struct pd_prot *pd)
 			goto phy_rcv_end;
 
 		if (msg_type == PD_CTRL_MSG_SOFT_RESET)
-			prot_rx_reset(pd);
+			pd_prot_reset_protocol(pd);
 		else if (msg_type == PD_CTRL_MSG_GOODCRC) {
 			send_good_crc = 0;
 			if (msg_id == pd->tx_msg_id) {
@@ -533,7 +532,6 @@ static void pd_notify_protocol(struct typec_phy *phy, unsigned long event)
 		pd_prot_phy_rcv(pd);
 		break;
 	case PROT_PHY_EVENT_HARD_RST: /* recv HRD_RST */
-	case PROT_PHY_EVENT_SOFT_RST:
 		dev_dbg(phy->dev, "%s: PROT_PHY_EVENT_SOFT/HARD_RST\n",
 				__func__);
 		pd_prot_handle_reset(pd, event);
@@ -546,14 +544,15 @@ static void pd_notify_protocol(struct typec_phy *phy, unsigned long event)
 		mutex_unlock(&pd->tx_lock);
 		complete(&pd->tx_complete);
 		break;
-	case PROT_PHY_EVENT_SOFT_RST_FAIL:
-		break;
 	case PROT_PHY_EVENT_TX_HARD_RST: /* sent HRD_RST */
 		dev_dbg(phy->dev, "%s: PROT_PHY_EVENT_TX_HARD_RST\n",
 				__func__);
 		/* Hard reset complete signaling */
 		pe_process_cmd(pd->p, PE_EVT_RCVD_HARD_RESET_COMPLETE);
 		break;
+	case PROT_PHY_EVENT_SOFT_RST_FAIL:
+	case PROT_PHY_EVENT_SOFT_RST:
+		/* Soft reset will be handled from received packet */
 	default:
 		break;
 	}

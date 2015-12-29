@@ -256,6 +256,8 @@ static void pe_handle_gcrc_received(struct policy_engine *pe)
 	case PE_DRS_UFP_DFP_SEND_DR_SWAP:
 	case PE_PRS_SRC_SNK_SEND_PR_SWAP:
 	case PE_PRS_SNK_SRC_SEND_PR_SWAP:
+	case PE_SNK_SEND_SOFT_RESET:
+	case PE_SRC_SEND_SOFT_RESET:
 		/* Start sender response timer */
 		pe_start_timer(pe, SENDER_RESPONSE_TIMER,
 					PE_TIME_SENDER_RESPONSE);
@@ -349,6 +351,12 @@ static void pe_handle_gcrc_received(struct policy_engine *pe)
 		pe_start_timer(pe, VMD_RESPONSE_TIMER,
 				PE_TIME_VDM_SENDER_RESPONSE);
 		break;
+	case PE_SNK_SOFT_RESET:
+		pe_change_state(pe, PE_SNK_WAIT_FOR_CAPABILITIES);
+		break;
+	case PE_SRC_SOFT_RESET:
+		pe_change_state(pe, PE_SRC_SEND_CAPABILITIES);
+		break;
 	default:
 		log_warn("GCRC received in wrong state=%d",
 					pe->cur_state);
@@ -393,6 +401,14 @@ static int policy_engine_process_ctrl_msg(struct policy *p,
 		} else if (pe->cur_state == PE_PRS_SNK_SRC_SEND_PR_SWAP) {
 			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
 			pe_change_state(pe, PE_PRS_SNK_SRC_TRANSITION_TO_OFF);
+
+		} else if (pe->cur_state == PE_SRC_SEND_SOFT_RESET) {
+			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
+			pe_change_state(pe, PE_SRC_SEND_CAPABILITIES);
+
+		} else if (pe->cur_state == PE_SNK_SEND_SOFT_RESET) {
+			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
+			pe_change_state(pe, PE_SNK_WAIT_FOR_CAPABILITIES);
 
 		} else {
 			log_warn("Accept received in wrong state=%d",
@@ -541,6 +557,15 @@ static int policy_engine_process_ctrl_msg(struct policy *p,
 			/* Send Wait */
 			pe_send_packet(pe, NULL, 0,
 					PD_CTRL_MSG_WAIT, PE_EVT_SEND_WAIT);
+		break;
+
+	case PE_EVT_RCVD_SOFT_RESET:
+		if (pe->cur_prole == POWER_ROLE_SOURCE)
+			pe_change_state(pe, PE_SRC_SOFT_RESET);
+		else if (pe->cur_prole == POWER_ROLE_SINK)
+			pe_change_state(pe, PE_SNK_SOFT_RESET);
+		else
+			pe_change_state(pe, PE_ERROR_RECOVERY);
 		break;
 
 	case PE_EVT_RCVD_GOTOMIN:
@@ -694,6 +719,18 @@ static void pe_change_state_to_snk_or_src_reset(struct policy_engine *pe)
 		pe_change_state(pe, PE_SRC_HARD_RESET);
 	else if (pe->cur_prole == POWER_ROLE_SINK)
 		pe_change_state(pe, PE_SNK_HARD_RESET);
+	else {
+		log_err("Unexpected power role %d!!", pe->cur_prole);
+		pe_change_state(pe, ERROR_RECOVERY);
+	}
+}
+
+static void pe_change_state_to_soft_reset(struct policy_engine *pe)
+{
+	if (pe->cur_prole == POWER_ROLE_SOURCE)
+		pe_change_state(pe, PE_SRC_SEND_SOFT_RESET);
+	else if (pe->cur_prole == POWER_ROLE_SINK)
+		pe_change_state(pe, PE_SNK_SEND_SOFT_RESET);
 	else {
 		log_err("Unexpected power role %d!!", pe->cur_prole);
 		pe_change_state(pe, ERROR_RECOVERY);
@@ -1298,6 +1335,10 @@ static void pe_timer_expire_worker(struct work_struct *work)
 		} else if (pe->cur_state == PE_DR_SNK_GET_SINK_CAP) {
 			pe_change_state(pe, PE_SNK_READY);
 			break;
+		} else if (pe->cur_state == PE_SRC_SEND_SOFT_RESET
+				|| pe->cur_state == PE_SNK_SEND_SOFT_RESET) {
+			log_info("Soft_Reset failed, Issue hard reset");
+			pe_change_state_to_snk_or_src_reset(pe);
 		}
 
 		log_warn("%s expired move to hard reset",
@@ -1384,13 +1425,24 @@ static void pe_timer_expire_worker(struct work_struct *work)
 			log_err("PS_RDY Sent fail during pr_swap");
 			pe_change_state(pe, PE_ERROR_RECOVERY);
 			break;
+		} else if (pe->cur_state == PE_PRS_SNK_SRC_SOURCE_ON) {
+			log_err("PS_RDY Sent fail during pr_swap");
+			pe_change_state(pe, PE_ERROR_RECOVERY);
+			break;
+		} else if (pe->cur_state == PE_SRC_SEND_SOFT_RESET
+				|| pe->cur_state == PE_SNK_SEND_SOFT_RESET
+				|| pe->cur_state == PE_SNK_SOFT_RESET
+				||  pe->cur_state == PE_SRC_SOFT_RESET) {
+			log_info("SOFT_RESET failed!!");
+			/* Issue Hard Reset */
+			pe_change_state_to_snk_or_src_reset(pe);
+			break;
 		}
 		if (pe_is_timer_pending(pe, SENDER_RESPONSE_TIMER))
 			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
-		/* TODO: Trigger SoftReset before HardReset */
 		log_warn("%s expired in state=%d",
 				timer_to_str(type), pe->cur_state);
-		pe_change_state_to_snk_or_src_reset(pe);
+		pe_change_state_to_soft_reset(pe);
 		break;
 
 	case DISCOVER_IDENTITY_TIMER:
@@ -2198,6 +2250,20 @@ pe_process_state_pe_dfp_vdm_modes_request(struct policy_engine *pe)
 	pe_send_discover_mode(pe);
 }
 
+static void pe_process_state_pe_send_soft_reset(struct policy_engine *pe)
+{
+	/* Send Soft Reset */
+	pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_SOFT_RESET,
+					PE_EVT_SEND_SOFT_RESET);
+}
+
+static void pe_process_state_pe_accept_soft_reset(struct policy_engine *pe)
+{
+	/* Send Accept for Soft Reset */
+	pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_ACCEPT,
+					PE_EVT_SEND_ACCEPT);
+}
+
 /* Error Recovery state handlers */
 
 static void
@@ -2450,6 +2516,16 @@ static void pe_state_change_worker(struct work_struct *work)
 		break;
 	case PE_DR_SNK_GIVE_SOURCE_CAP:
 		pe_process_state_pe_dr_snk_give_source_cap(pe);
+		break;
+
+	case PE_SRC_SEND_SOFT_RESET:
+	case PE_SNK_SEND_SOFT_RESET:
+		pe_process_state_pe_send_soft_reset(pe);
+		break;
+
+	case PE_SRC_SOFT_RESET:
+	case PE_SNK_SOFT_RESET:
+		pe_process_state_pe_accept_soft_reset(pe);
 		break;
 
 	default:
