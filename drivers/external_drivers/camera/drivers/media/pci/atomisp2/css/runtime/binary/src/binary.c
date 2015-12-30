@@ -1324,8 +1324,14 @@ ia_css_binary_find(struct ia_css_binary_descr *descr,
 	if (mode == IA_CSS_BINARY_MODE_VIDEO) {
 		dvs_env = descr->dvs_env;
 		need_dz = descr->enable_dz;
-		/* Video is the only mode that has a nodz variant. */
-		need_dvs = dvs_env.width || dvs_env.height;
+		/* need_dvs is set to false explicitly for IR case, as IR does not support DVS
+		(enable_luma_only would be true only for IR case). Pipe config tool could not generate
+		non zero dvs_env.width and dvs_env.height,even when dvs was set to off. Refer #H1504113120*/
+		if (enable_luma_only)
+			need_dvs = false;
+		else
+			/* Video is the only mode that has a nodz variant. */
+			need_dvs = dvs_env.width || dvs_env.height;
 	}
 
 	/* print a map of the binary file */
