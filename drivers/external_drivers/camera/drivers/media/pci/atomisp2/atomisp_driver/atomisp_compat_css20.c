@@ -72,6 +72,13 @@ struct bayer_ds_factor {
 	unsigned int denominator;
 };
 
+#ifdef CONFIG_PLATFORM_BTNS
+#define BTNS_CROP_PADDING_WIDTH		128
+#define BTNS_CROP_PADDING_HEIGHT	96
+
+extern int btns_5mp_crop_workaround;
+#endif
+
 void atomisp_css_debug_dump_sp_sw_debug_info(void)
 {
 	ia_css_debug_dump_sp_sw_debug_info();
@@ -2008,8 +2015,22 @@ int atomisp_css_input_set_effective_resolution(
 {
 	struct ia_css_stream_config *s_config =
 			&asd->stream_env[stream_id].stream_config;
+
+#ifdef CONFIG_PLATFORM_BTNS
+	if (btns_5mp_crop_workaround == 1) {
+		s_config->input_config.effective_res.width =
+			2560 + BTNS_CROP_PADDING_WIDTH;
+		s_config->input_config.effective_res.height =
+			1920 + BTNS_CROP_PADDING_HEIGHT;
+	} else {
+		s_config->input_config.effective_res.width = width;
+		s_config->input_config.effective_res.height = height;
+	}
+#else
 	s_config->input_config.effective_res.width = width;
 	s_config->input_config.effective_res.height = height;
+#endif
+
 	return 0;
 }
 

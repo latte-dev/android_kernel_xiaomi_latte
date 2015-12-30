@@ -89,6 +89,13 @@ union host {
 	} ptr;
 };
 
+#ifdef CONFIG_PLATFORM_BTNS
+/* This flag is for 5M(2560x1920) request from customer.
+ * It's a workaround method to conform FW request because
+ * we didn't have appropriate resolutiong settings */
+int btns_5mp_crop_workaround = 0;
+#endif
+
 /*
  * atomisp_kernel_malloc: chooses whether kmalloc() or vmalloc() is preferable.
  *
@@ -5612,6 +5619,14 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 			|| r->height > f->fmt.pix.height))
 			dev_warn(isp->dev,
 				 "Main Resolution config smaller then Vf Resolution. Force to be equal with Vf Resolution.");
+#ifdef CONFIG_PLATFORM_BTNS
+	/* When customer need capture 2560x1920, we set flag to workaround */
+		if ((f->fmt.pix.width == 2560) &&
+				(f->fmt.pix.height == 1920))
+			btns_5mp_crop_workaround = 1;
+		else
+			btns_5mp_crop_workaround = 0;
+#endif
 	}
 
 	/* Pipeline configuration done through subdevs. Bail out now. */
