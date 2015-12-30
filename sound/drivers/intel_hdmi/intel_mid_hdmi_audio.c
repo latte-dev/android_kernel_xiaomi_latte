@@ -61,7 +61,8 @@ MODULE_LICENSE("GPL v2");
 MODULE_SUPPORTED_DEVICE("{Intel,Intel_HAD}");
 MODULE_VERSION(HAD_DRIVER_VERSION);
 
-#define INFO_FRAME_WORD1	0x000a0184
+#define HDMI_INFO_FRAME_WORD1	0x000a0184
+#define DP_INFO_FRAME_WORD1	0x00441b84
 #define FIFO_THRESHOLD		0xFE
 #define DMA_FIFO_THRESHOLD	0x7
 #define BYTES_PER_WORD		0x4
@@ -784,8 +785,11 @@ static void snd_intelhad_prog_dip_v1(struct snd_pcm_substream *substream,
 					intelhaddata, channels);
 
 	/*Calculte the byte wide checksum for all valid DIP words*/
-	for (i = 0; i < BYTES_PER_WORD; i++)
-		checksum += (INFO_FRAME_WORD1 >> i*BITS_PER_BYTE) & MASK_BYTE0;
+	for (i = 0; i < BYTES_PER_WORD; i++) {
+		checksum += (HDMI_INFO_FRAME_WORD1 >> i*BITS_PER_BYTE) &
+				MASK_BYTE0;
+	}
+
 	for (i = 0; i < BYTES_PER_WORD; i++)
 		checksum += (frame2.fr2_val >> i*BITS_PER_BYTE) & MASK_BYTE0;
 	for (i = 0; i < BYTES_PER_WORD; i++)
@@ -793,7 +797,7 @@ static void snd_intelhad_prog_dip_v1(struct snd_pcm_substream *substream,
 
 	frame2.fr2_regx.chksum = -(checksum);
 
-	had_write_register(AUD_HDMIW_INFOFR, INFO_FRAME_WORD1);
+	had_write_register(AUD_HDMIW_INFOFR, HDMI_INFO_FRAME_WORD1);
 	had_write_register(AUD_HDMIW_INFOFR, frame2.fr2_val);
 	had_write_register(AUD_HDMIW_INFOFR, frame3.fr3_val);
 
@@ -822,28 +826,41 @@ static void snd_intelhad_prog_dip_v2(struct snd_pcm_substream *substream,
 	union aud_info_frame2 frame2 = {.fr2_val = 0};
 	union aud_info_frame3 frame3 = {.fr3_val = 0};
 	u8 checksum = 0;
+	u32 info_frame;
 	int channels;
 
 	channels = substream->runtime->channels;
 
 	had_write_register(AUD_CNTL_ST, ctrl_state.ctrl_val);
 
-	frame2.fr2_regx.chnl_cnt = substream->runtime->channels - 1;
+	if (intelhaddata->eeld.capabilities & ELD_DP_CONN_TYPE) {
+		info_frame = DP_INFO_FRAME_WORD1;
+		frame2.fr2_val = 1;
+	} else {
+		info_frame = HDMI_INFO_FRAME_WORD1;
+		frame2.fr2_regx.chnl_cnt = substream->runtime->channels - 1;
 
-	frame3.fr3_regx.chnl_alloc = snd_intelhad_channel_allocation(
-					intelhaddata, channels);
+		frame3.fr3_regx.chnl_alloc = snd_intelhad_channel_allocation(
+				intelhaddata, channels);
 
-	/*Calculte the byte wide checksum for all valid DIP words*/
-	for (i = 0; i < BYTES_PER_WORD; i++)
-		checksum += (INFO_FRAME_WORD1 >> i*BITS_PER_BYTE) & MASK_BYTE0;
-	for (i = 0; i < BYTES_PER_WORD; i++)
-		checksum += (frame2.fr2_val >> i*BITS_PER_BYTE) & MASK_BYTE0;
-	for (i = 0; i < BYTES_PER_WORD; i++)
-		checksum += (frame3.fr3_val >> i*BITS_PER_BYTE) & MASK_BYTE0;
+		/*Calculte the byte wide checksum for all valid DIP words*/
+		for (i = 0; i < BYTES_PER_WORD; i++) {
+			checksum += (info_frame >> i*BITS_PER_BYTE) &
+					MASK_BYTE0;
+		}
+		for (i = 0; i < BYTES_PER_WORD; i++) {
+			checksum += (frame2.fr2_val >> i*BITS_PER_BYTE) &
+					MASK_BYTE0;
+		}
+		for (i = 0; i < BYTES_PER_WORD; i++) {
+			checksum += (frame3.fr3_val >> i*BITS_PER_BYTE) &
+					MASK_BYTE0;
+		}
 
-	frame2.fr2_regx.chksum = -(checksum);
+		frame2.fr2_regx.chksum = -(checksum);
+	}
 
-	had_write_register(AUD_HDMIW_INFOFR_v2, INFO_FRAME_WORD1);
+	had_write_register(AUD_HDMIW_INFOFR_v2, info_frame);
 	had_write_register(AUD_HDMIW_INFOFR_v2, frame2.fr2_val);
 	had_write_register(AUD_HDMIW_INFOFR_v2, frame3.fr3_val);
 
