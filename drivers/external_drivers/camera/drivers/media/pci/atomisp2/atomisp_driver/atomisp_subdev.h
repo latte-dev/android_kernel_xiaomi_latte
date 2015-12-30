@@ -189,6 +189,17 @@ struct atomisp_css_params {
 	struct ia_css_shading_table *shading_table;
 	struct ia_css_morph_table   *morph_table;
 
+	/*Add new parameters for isp2.7*/
+	struct ia_css_dpc2_config dpc2_config;
+	struct ia_css_eed1_8_config eed1_8_config;
+	struct ia_css_ob2_config ob2_config;
+	struct ia_css_ctc2_config ctc2_config;
+	struct ia_css_iefd2_6_config iefd2_6_config;
+	struct ia_css_macc1_5_config macc1_5_config;
+	struct ia_css_macc1_5_table macc1_5_table;
+	struct ia_css_xnr3_0_11_config xnr3_0_11_config;
+
+
 	/*
 	 * Used to store the user pointer address of the frame. driver needs to
 	 * translate to ia_css_frame * and then set to CSS.

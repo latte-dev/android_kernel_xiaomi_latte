@@ -3236,7 +3236,7 @@ void atomisp_apply_css_parameters(
 		atomisp_css_set_dvs_6axis(asd, css_param->dvs_6axis);
 
 	/* Workaround for BTNS, apply default OB2 setting for IMX227.
-	   before AIQ for ISP2.7 is available,	we have to keep such
+	   before AIQ for ISP2.7 is available,  we have to keep such
 	   workaround for a reasonable image color
 	 */
 #ifdef CONFIG_EXTERNAL_BTNS_CAMERA
@@ -3246,6 +3246,29 @@ void atomisp_apply_css_parameters(
 		atomisp_css_set_ob2_config(asd, &imx227_ob2_config);
 	}
 #endif
+
+	/* Add some parameters for isp2.7 */
+	if (css_param->update_flag.dpc2_config)
+		atomisp_css_set_dpc2_config(asd, &css_param->dpc2_config);
+
+	if (css_param->update_flag.eed1_8_config)
+		atomisp_css_set_eed1_8_config(asd, &css_param->eed1_8_config);
+
+	if (css_param->update_flag.ctc2_config)
+		atomisp_css_set_ctc2_config(asd, &css_param->ctc2_config);
+
+	if (css_param->update_flag.iefd2_6_config)
+		atomisp_css_set_iefd2_6_config(asd, &css_param->iefd2_6_config);
+
+	if (css_param->update_flag.macc1_5_config)
+		atomisp_css_set_macc1_5_config(asd, &css_param->macc1_5_config);
+
+	if (css_param->update_flag.macc1_5_table)
+		atomisp_css_set_macc1_5_table(asd, &css_param->macc1_5_table);
+
+	if (css_param->update_flag.xnr3_0_11_config)
+		atomisp_css_set_xnr3_0_11_config(asd, &css_param->xnr3_0_11_config);
+
 	atomisp_css_set_isp_config_id(asd, css_param->isp_config_id);
 	/*
 	 * These configurations are on used by ISP1.x, not for ISP2.x,
@@ -3545,6 +3568,84 @@ int atomisp_cp_general_isp_parameters(struct atomisp_sub_device *asd,
 			return -EFAULT;
 		css_param->update_flag.anr_thres =
 			(struct atomisp_anr_thres *) &css_param->anr_thres;
+	}
+
+	if (arg->dpc2_config && (from_user || !cur_config->dpc2_config)) {
+		if (copy_from_compatible(&css_param->dpc2_config,
+				arg->dpc2_config,
+				sizeof(struct atomisp_css_dpc2_config),
+				from_user))
+			return -EFAULT;
+		css_param->update_flag.dpc2_config =
+			(struct atomisp_dpc2_config *) &css_param->dpc2_config;
+	}
+
+	if (arg->eed1_8_config && (from_user || !cur_config->eed1_8_config)) {
+		if (copy_from_compatible(&css_param->eed1_8_config,
+				arg->eed1_8_config,
+				sizeof(struct atomisp_css_eed1_8_config),
+				from_user))
+			return -EFAULT;
+		css_param->update_flag.eed1_8_config =
+			(struct atomisp_eed1_8_config *) &css_param->eed1_8_config;
+	}
+
+	if (arg->ob2_config && (from_user || !cur_config->ob2_config)) {
+		if (copy_from_compatible(&css_param->ob2_config, arg->ob2_config,
+				sizeof(struct atomisp_css_ob2_config),
+				from_user))
+			return -EFAULT;
+		css_param->update_flag.ob2_config =
+			(struct atomisp_ob2_config *) &css_param->ob2_config;
+	}
+
+	if (arg->ctc2_config && (from_user || !cur_config->ctc2_config)) {
+		if (copy_from_compatible(&css_param->ctc2_config, arg->ctc2_config,
+				sizeof(struct atomisp_css_ctc2_config),
+				from_user))
+			return -EFAULT;
+		css_param->update_flag.ctc2_config =
+			(struct atomisp_ctc2_config *) &css_param->ctc2_config;
+	}
+
+	if (arg->iefd2_6_config && (from_user || !cur_config->iefd2_6_config)) {
+		if (copy_from_compatible(&css_param->iefd2_6_config,
+				arg->iefd2_6_config,
+				sizeof(struct atomisp_css_iefd2_6_config),
+				from_user))
+			return -EFAULT;
+		css_param->update_flag.iefd2_6_config =
+			(struct atomisp_iefd2_6_config *) &css_param->iefd2_6_config;
+	}
+
+	if (arg->macc1_5_config && (from_user || !cur_config->macc1_5_config)) {
+		if (copy_from_compatible(&css_param->macc1_5_config,
+				arg->macc1_5_config,
+				sizeof(struct atomisp_css_macc1_5_config),
+				from_user))
+			return -EFAULT;
+		css_param->update_flag.macc1_5_config =
+			(struct atomisp_macc1_5_config *) &css_param->macc1_5_config;
+	}
+
+	if (arg->macc1_5_table && (from_user || !cur_config->macc1_5_table)) {
+		if (copy_from_compatible(&css_param->macc1_5_table,
+				arg->macc1_5_table,
+				sizeof(struct atomisp_css_macc1_5_table),
+				from_user))
+			return -EFAULT;
+		css_param->update_flag.macc1_5_table =
+			(struct atomisp_macc1_5_table *) &css_param->macc1_5_table;
+	}
+
+	if (arg->xnr3_0_11_config && (from_user || !cur_config->xnr3_0_11_config)) {
+		if (copy_from_compatible(&css_param->xnr3_0_11_config,
+				arg->xnr3_0_11_config,
+				sizeof(struct atomisp_css_xnr3_0_11_config),
+				from_user))
+			return -EFAULT;
+		css_param->update_flag.xnr3_0_11_config =
+			(struct atomisp_xnr3_0_11_config *) &css_param->xnr3_0_11_config;
 	}
 
 	if (from_user)
