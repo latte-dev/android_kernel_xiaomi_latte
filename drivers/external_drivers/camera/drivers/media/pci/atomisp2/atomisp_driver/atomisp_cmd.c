@@ -6265,7 +6265,7 @@ int atomisp_set_raw_buffer_bitmap(struct atomisp_sub_device *asd, int exp_id)
 		__func__, exp_id, asd->raw_buffer_locked_count);
 
 	/* Check if the raw buffer after next is still locked!!! */
-	exp_id += 2;
+	exp_id += 5;
 	if (exp_id > ATOMISP_MAX_EXP_ID)
 		exp_id -= ATOMISP_MAX_EXP_ID;
 	bitmap = asd->raw_buffer_bitmap + exp_id / 32;
