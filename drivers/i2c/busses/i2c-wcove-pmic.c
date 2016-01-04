@@ -58,7 +58,8 @@
 #define I2COVRCTRL_I2C_WR	D0
 #define CHGRIRQ0_ADDR		0x6E0A
 
-#define IRQ0_I2C_BIT_POS	 1
+#define IRQ0_I2C_BIT_POS	1
+#define I2C_REG_RW_MAX_TOUT	3
 
 struct pmic_i2c_dev {
 	int irq;
@@ -114,16 +115,24 @@ static inline int pmic_i2c_read_xfer(struct i2c_msg msg)
 
 		ret = wait_event_timeout(pmic_dev->i2c_wait,
 				(pmic_dev->i2c_rw & mask),
-				HZ);
-
+				msecs_to_jiffies(I2C_REG_RW_MAX_TOUT));
 		if (ret == 0) {
-			return -ETIMEDOUT;
+			/*
+			 * Not considering the wait event timeout error as pmic
+			 * i2c is not updating read/write completion interrupt
+			 * timely.
+			 */
+			ret = intel_soc_pmic_readb(I2COVRRDDATA_ADDR);
+			if (ret < 0)
+				return -ETIMEDOUT;
+			msg.buf[i] = (u8) ret;
 		} else if (pmic_dev->i2c_rw == I2C_NACK) {
 			return  -EIO;
 		} else {
-			msg.buf[i] = intel_soc_pmic_readb(I2COVRRDDATA_ADDR);
-			if (msg.buf[i] < 0)
+			ret = intel_soc_pmic_readb(I2COVRRDDATA_ADDR);
+			if (ret < 0)
 				return -EIO;
+			msg.buf[i] = (u8) ret;
 		}
 	}
 	return 0;
@@ -159,10 +168,12 @@ static inline int pmic_i2c_write_xfer(struct i2c_msg msg)
 
 		ret = wait_event_timeout(pmic_dev->i2c_wait,
 				(pmic_dev->i2c_rw & mask),
-				HZ);
-		if (ret == 0)
-			return -ETIMEDOUT;
-		else if (pmic_dev->i2c_rw == I2C_NACK)
+				msecs_to_jiffies(I2C_REG_RW_MAX_TOUT));
+		/*
+		 * Not considering the wait event timeout error as pmic i2c is
+		 * not updating read/write completion interrupt timely.
+		 */
+		if (pmic_dev->i2c_rw == I2C_NACK)
 			return -EIO;
 	}
 	return 0;
