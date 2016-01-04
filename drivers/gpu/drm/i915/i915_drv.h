@@ -2355,6 +2355,14 @@ struct drm_i915_gem_request *i915_gem_request_find_by_seqno(struct intel_engine_
 struct drm_i915_gem_request *i915_gem_request_find_by_sync_value(struct intel_engine_cs *ring,
 								 uint32_t sync_value);
 
+struct i915_gem_file_attr_priv {
+	char tgid_str[16];
+	struct pid *tgid;
+	size_t rss_size;
+	struct mm_struct *mm;
+	struct drm_i915_error_state_buf buf;
+};
+
 struct drm_i915_file_private {
 	struct drm_i915_private *dev_priv;
 	struct drm_file *file;
