@@ -2639,10 +2639,18 @@ static void __configure_capture_pp_input(struct atomisp_sub_device *asd,
 
 	pipe_extra_configs->enable_yuv_ds = true;
 
-	pipe_configs->capt_pp_in_res.width =
-		stream_config->input_config.effective_res.width;
-	pipe_configs->capt_pp_in_res.height =
-		stream_config->input_config.effective_res.height;
+	/* ISP2.7 didn't support downscale */
+	if (pipe_configs->isp_pipe_version == SH_CSS_ISP_PIPE_VERSION_2_7) {
+		pipe_configs->capt_pp_in_res.width =
+			pipe_configs->output_info[0].res.width;
+		pipe_configs->capt_pp_in_res.height =
+			pipe_configs->output_info[0].res.height;
+	} else {
+		pipe_configs->capt_pp_in_res.width =
+			stream_config->input_config.effective_res.width;
+		pipe_configs->capt_pp_in_res.height =
+			stream_config->input_config.effective_res.height;
+	}
 
 	dev_dbg(isp->dev, "configuring pipe[%d]capture pp input w=%d.h=%d.\n",
 		pipe_id, width, height);
