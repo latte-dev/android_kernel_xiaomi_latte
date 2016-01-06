@@ -559,7 +559,10 @@ static int i915_drm_freeze(struct drm_device *dev)
 	struct drm_crtc *crtc;
 	int ret;
 	u32 i;
-	char *envp[] = { "GSTATE=3", NULL };
+	char *envp_d3[] = { "GSTATE=3", NULL };
+	char *envp_d0[] = { "GSTATE=0", NULL };
+
+	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp_d3);
 
 	/* ignore lid events during suspend */
 	mutex_lock(&dev_priv->modeset_restore_lock);
@@ -580,6 +583,8 @@ static int i915_drm_freeze(struct drm_device *dev)
 
 		error = i915_gem_suspend(dev);
 		if (error) {
+			kobject_uevent_env(&dev->primary->kdev->kobj,
+						KOBJ_CHANGE, envp_d0);
 			dev_err(&dev->pdev->dev,
 				"GEM idle failed, resume might fail\n");
 			return error;
@@ -634,8 +639,6 @@ static int i915_drm_freeze(struct drm_device *dev)
 	ret = intel_suspend_complete(dev_priv);
 	if (ret)
 		WARN(1, "Suspend complete failed: %d\n", ret);
-
-	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
 
 	return 0;
 }
@@ -1973,7 +1976,8 @@ static int intel_runtime_suspend(struct device *device)
 	struct drm_device *dev = pci_get_drvdata(pdev);
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret, i;
-	char *envp[] = { "GSTATE=3", NULL };
+	char *envp_d3[] = { "GSTATE=3", NULL };
+	char *envp_d0[] = { "GSTATE=0", NULL };
 
 	if (WARN_ON_ONCE(!(dev_priv->rps.enabled && intel_enable_rc6(dev))))
 		return -ENODEV;
@@ -1981,6 +1985,7 @@ static int intel_runtime_suspend(struct device *device)
 	if (WARN_ON_ONCE(!HAS_RUNTIME_PM(dev)))
 		return -ENODEV;
 
+	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp_d3);
 	assert_force_wake_inactive(dev_priv);
 
 	DRM_DEBUG_KMS("Suspending device\n");
@@ -1993,6 +1998,7 @@ static int intel_runtime_suspend(struct device *device)
 	 * for consistency return -EAGAIN, which will reschedule this suspend.
 	 */
 	if (!mutex_trylock(&dev->struct_mutex)) {
+		kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp_d0);
 		DRM_DEBUG_KMS("device lock contention, deffering suspend\n");
 		/*
 		 * Bump the expiration timestamp, otherwise the suspend won't
@@ -2026,6 +2032,7 @@ static int intel_runtime_suspend(struct device *device)
 
 	ret = intel_suspend_complete(dev_priv);
 	if (ret) {
+		kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp_d0);
 		DRM_ERROR("Runtime suspend failed, disabling it (%d)\n", ret);
 		intel_runtime_pm_restore_interrupts(dev);
 
@@ -2045,8 +2052,6 @@ static int intel_runtime_suspend(struct device *device)
 	 * via the suspend path.
 	 */
 	intel_opregion_notify_adapter(dev, PCI_D1);
-
-	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
 
 	DRM_DEBUG_KMS("Device suspended\n");
 	return 0;
