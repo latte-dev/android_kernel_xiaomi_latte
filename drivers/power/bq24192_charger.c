@@ -288,8 +288,6 @@ struct bq24192_chip {
 	int max_temp;
 	int min_temp;
 	int iterm;
-	int batt_status;
-	int bat_health;
 	int cntl_state;
 	int cntl_state_max;
 	int irq;
@@ -510,9 +508,7 @@ static int bq24192_reg_read_modify(struct i2c_client *client, u8 reg,
 	else
 		ret &= (~val);
 
-	ret = bq24192_write_reg(client, reg, ret);
-
-	return ret;
+	return bq24192_write_reg(client, reg, ret);
 }
 
 static int bq24192_reg_multi_bitset(struct i2c_client *client, u8 reg,
@@ -529,9 +525,7 @@ static int bq24192_reg_multi_bitset(struct i2c_client *client, u8 reg,
 
 	data = (1 << len) - 1;
 	ret = (ret & ~(data << pos)) | val;
-	ret = bq24192_write_reg(client, reg, ret);
-
-	return ret;
+	return bq24192_write_reg(client, reg, ret);
 }
 
 /* check_batt_psy -check for whether power supply type is battery
@@ -723,13 +717,12 @@ static u8 chrg_cur_to_reg(int cur)
  */
 static u8 chrg_volt_to_reg(int volt)
 {
-	u8 reg;
+	u8 reg = 0;
 
-	if (volt <= BQ24192_CHRG_VOLT_OFFSET)
-		reg = 0x0;
-	else
+	if (volt > BQ24192_CHRG_VOLT_OFFSET) {
 		reg = (volt - BQ24192_CHRG_VOLT_OFFSET) /
 				BQ24192_CHRG_VOLT_LSB_TO_VOLT;
+	}
 
 	reg = (reg << 2) | CHRG_VOLT_CNTL_BATTLOWV;
 	return reg;
@@ -2446,7 +2439,6 @@ static int bq24192_probe(struct i2c_client *client,
 		chip->usb.supported_cables = chip->pdata->supported_cables;
 		chip->max_cc = chip->pdata->max_cc;
 		chip->max_cv = chip->pdata->max_cv;
-		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		chip->chgr_stat = BQ24192_CHRGR_STAT_UNKNOWN;
 		chip->usb.properties = bq24192_usb_props;
 		chip->usb.num_properties = ARRAY_SIZE(bq24192_usb_props);
