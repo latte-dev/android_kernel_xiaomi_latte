@@ -34,7 +34,7 @@ The version string has four dot-separated numbers, read left to right:
 
 */
 
-#define CSS_API_VERSION_STRING	"2.1.20.20"
+#define CSS_API_VERSION_STRING	"2.1.21.0"
 
 /*
 Change log
@@ -465,6 +465,12 @@ v2.1.20.19, Add Plane IO parameters in ISP configurations
 
 v2.1.20.20, Introduced YCgCo444_16 internal frame format
 - Replace ISP2.7 internal format V444_16 with correct YCgCo444_16
+
+v2.1.20.21, insert copyright header on CSS-API files
+- add copyright header
+
+v2.1.21.0, Reorder EED1_8 kernel parameters in CSS API
+- Reorder EED1_8 fields in ia_css_eed1_8_config
 
 */
 

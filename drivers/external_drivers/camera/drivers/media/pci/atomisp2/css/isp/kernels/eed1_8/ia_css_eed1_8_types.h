@@ -52,11 +52,11 @@ struct ia_css_eed1_8_config {
 
 	int32_t aerel_thres0;	/**< Threshold for Non-Directional Reliability at dark region. */
 	int32_t aerel_gain0;	/**< Gain for Non-Directional Reliability at dark region. */
-	int32_t aerel_thres1;	/**< Threshold for Non-Directional Reliability at bright region. */
-	int32_t aerel_gain1;	/**< Gain for Non-Directional Reliability at bright region. */
-
 	int32_t derel_thres0;	/**< Threshold for Directional Reliability at dark region. */
 	int32_t derel_gain0;	/**< Gain for Directional Reliability at dark region. */
+
+	int32_t aerel_thres1;	/**< Threshold for Non-Directional Reliability at bright region. */
+	int32_t aerel_gain1;	/**< Gain for Non-Directional Reliability at bright region. */
 	int32_t derel_thres1;	/**< Threshold for Directional Reliability at bright region. */
 	int32_t derel_gain1;	/**< Gain for Directional Reliability at bright region. */
 

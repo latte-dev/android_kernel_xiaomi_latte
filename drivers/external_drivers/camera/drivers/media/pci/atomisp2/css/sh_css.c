@@ -160,6 +160,7 @@ static bool fw_explicitly_loaded = false;
 static enum ia_css_frame_format primary_hq_stage_out_format[NUM_PRIMARY_HQ27_STAGES] = {
 	IA_CSS_FRAME_FORMAT_YCgCo444_16,
 	IA_CSS_FRAME_FORMAT_YUV420_16,
+	IA_CSS_FRAME_FORMAT_YUV420,
 	IA_CSS_FRAME_FORMAT_YUV420
 };
 
@@ -6204,21 +6205,22 @@ static enum ia_css_err load_primary_binaries(
 
 	if (need_pre_de) {
 		struct ia_css_frame_info pre_de_in_info;
+		struct ia_css_frame_info pre_de_out_info;
 		struct ia_css_binary_descr pre_de_descr;
 		if (!pipe->pipe_settings.capture.pre_isp_binary.info) {
-			enum ia_css_frame_format out_format = pipe_out_info->format;
-			unsigned int out_pad_width = pipe_out_info->padded_width;
 
 			/* Temporary assign RAW output format for pre_de lookup.
 			 * It will be restored at the end of this block.
 			 */
-			pipe_out_info->format = IA_CSS_FRAME_FORMAT_RAW;
-			ia_css_frame_info_set_width(pipe_out_info,
-						pipe_out_info->res.width, 0);
-
+			pre_de_out_info = *pipe_out_info;
+			pre_de_out_info.format = IA_CSS_FRAME_FORMAT_RAW;
+			pre_de_out_info.res.width = pipe->config.input_effective_res.width;
+			pre_de_out_info.res.height = pipe->config.input_effective_res.height;
+			ia_css_frame_info_set_width(&pre_de_out_info,
+						pipe->config.input_effective_res.width, 0);
 			ia_css_pipe_get_pre_de_binarydesc(pipe, &pre_de_descr,
 						&pre_de_in_info,
-						pipe_out_info);
+						&pre_de_out_info);
 
 			err = ia_css_binary_find(&pre_de_descr,
 						&pipe->pipe_settings.capture.pre_isp_binary);
@@ -6227,9 +6229,6 @@ static enum ia_css_err load_primary_binaries(
 				IA_CSS_LEAVE_ERR_PRIVATE(err);
 				return err;
 			}
-
-			pipe_out_info->format = out_format;
-			pipe_out_info->padded_width = out_pad_width;
 		}
 	}
 
@@ -6314,6 +6313,7 @@ static enum ia_css_err load_primary_binaries(
 				&cas_scaler_descr.out_info[i],
 				&cas_scaler_descr.internal_out_info[i],
 				&cas_scaler_descr.vf_info[i]);
+
 #if defined(HAS_RES_MGR)
 			bds_out_info.res = pipe->config.bayer_ds_out_res;
 			yuv_scaler_descr.bds_out_info = &bds_out_info;
@@ -6374,6 +6374,8 @@ static enum ia_css_err load_primary_binaries(
 
 		for (i = 0; i < mycs->num_primary_stage; i++) {
 			struct ia_css_frame_info *local_vf_info = NULL;
+			struct ia_css_frame_info prim_stage_out_info = prim_out_info;
+
 			if (pipe->enable_viewfinder[IA_CSS_PIPE_OUTPUT_STAGE_0] && (i == mycs->num_primary_stage - 1))
 				local_vf_info = &vf_info;
 
@@ -6384,9 +6386,34 @@ static enum ia_css_err load_primary_binaries(
 				prim_out_info.format = primary_hq_stage_out_format[i];
 				ia_css_frame_info_set_width(&prim_out_info,
 					prim_out_info.res.width, 0);
+
+				if (i < (mycs->num_primary_stage - 1)) {
+					/* primary sub-stages (except for the last)
+					 * input == output
+					 */
+					prim_stage_out_info = prim_out_info;
+					prim_stage_out_info.res = pipe->config.input_effective_res;
+				} else {
+					/* primary last sub-stage
+					 * Crops fixed amount (128x96 pixels) from effective.
+					 * The output of the primary stage should therefore
+					 * be 'crop fixed res' smaller than effective.
+					 *
+					 * The output resolution of the primary stages
+					 * should be: 'capture_pp_in_res'.  If this is
+					 * not defined, it will be the output resolution
+					 * of the pipe.
+					 *
+					 * Horizontally: one vector from left and right
+					 * Vertically: 48 pixels from top and bottom
+					 */
+					prim_stage_out_info = prim_out_info;
+				}
+				ia_css_frame_info_set_width(&prim_stage_out_info,
+					prim_stage_out_info.res.width, 0);
 			}
 
-			ia_css_pipe_get_primary_binarydesc(pipe, &prim_descr[i], &prim_in_info, &prim_out_info, local_vf_info, i);
+			ia_css_pipe_get_primary_binarydesc(pipe, &prim_descr[i], &prim_in_info, &prim_stage_out_info, local_vf_info, i);
 #if defined(HAS_RES_MGR)
 			bds_out_info.res = pipe->config.bayer_ds_out_res;
 			prim_descr[i].bds_out_info = &bds_out_info;

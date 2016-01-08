@@ -47,7 +47,7 @@ more details.
 
 #define MAX_NUM_PRIMARY_STAGES 6
 #define NUM_PRIMARY_HQ_STAGES  6  /* number of primary stages for ISP2.6.1 high quality pipe */
-#define NUM_PRIMARY_HQ27_STAGES 3 /* number of primary stages for ISP2.7 high quality pipe */
+#define NUM_PRIMARY_HQ27_STAGES 4 /* number of primary stages for ISP2.7 high quality pipe */
 #define NUM_PRIMARY_STAGES     1  /* number of primary satges for ISP1/ISP2.2 pipe */
 
 /* Indicate where binaries can read input from */

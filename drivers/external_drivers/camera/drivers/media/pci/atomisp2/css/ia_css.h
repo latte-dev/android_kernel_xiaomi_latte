@@ -1,4 +1,4 @@
-/* Release Version: irci_ecr-master_20151229_1822 */
+/* Release Version: irci_ecr-master_20160107_1930 */
 /**
 Support for Intel Camera Imaging ISP subsystem.
 Copyright (c) 2010 - 2015, Intel Corporation.
