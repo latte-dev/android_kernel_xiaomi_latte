@@ -6909,6 +6909,15 @@ static void chv_update_pll(struct intel_crtc *crtc)
 	dpio_val |= (tribuf_calcntr << DPIO_CHV_TDC_TARGET_CNT_SHIFT);
 	vlv_dpio_write(dev_priv, pipe, CHV_PLL_DW8(port), dpio_val);
 
+	dpio_val = vlv_dpio_read(dev_priv, pipe, CHV_PLL_DW10(port));
+	dpio_val &= ~(DPIO_CHV_DCOAMP_OVERRIDE_EN | DPIO_CHV_DCOAMP_MASK);
+
+	if (vco >= 5000000 && vco < 5400000) {
+		dpio_val |= (DPIO_CHV_DCOAMP_OVERRIDE_EN |
+			0xF << DPIO_CHV_DCOAMP_SHIFT);
+	}
+	vlv_dpio_write(dev_priv, pipe, CHV_PLL_DW10(port), dpio_val);
+
 	/* AFC Recal */
 	vlv_dpio_write(dev_priv, pipe, CHV_CMN_DW14(port),
 			vlv_dpio_read(dev_priv, pipe, CHV_CMN_DW14(port)) |

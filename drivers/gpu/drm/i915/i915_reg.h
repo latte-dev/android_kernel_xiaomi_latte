@@ -1116,6 +1116,13 @@ enum punit_power_well {
 #define  DPIO_CHV_INT_LOCK_THRESHOLD_SEL_COARSE	1 /* 1: coarse & 0 : fine  */
 #define CHV_PLL_DW9(ch) _PIPE(ch, _CHV_PLL_DW9_CH0, _CHV_PLL_DW9_CH1)
 
+#define _CHV_PLL_DW10_CH0		0x8028
+#define _CHV_PLL_DW10_CH1		0x81A8
+#define   DPIO_CHV_DCOAMP_OVERRIDE_EN	(1 << 27)
+#define   DPIO_CHV_DCOAMP_SHIFT		10
+#define   DPIO_CHV_DCOAMP_MASK		(0xF << DPIO_CHV_DCOAMP_SHIFT)
+#define CHV_PLL_DW10(ch) _PIPE(ch, _CHV_PLL_DW10_CH0, _CHV_PLL_DW10_CH1)
+
 #define _CHV_CMN_DW5_CH0               0x8114
 #define   CHV_BUFRIGHTENA1_DISABLE	(0 << 20)
 #define   CHV_BUFRIGHTENA1_NORMAL	(1 << 20)
