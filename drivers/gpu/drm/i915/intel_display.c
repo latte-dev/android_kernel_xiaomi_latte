@@ -483,7 +483,7 @@ static const intel_limit_t intel_limits_chv = {
 	 * them would make no difference.
 	 */
 	.dot = { .min = 25000 * 5, .max = 540000 * 5},
-	.vco = { .min = 4860000, .max = 6480000 },
+	.vco = { .min = 5000000, .max = 6481000 },
 	.n = { .min = 1, .max = 1 },
 	.m1 = { .min = 2, .max = 2 },
 	.m2 = { .min = 24 << 22, .max = 175 << 22 },
@@ -6890,7 +6890,7 @@ static void chv_update_pll(struct intel_crtc *crtc)
 		loopfilter |= (0xB << DPIO_CHV_INT_COEFF_SHIFT);
 		loopfilter |= (0x3 << DPIO_CHV_GAIN_CTRL_SHIFT);
 		tribuf_calcntr = 0x9;
-	} else if (vco <= 6480000) {
+	} else if (vco <= 6481000) {
 		loopfilter |= (0x4 << DPIO_CHV_PROP_COEFF_SHIFT);
 		loopfilter |= (0x9 << DPIO_CHV_INT_COEFF_SHIFT);
 		loopfilter |= (0x3 << DPIO_CHV_GAIN_CTRL_SHIFT);
