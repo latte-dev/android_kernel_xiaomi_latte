@@ -1372,10 +1372,12 @@ static void sst_do_shutdown(struct intel_sst_drv *ctx)
 		pr_debug("sst is already in suspended/RESET state\n");
 		return;
 	}
+
+	sst_set_fw_state_locked(ctx, SST_SHUTDOWN);
+
 	if (!ctx->use_32bit_ops)
 		return;
 
-	sst_set_fw_state_locked(ctx, SST_SHUTDOWN);
 	flush_workqueue(ctx->post_msg_wq);
 	pvt_id = sst_assign_pvt_id(ctx);
 	retval = sst_create_block_and_ipc_msg(&msg, false,
