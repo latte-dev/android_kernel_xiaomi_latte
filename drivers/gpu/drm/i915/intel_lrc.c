@@ -917,7 +917,7 @@ intel_execlists_TDR_get_submitted_context(struct intel_engine_cs *ring,
 	tmpreq = list_first_entry_or_null(&ring->execlist_queue,
 		struct intel_ctx_submit_request, execlist_link);
 
-	if (tmpreq) {
+	if (tmpreq && tmpreq->ctx) {
 		sw_context =
 			intel_execlists_ctx_id((tmpreq->ctx)->engine[ring->id].state);
 
@@ -935,8 +935,7 @@ intel_execlists_TDR_get_submitted_context(struct intel_engine_cs *ring,
 			 * assert if we do). Just rely on the execlist code to provide
 			 * indirect protection.
 			 */
-			if (tmpreq->ctx)
-				tmpctx = tmpreq->ctx;
+			tmpctx = tmpreq->ctx;
 
 			if (ctx)
 				i915_gem_context_reference(tmpctx);
