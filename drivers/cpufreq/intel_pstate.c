@@ -117,6 +117,8 @@ struct cpudata {
 	u64	prev_mperf;
 	u64	prev_tsc;
 	u64	prev_cummulative_iowait;
+	u64	flags_high_loads;
+	int	floor_min;
 	struct sample sample;
 
 #ifdef CONFIG_CPU_FREQ_STAT
@@ -436,8 +438,6 @@ static void atom_set_pstate(struct cpudata *cpudata, int pstate)
 	if (pstate > cpudata->pstate.max_pstate)
 		vid = cpudata->vid.turbo;
 
-	trace_pstate_byt_set(pstate, vid);
-
 	val |= vid;
 
 	wrmsrl_on_cpu(cpudata->cpu, MSR_IA32_PERF_CTL, val);
@@ -556,10 +556,10 @@ static struct cpu_defaults silvermont_params = {
 	.pid_policy = {
 		.sample_rate_ms = 10,
 		.deadband = 0,
-		.setpoint = 60,
-		.p_gain_pct = 14,
+		.setpoint = 85,
+		.p_gain_pct = 20,
 		.d_gain_pct = 0,
-		.i_gain_pct = 4,
+		.i_gain_pct = 0,
 	},
 	.funcs = {
 		.get_max = atom_get_max_pstate,
@@ -576,10 +576,10 @@ static struct cpu_defaults airmont_params = {
 	.pid_policy = {
 		.sample_rate_ms = 10,
 		.deadband = 0,
-		.setpoint = 60,
-		.p_gain_pct = 14,
+		.setpoint = 85,
+		.p_gain_pct = 20,
 		.d_gain_pct = 0,
-		.i_gain_pct = 4,
+		.i_gain_pct = 0,
 	},
 	.funcs = {
 		.get_max = atom_get_max_pstate,
@@ -619,6 +619,7 @@ static void intel_pstate_set_pstate(struct cpudata *cpu, int pstate)
 #endif
 
 	intel_pstate_get_min_max(cpu, &min_perf, &max_perf);
+	min_perf += cpu->floor_min;
 
 	pstate = clamp_t(int, pstate, min_perf, max_perf);
 
@@ -668,7 +669,7 @@ static inline void intel_pstate_calc_busy(struct cpudata *cpu,
 					struct sample *sample)
 {
 	int64_t core_pct;
-	int32_t rem;
+	u32 rem;
 
 	core_pct = int_tofp(sample->aperf) * int_tofp(100);
 	core_pct = div_u64_rem(core_pct, int_tofp(sample->mperf), &rem);
@@ -700,8 +701,6 @@ static inline void intel_pstate_sample(struct cpudata *cpu)
 	cpu->sample.mperf = mperf - cpu->prev_mperf;
 	cpu->sample.tsc = tsc - cpu->prev_tsc;
 
-	intel_pstate_calc_busy(cpu, &cpu->sample);
-
 	cpu->prev_aperf = aperf;
 	cpu->prev_mperf = mperf;
 	cpu->prev_tsc = tsc;
@@ -716,13 +715,20 @@ static inline void intel_pstate_set_sample_time(struct cpudata *cpu)
 	mod_timer_pinned(&cpu->timer, jiffies + delay);
 }
 
+static inline int32_t get_avg_pstate(struct cpudata *cpu)
+{
+	return div64_u64(cpu->pstate.max_pstate * cpu->sample.aperf,
+		cpu->sample.mperf);
+}
+
 static inline int32_t get_target_pstate_use_cpu_load(struct cpudata *cpu)
 {
 	struct sample *sample = &cpu->sample;
+	struct pstate_data *pstate = &cpu->pstate;
 	u64 cummulative_iowait, delta_iowait_us;
 	u64 delta_iowait_mperf;
 	u64 mperf, now;
-	int32_t cpu_load;
+	int32_t nb_high_loads, cpu_load;
 
 	cummulative_iowait = get_cpu_iowait_time_us(cpu->cpu, &now);
 
@@ -732,10 +738,10 @@ static inline int32_t get_target_pstate_use_cpu_load(struct cpudata *cpu)
 	 * maximum P-State, so we are already boosting the IOs.
 	 */
 	delta_iowait_us = cummulative_iowait - cpu->prev_cummulative_iowait;
-	delta_iowait_mperf = div64_u64(delta_iowait_us * cpu->pstate.scaling *
-		cpu->pstate.max_pstate, MSEC_PER_SEC);
+	delta_iowait_mperf = div64_u64(delta_iowait_us * pstate->scaling *
+		pstate->max_pstate, MSEC_PER_SEC);
 
-	mperf = cpu->sample.mperf + delta_iowait_mperf;
+	mperf = sample->mperf + delta_iowait_mperf;
 	cpu->prev_cummulative_iowait = cummulative_iowait;
 
 	/*
@@ -745,9 +751,21 @@ static inline int32_t get_target_pstate_use_cpu_load(struct cpudata *cpu)
 	 * also during C-states.
 	 */
 	cpu_load = div64_u64(int_tofp(100) * mperf, sample->tsc);
-	cpu->sample.busy_scaled = cpu_load;
+	sample->busy_scaled = cpu_load;
 
-	return cpu->pstate.current_pstate - pid_calc(&cpu->pid, cpu_load);
+	if (cpu_load > int_tofp(75))
+		cpu->flags_high_loads |= 1;
+
+	nb_high_loads = hweight64(cpu->flags_high_loads);
+	cpu->flags_high_loads <<= 1;
+
+	if (nb_high_loads < 16)
+		cpu->floor_min = 0;
+	else
+		cpu->floor_min = div64_u64((pstate->max_pstate -
+			pstate->min_pstate) * nb_high_loads, 8*sizeof(u64));
+
+	return get_avg_pstate(cpu) - pid_calc(&cpu->pid, cpu_load);
 }
 
 static inline int32_t get_target_pstate_use_performance(struct cpudata *cpu)
@@ -755,6 +773,8 @@ static inline int32_t get_target_pstate_use_performance(struct cpudata *cpu)
 	int32_t core_busy, max_pstate, current_pstate, sample_ratio;
 	u32 duration_us;
 	u32 sample_time;
+
+	intel_pstate_calc_busy(cpu, &cpu->sample);
 
 	core_busy = cpu->sample.core_pct_busy;
 	max_pstate = int_tofp(cpu->pstate.max_pstate);
@@ -794,12 +814,12 @@ static void intel_pstate_timer_func(unsigned long __data)
 
 	intel_pstate_adjust_busy_pstate(cpu);
 
-	trace_pstate_sample(fp_toint(sample->core_pct_busy),
+	trace_pstate_sample(get_avg_pstate(cpu),
 			fp_toint(get_target_pstate_use_performance(cpu)),
 			cpu->pstate.current_pstate,
 			sample->mperf,
 			sample->aperf,
-			sample->freq);
+			sample->tsc);
 
 	intel_pstate_set_sample_time(cpu);
 }
