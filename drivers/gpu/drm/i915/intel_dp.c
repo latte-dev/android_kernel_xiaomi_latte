@@ -102,11 +102,11 @@ static const struct dp_link_dpll chv_dpll[] = {
 	 * (m2_int << 22) | m2_fraction
 	 */
 	{ DP_LINK_BW_1_62,	/* m2_int = 32, m2_fraction = 1677722 */
-		{ .p1 = 4, .p2 = 2, .n = 1, .m1 = 2, .m2 = 0x819999a } },
+		{ .p1 = 4, .p2 = 2, .n = 1, .m1 = 2, .m2 = 0x819999a,
+			.vco = 0x62e080 } },
 	{ DP_LINK_BW_2_7,	/* m2_int = 27, m2_fraction = 0 */
-		{ .p1 = 4, .p2 = 1, .n = 1, .m1 = 2, .m2 = 0x6c00000 } },
-	{ DP_LINK_BW_5_4,	/* m2_int = 27, m2_fraction = 0 */
-		{ .p1 = 2, .p2 = 1, .n = 1, .m1 = 2, .m2 = 0x6c00000 } }
+		{ .p1 = 4, .p2 = 1, .n = 1, .m1 = 2, .m2 = 0x6c00000,
+			.vco = 0x5265c0 } },
 };
 
 /**
