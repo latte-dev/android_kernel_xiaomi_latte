@@ -6795,8 +6795,6 @@ static void chv_update_pll(struct intel_crtc *crtc)
 	int dpll_reg = DPLL(crtc->pipe);
 	enum dpio_channel port = vlv_pipe_to_channel(pipe);
 	u32 loopfilter, tribuf_calcntr;
-	struct intel_encoder *encoder;
-	struct drm_crtc *drm_crtc = &crtc->base;
 	u32 bestn, bestm1, bestm2, bestp1, bestp2, bestm2_frac;
 	u32 dpio_val = 0;
 	int vco;
@@ -6811,25 +6809,9 @@ static void chv_update_pll(struct intel_crtc *crtc)
 		(crtc->config.pixel_multiplier - 1) << DPLL_MD_UDI_MULTIPLIER_SHIFT;
 
 	bestn = crtc->config.dpll.n;
-	bestm2_frac = crtc->config.dpll.m2 & DPIO_CHV_M2_FRACTION_MASK;
+	bestm2_frac = crtc->config.dpll.m2 & 0x3fffff;
 	bestm1 = crtc->config.dpll.m1;
-	bestm2 = crtc->config.dpll.m2 >> DPIO_CHV_M2_HDMI_NON_FRACTION_SHIFT;
-
-	for_each_encoder_on_crtc(dev, drm_crtc, encoder) {
-		if ((encoder->type == INTEL_OUTPUT_DISPLAYPORT) ||
-			(encoder->type == INTEL_OUTPUT_EDP)) {
-
-			/*
-			 * Correct shift is 24 as per Spec but
-			 * restricting this to DP for now since
-			 * this causes regression on HDMI
-			 */
-			bestm2 = crtc->config.dpll.m2 >>
-				DPIO_CHV_M2_DP_NON_FRACTION_SHIFT;
-			break;
-		}
-	}
-
+	bestm2 = crtc->config.dpll.m2 >> 22;
 	bestp1 = crtc->config.dpll.p1;
 	bestp2 = crtc->config.dpll.p2;
 	vco = crtc->config.dpll.vco;

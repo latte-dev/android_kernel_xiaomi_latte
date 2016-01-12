@@ -1072,9 +1072,6 @@ enum punit_power_well {
 /* CHV dpPhy registers */
 #define _CHV_PLL_DW0_CH0		0x8000
 #define _CHV_PLL_DW0_CH1		0x8180
-#define  DPIO_CHV_M2_FRACTION_MASK	0x3fffff
-#define  DPIO_CHV_M2_HDMI_NON_FRACTION_SHIFT	22
-#define  DPIO_CHV_M2_DP_NON_FRACTION_SHIFT	24
 #define CHV_PLL_DW0(ch) _PIPE(ch, _CHV_PLL_DW0_CH0, _CHV_PLL_DW0_CH1)
 
 #define _CHV_PLL_DW1_CH0		0x8004
