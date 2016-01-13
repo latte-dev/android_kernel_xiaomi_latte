@@ -341,7 +341,17 @@ static void pe_handle_gcrc_received(struct policy_engine *pe)
 
 		pe_change_state(pe, PE_SRC_STARTUP);
 		break;
-
+	case PE_VCS_SEND_PS_RDY:
+		log_info("VCS Success!! moving to ready state");
+	case PE_VCS_REJECT_SWAP:
+		pe_change_state_to_snk_or_src_ready(pe);
+		break;
+	case PE_VCS_ACCEPT_SWAP:
+		if (devpolicy_get_vconn_state(pe->p.dpm))
+			pe_change_state(pe, PE_VCS_WAIT_FOR_VCONN);
+		else
+			pe_change_state(pe, PE_VCS_TURN_ON_VCONN);
+		break;
 	case PE_DFP_UFP_VDM_IDENTITY_REQUEST:
 	case PE_DFP_VDM_SVIDS_REQUEST:
 	case PE_DFP_VDM_MODES_REQUEST:
@@ -378,7 +388,6 @@ static int policy_engine_process_ctrl_msg(struct policy *p,
 		pe_cancel_timer(pe, CRC_RECEIVE_TIMER);
 		pe->is_gcrc_received = true;
 		pe_handle_gcrc_received(pe);
-
 		break;
 
 	case PE_EVT_RCVD_ACCEPT:
@@ -497,7 +506,9 @@ static int policy_engine_process_ctrl_msg(struct policy *p,
 			log_dbg("PS_RDY received from src during pr_swap");
 			pe_cancel_timer(pe, PS_SOURCE_OFF_TIMER);
 			pe_change_state(pe, PE_PRS_SNK_SRC_ASSERT_RP);
-
+		} else if (pe->cur_state == PE_VCS_WAIT_FOR_VCONN) {
+			pe_cancel_timer(pe, VCONN_ON_TIMER);
+			pe_change_state(pe, PE_VCS_TURN_OFF_VCONN);
 		} else {
 			log_warn("PsRdy received in wrong state=%d",
 					pe->cur_state);
@@ -567,10 +578,13 @@ static int policy_engine_process_ctrl_msg(struct policy *p,
 		else
 			pe_change_state(pe, PE_ERROR_RECOVERY);
 		break;
-
+	case PE_EVT_RCVD_VCONN_SWAP:
+		if (pe->cur_state == PE_SRC_READY ||
+			pe->cur_state == PE_SNK_READY)
+			pe_change_state(pe, PE_VCS_EVALUATE_SWAP);
+		break;
 	case PE_EVT_RCVD_GOTOMIN:
 	case PE_EVT_RCVD_PING:
-	case PE_EVT_RCVD_VCONN_SWAP:
 		break;
 	default:
 		log_warn("Not a valid ctrl msg to process, event=%d\n", evt);
@@ -1490,8 +1504,15 @@ static void pe_timer_expire_worker(struct work_struct *work)
 			log_warn("%s expired in wrong state=%d",
 				timer_to_str(type), pe->cur_state);
 		break;
-	case SWAP_RECOVERY_TIMER:
 	case VCONN_ON_TIMER:
+		if (pe->cur_state == PE_VCS_WAIT_FOR_VCONN) {
+			pe_change_state_to_snk_or_src_reset(pe);
+		} else {
+			log_warn("%s expired in wrong state=%d",
+					timer_to_str(type), pe->cur_state);
+		}
+		break;
+	case SWAP_RECOVERY_TIMER:
 	case VDM_MODE_ENTRY_TIMER:
 	case VDM_MODE_EXIT_TIMER:
 		break;
@@ -2161,6 +2182,74 @@ pe_process_state_pe_prs_snk_src_source_on(struct policy_engine *pe)
 	pe_start_timer(pe, VBUS_CHECK_TIMER, T_SAFE_5V_MAX);
 }
 
+/******** VCONN SWAP State **********/
+static void
+pe_process_state_pe_vcs_reject_vconn_swap(struct policy_engine *pe)
+{
+	pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_REJECT, PE_EVT_SEND_REJECT);
+}
+
+static void pe_process_state_pe_vcs_accept_swap(struct policy_engine *pe)
+{
+	pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_ACCEPT, PE_EVT_SEND_ACCEPT);
+}
+
+static void pe_process_state_pe_vcs_send_ps_rdy(struct policy_engine *pe)
+{
+	pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_PS_RDY, PE_EVT_SEND_PS_RDY);
+}
+
+static void pe_process_state_pe_vcs_turn_on_vconn(struct policy_engine *pe)
+{
+	int ret;
+
+	ret = devpolicy_set_vconn_state(pe->p.dpm, true);
+	if (ret < 0) {
+		log_err("Erorr(%d) in turn of vconn, moving to error recovery.",
+				ret);
+		pe_change_state(pe, PE_ERROR_RECOVERY);
+		return;
+	}
+	log_dbg("Vconn is enabled.");
+	pe_change_state(pe, PE_VCS_SEND_PS_RDY);
+}
+
+static void pe_process_state_pe_vcs_turn_off_vconn(struct policy_engine *pe)
+{
+	int ret;
+
+	ret = devpolicy_set_vconn_state(pe->p.dpm, false);
+	if (ret < 0) {
+		log_err("Erorr (%d)in turn of vconn, moving to error recovery",
+				ret);
+		pe_change_state(pe, PE_ERROR_RECOVERY);
+		return;
+	}
+	log_info("VCS Success!! moving to ready state");
+	pe_change_state_to_snk_or_src_ready(pe);
+}
+
+static void
+pe_process_state_pe_vcs_wait_for_vcon(struct policy_engine *pe)
+{
+	/* wait tVCONNSourceOn time to to receive PS Ready from source */
+	pe_start_timer(pe, VCONN_ON_TIMER, PE_TIME_VCONN_SOURCE_ON);
+}
+
+static void pe_process_state_pe_vcs_evaluate_swap(struct policy_engine *pe)
+{
+	int ret;
+
+	ret = devpolicy_is_vconn_swap_supported(pe->p.dpm);
+	if (ret <= 0) {
+		log_info("VCS is not suppored by DPM!");
+		pe_change_state(pe, PE_VCS_REJECT_SWAP);
+	} else {
+		pe_change_state(pe, PE_VCS_ACCEPT_SWAP);
+		log_dbg("VCS is accepted by DPM!");
+	}
+}
+
 /******* Dual Role state ************/
 
 static void
@@ -2504,7 +2593,6 @@ static void pe_state_change_worker(struct work_struct *work)
 		pe_process_state_pe_dfp_vdm_conf_request(pe);
 		break;
 
-
 	case PE_DR_SRC_GET_SOURCE_CAP:
 		pe_process_state_pe_dr_src_get_source_cap(pe);
 		break;
@@ -2517,17 +2605,36 @@ static void pe_state_change_worker(struct work_struct *work)
 	case PE_DR_SNK_GIVE_SOURCE_CAP:
 		pe_process_state_pe_dr_snk_give_source_cap(pe);
 		break;
-
 	case PE_SRC_SEND_SOFT_RESET:
 	case PE_SNK_SEND_SOFT_RESET:
 		pe_process_state_pe_send_soft_reset(pe);
 		break;
-
 	case PE_SRC_SOFT_RESET:
 	case PE_SNK_SOFT_RESET:
 		pe_process_state_pe_accept_soft_reset(pe);
 		break;
-
+	/* vconn swap states */
+	case PE_VCS_EVALUATE_SWAP:
+		pe_process_state_pe_vcs_evaluate_swap(pe);
+		break;
+	case PE_VCS_ACCEPT_SWAP:
+		pe_process_state_pe_vcs_accept_swap(pe);
+		break;
+	case PE_VCS_REJECT_SWAP:
+		pe_process_state_pe_vcs_reject_vconn_swap(pe);
+		break;
+	case PE_VCS_WAIT_FOR_VCONN:
+		pe_process_state_pe_vcs_wait_for_vcon(pe);
+		break;
+	case PE_VCS_TURN_ON_VCONN:
+		pe_process_state_pe_vcs_turn_on_vconn(pe);
+		break;
+	case PE_VCS_TURN_OFF_VCONN:
+		pe_process_state_pe_vcs_turn_off_vconn(pe);
+		break;
+	case PE_VCS_SEND_PS_RDY:
+		pe_process_state_pe_vcs_send_ps_rdy(pe);
+		break;
 	default:
 		log_info("Cannot process unknown state %d", state);
 	}

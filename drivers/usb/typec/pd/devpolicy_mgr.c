@@ -340,6 +340,12 @@ static int dpm_get_sink_pr_swap_status(struct devpolicy_mgr *dpm)
 	return ret;
 }
 
+static inline int dpm_is_vconn_swapped(struct devpolicy_mgr *dpm)
+{
+	/* vconn swap can be supported regardless of data/power role */
+	return true;
+}
+
 static int dpm_is_pr_swapped(struct devpolicy_mgr *dpm,
 					enum pwr_role prole)
 {
@@ -1144,6 +1150,7 @@ static struct dpm_interface interface = {
 	.update_data_role = dpm_update_data_role,
 	.update_power_role = dpm_update_power_role,
 	.is_pr_swapped = dpm_is_pr_swapped,
+	.is_vconn_swapped = dpm_is_vconn_swapped,
 	.set_display_port_state = dpm_set_display_port_state,
 };
 

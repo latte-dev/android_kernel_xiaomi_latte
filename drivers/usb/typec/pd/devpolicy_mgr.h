@@ -206,6 +206,7 @@ struct dpm_interface {
 					int *ma);
 	int (*is_pr_swapped)(struct devpolicy_mgr *dpm,
 					enum pwr_role prole);
+	int (*is_vconn_swapped)(struct devpolicy_mgr *dpm);
 	int (*set_display_port_state)(struct devpolicy_mgr *dpm,
 					enum cable_state state,
 					enum typec_dp_cable_type type);
@@ -373,6 +374,14 @@ static inline int devpolicy_get_min_snk_current(struct devpolicy_mgr *dpm,
 {
 	if (dpm && dpm->interface && dpm->interface->get_min_current)
 		return dpm->interface->get_min_current(dpm, ma);
+
+	return -ENODEV;
+}
+
+static inline int devpolicy_is_vconn_swap_supported(struct devpolicy_mgr *dpm)
+{
+	if (dpm && dpm->interface && dpm->interface->is_vconn_swapped)
+		return dpm->interface->is_vconn_swapped(dpm);
 
 	return -ENODEV;
 }
