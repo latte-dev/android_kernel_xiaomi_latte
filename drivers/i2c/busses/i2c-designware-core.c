@@ -203,6 +203,15 @@ void dw_writel(struct dw_i2c_dev *dev, u32 b, int offset)
 	}
 }
 
+static void dump_registers(struct dw_i2c_dev *dev)
+{
+	int offset;
+	for (offset = 0; offset <= DW_IC_COMP_TYPE; offset += 4) {
+		dev_err(dev->dev, "Offset 0x%02x, Value 0x%08x\n", offset,
+				dw_readl(dev, offset));
+	}
+
+}
 static u32
 i2c_dw_scl_hcnt(u32 ic_clk, u32 tSYMBOL, u32 tf, int cond, int offset)
 {
@@ -311,7 +320,6 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 		 * reset apb and clock domain
 		 */
 		dw_writel(dev, 0, DW_IC_RESETS);
-		dw_writel(dev, 0, DW_IC_GENERAL);
 		if (dev->polling)
 			udelay(10);
 		else
@@ -324,8 +332,11 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 			usleep_range(10, 100);
 	} while (--timeout);
 
-	if (unlikely(timeout == 0))
+	if (unlikely(timeout == 0)) {
 		dev_err(dev->dev, "controller time out\n");
+		dump_stack();
+		dump_registers(dev);
+	}
 
 	reg = dw_readl(dev, DW_IC_COMP_TYPE);
 	if (reg == ___constant_swab32(DW_IC_COMP_TYPE_VALUE)) {
@@ -630,6 +641,7 @@ static int i2c_dw_handle_tx_abort(struct dw_i2c_dev *dev)
 	unsigned long abort_source = dev->abort_source;
 	int i;
 
+	dev_err(dev->dev, "abort_source = 0x%08lx\n", abort_source);
 	if (abort_source & DW_IC_TX_ABRT_NOACK) {
 		for_each_set_bit(i, &abort_source, ARRAY_SIZE(abort_sources))
 			dev_dbg(dev->dev,
