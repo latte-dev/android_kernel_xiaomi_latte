@@ -34,6 +34,9 @@
 #include "atomisp_compat.h"
 #include "atomisp_internal.h"
 
+#define BTNS_CROP_PADDING_WIDTH     128
+#define BTNS_CROP_PADDING_HEIGHT     96
+
 const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[] = {
 	{ V4L2_MBUS_FMT_SBGGR8_1X8, 8, 8, ATOMISP_INPUT_FORMAT_RAW_8, CSS_BAYER_ORDER_BGGR, CSS_FORMAT_RAW_8 },
 	{ V4L2_MBUS_FMT_SGBRG8_1X8, 8, 8, ATOMISP_INPUT_FORMAT_RAW_8, CSS_BAYER_ORDER_GBRG, CSS_FORMAT_RAW_8 },
@@ -490,6 +493,16 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			crop[ATOMISP_SUBDEV_PAD_SINK]->width == 0 ||
 			crop[ATOMISP_SUBDEV_PAD_SINK]->height == 0)
 			break;
+		if ((isp27_crop_flag) &&
+				(pad == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE)) {
+			unsigned int t_w, t_h;
+			t_w = r->width + BTNS_CROP_PADDING_WIDTH;
+			t_h = r->height + BTNS_CROP_PADDING_HEIGHT;
+
+			atomisp_css_input_set_effective_resolution(isp_sd,
+					stream_id, t_w, t_h);
+			break;
+		}
 		/*
 		 * do cropping on sensor input if ratio of required resolution
 		 * is different with sensor output resolution ratio:
