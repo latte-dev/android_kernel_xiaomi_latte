@@ -2465,6 +2465,8 @@ enum context_submission_status {
 				 (dev)->pdev->device == 0x0A1E)
 #define IS_PRELIMINARY_HW(intel_info) ((intel_info)->is_preliminary)
 #define IS_PLATFORM_HAS_DRRS(dev)	IS_VALLEYVIEW(dev)
+#define IS_ENCODER_SUPPORTS_DRRS(type)	((type == INTEL_OUTPUT_DSI) || \
+					(type == INTEL_OUTPUT_EDP))
 
 /*
  * The genX designation typically refers to the render engine, so render

@@ -314,6 +314,17 @@ int intel_drrs_init(struct drm_device *dev,
 		return -EPERM;
 	}
 
+	if (!IS_ENCODER_SUPPORTS_DRRS(intel_encoder->type)) {
+		DRM_DEBUG("DRRS: Unsupported Encoder\n");
+		return -EINVAL;
+	}
+
+	/* First check if Seamless DRRS is enabled from VBT struct */
+	if (dev_priv->vbt.drrs_type != SEAMLESS_DRRS_SUPPORT) {
+		DRM_DEBUG("Panel doesn't support SEAMLESS DRRS\n");
+		return -EPERM;
+	}
+
 	if (get_drrs_struct_index_for_connector(dev_priv, intel_connector)
 									>= 0) {
 		DRM_DEBUG("DRRS is already initialized for this connector\n");
@@ -348,13 +359,6 @@ int intel_drrs_init(struct drm_device *dev,
 	if (!drrs->encoder_ops) {
 		DRM_DEBUG("Encoder ops not initialized\n");
 		ret = -EINVAL;
-		goto err_out;
-	}
-
-	/* First check if DRRS is enabled from VBT struct */
-	if (dev_priv->vbt.drrs_type != SEAMLESS_DRRS_SUPPORT) {
-		DRM_DEBUG("Panel doesn't support SEAMLESS DRRS\n");
-		ret = -EPERM;
 		goto err_out;
 	}
 
