@@ -477,6 +477,191 @@ struct atomisp_formats_config {
 	uint32_t video_full_range_flag;
 };
 
+struct atomisp_dpc2_config {
+	int32_t metric1;
+	int32_t metric2;
+	int32_t metric3;
+	int32_t wb_gain_gr;
+	int32_t wb_gain_r;
+	int32_t wb_gain_b;
+	int32_t wb_gain_gb;
+};
+
+#define ATOMISP_CSS_NUMBER_OF_DEW_ENHANCE_SEGMENTS		9
+struct atomisp_eed1_8_config {
+	/**< Strength of zipper reduction. */
+	int32_t rbzp_strength;
+	/**< Strength of false color reduction. */
+	int32_t fcstrength;
+	/**< Threshold to prevent chroma coring due to noise or green disparity
+	   * in dark region. */
+	int32_t fcthres_0;
+	/**< Threshold to prevent chroma coring due to noise or green disparity
+	   * in bright region. */
+	int32_t fcthres_1;
+	/**< How much color saturation to maintain in high color saturation
+	   * region. */
+	int32_t fc_sat_coef;
+	/**< Chroma coring coefficient for tint color suppression. */
+	int32_t fc_coring_prm;
+	/**< Threshold for Non-Directional Reliability at dark region. */
+	int32_t aerel_thres0;
+	/**< Gain for Non-Directional Reliability at dark region. */
+	int32_t aerel_gain0;
+	/**< Threshold for Directional Reliability at dark region. */
+	int32_t derel_thres0;
+	/**< Gain for Directional Reliability at dark region. */
+	int32_t derel_gain0;
+	/**< Threshold for Non-Directional Reliability at bright region. */
+	int32_t aerel_thres1;
+	/**< Gain for Non-Directional Reliability at bright region. */
+	int32_t aerel_gain1;
+	/**< Threshold for Directional Reliability at bright region. */
+	int32_t derel_thres1;
+	/**< Gain for Directional Reliability at bright region. */
+	int32_t derel_gain1;
+	/**< Positive Edge Coring Threshold in dark region. */
+	int32_t coring_pos0;
+	/**< Positive Edge Coring Threshold in bright region. */
+	int32_t coring_pos1;
+	/**< Negative Edge Coring Threshold in dark region. */
+	int32_t coring_neg0;
+	/**< Negative Edge Coring Threshold in bright region. */
+	int32_t coring_neg1;
+	/**< Common Exponent of Gain. */
+	int32_t gain_exp;
+	/**< Gain for Positive Edge in dark region. */
+	int32_t gain_pos0;
+	/**< Gain for Positive Edge in bright region. */
+	int32_t gain_pos1;
+	/**< Gain for Negative Edge in dark region. */
+	int32_t gain_neg0;
+	/**< Gain for Negative Edge in bright region. */
+	int32_t gain_neg1;
+	/**< Margin for Positive Edge in dark region. */
+	int32_t pos_margin0;
+	/**< Margin for Positive Edge in bright region. */
+	int32_t pos_margin1;
+	/**< Margin for Negative Edge in dark region. */
+	int32_t neg_margin0;
+	/**< Margin for Negative Edge in bright region. */
+	int32_t neg_margin1;
+	/**< Segment data for directional edge weight: X. */
+	int32_t dew_enhance_seg_x[ATOMISP_CSS_NUMBER_OF_DEW_ENHANCE_SEGMENTS];
+	/**< Segment data for directional edge weight: Y. */
+	int32_t dew_enhance_seg_y[ATOMISP_CSS_NUMBER_OF_DEW_ENHANCE_SEGMENTS];
+	/**< Segment data for directional edge weight: Slope. */
+	int32_t dew_enhance_seg_slope[(ATOMISP_CSS_NUMBER_OF_DEW_ENHANCE_SEGMENTS
+		- 1)];
+	/**< Segment data for directional edge weight: Exponent. */
+	int32_t dew_enhance_seg_exp[(ATOMISP_CSS_NUMBER_OF_DEW_ENHANCE_SEGMENTS
+		- 1)];
+	int32_t dedgew_max;	/**< Max Weight for Directional Edge. */
+};
+
+struct atomisp_ob2_config {
+	uint32_t level_gr;
+	uint32_t level_r;
+	uint32_t level_b;
+	uint32_t level_gb;
+};
+
+struct atomisp_ctc2_config {
+	int32_t y_y0;
+	int32_t y_y1;
+	int32_t y_y2;
+	int32_t y_y3;
+	int32_t y_y4;
+	int32_t y_y5;
+	int32_t y_x1;
+	int32_t y_x2;
+	int32_t y_x3;
+	int32_t y_x4;
+	int32_t uv_y0;
+	int32_t uv_y1;
+	int32_t uv_x0;
+	int32_t uv_x1;
+};
+
+struct atomisp_iefd2_6_config {
+	int32_t horver_diag_coeff;
+	int32_t ed_horver_diag_coeff;
+	bool dir_smooth_enable;
+	int32_t dir_metric_update;
+	int32_t unsharp_c00;
+	int32_t unsharp_c01;
+	int32_t unsharp_c02;
+	int32_t unsharp_c11;
+	int32_t unsharp_c12;
+	int32_t unsharp_c22;
+	int32_t unsharp_weight;
+	int32_t unsharp_amount;
+	int32_t cu_dir_sharp_pow;
+	int32_t cu_dir_sharp_pow_bright;
+	int32_t cu_non_dir_sharp_pow;
+	int32_t cu_non_dir_sharp_pow_bright;
+	int32_t dir_far_sharp_weight;
+	int32_t rad_cu_dir_sharp_x1;
+	int32_t rad_cu_non_dir_sharp_x1;
+	int32_t rad_dir_far_sharp_weight;
+	int32_t sharp_nega_lmt_txt;
+	int32_t sharp_posi_lmt_txt;
+	int32_t sharp_nega_lmt_dir;
+	int32_t sharp_posi_lmt_dir;
+	int32_t clamp_stitch;
+	bool rad_enable;
+	int32_t rad_x_origin;
+	int32_t rad_y_origin;
+	int32_t rad_nf;
+	int32_t rad_inv_r2;
+	bool vssnlm_enable;
+	int32_t vssnlm_x0;
+	int32_t vssnlm_x1;
+	int32_t vssnlm_x2;
+	int32_t vssnlm_y1;
+	int32_t vssnlm_y2;
+	int32_t vssnlm_y3;
+	int32_t cu_ed_points_x[6];
+	int32_t cu_ed_slopes_a[5];
+	int32_t cu_ed_slopes_b[5];
+	int32_t cu_ed2_points_x[2];
+	int32_t cu_ed2_slopes_a;
+	int32_t cu_ed2_slopes_b;
+	int32_t cu_dir_sharp_points_x[4];
+	int32_t cu_dir_sharp_slopes_a[3];
+	int32_t cu_dir_sharp_slopes_b[3];
+	int32_t cu_non_dir_sharp_points_x[4];
+	int32_t cu_non_dir_sharp_slopes_a[3];
+	int32_t cu_non_dir_sharp_slopes_b[3];
+	int32_t cu_radial_points_x[6];
+	int32_t cu_radial_slopes_a[5];
+	int32_t cu_radial_slopes_b[5];
+	int32_t cu_vssnlm_points_x[2];
+	int32_t cu_vssnlm_slopes_a;
+	int32_t cu_vssnlm_slopes_b;
+};
+
+struct atomisp_macc1_5_config {
+	uint8_t exp;
+};
+
+/** Number of axes in the MACC table. */
+#define ATOMISP_CSS_MACC_NUM_AXES           16
+/** Number of coefficients per MACC axes. */
+#define ATOMISP_CSS_MACC_NUM_COEFS          4
+struct atomisp_macc1_5_table {
+	int16_t data[ATOMISP_CSS_MACC_NUM_COEFS * ATOMISP_CSS_MACC_NUM_AXES];
+};
+
+struct atomisp_xnr3_0_11_config {
+	int32_t weight_y0;
+	int32_t weight_y1;
+	int32_t weight_u0;
+	int32_t weight_u1;
+	int32_t weight_v0;
+	int32_t weight_v1;
+};
+
 struct atomisp_parameters {
 	struct atomisp_wb_config   *wb_config;  /* White Balance config */
 	struct atomisp_cc_config   *cc_config;  /* Color Correction config */
@@ -520,6 +705,14 @@ struct atomisp_parameters {
 	struct atomisp_dvs2_coefficients *dvs2_coefs; /* DVS 2.0 coefficients */
 	struct atomisp_capture_config   *capture_config;
 	struct atomisp_anr_thres   *anr_thres;
+	struct atomisp_dpc2_config *dpc2_config;
+	struct atomisp_eed1_8_config *eed1_8_config;
+	struct atomisp_ob2_config *ob2_config;
+	struct atomisp_ctc2_config *ctc2_config;
+	struct atomisp_iefd2_6_config *iefd2_6_config;
+	struct atomisp_macc1_5_config *macc1_5_config;
+	struct atomisp_macc1_5_table *macc1_5_table;
+	struct atomisp_xnr3_0_11_config *xnr3_0_11_config;
 
 	void	*lin_2500_config;       /* Skylake: Linearization config */
 	void	*obgrid_2500_config;    /* Skylake: OBGRID config */
@@ -900,6 +1093,81 @@ struct atomisp_acc_fw_load_to_pipe {
  */
 struct atomisp_s_runmode {
 	__u32 mode;
+};
+
+struct atomisp_record_header {
+    uint32_t uuid;
+    uint32_t size;
+};
+
+enum atomisp_config_uuid {
+    atomisp_wb_config_uuid = 1,
+    atomisp_dp_config_uuid = 2,
+    atomisp_dp_config2_uuid = 3,  /*ISP 2.6.1 specific block */
+    atomisp_cc_config_yuv2rgb_uuid = 4,
+    atomisp_tnr_config_uuid = 5,
+    atomisp_ecd_config_uuid = 6,
+    atomisp_fc_config_uuid = 7,
+    atomisp_ynr_config_uuid = 8,
+    atomisp_formats_config_uuid = 9,
+    atomisp_cnr_config_uuid = 10,
+    atomisp_aa_config1_uuid = 11 ,
+    atomisp_aa_config2_uuid = 12,
+    atomisp_ee_config_uuid = 13,
+    atomisp_macc_table_uuid = 14,
+    atomisp_macc_config_uuid = 15,
+    atomisp_nr_config_uuid = 16,
+    atomisp_ob_config_uuid = 17,
+    atomisp_xnr_config_uuid = 18,
+    atomisp_cc_config_rgb2yuv_uuid = 19,
+    atomisp_3a_config_uuid = 20,
+    atomisp_gc_config_uuid = 21,
+    atomisp_ce_config_uuid = 22,
+    atomisp_de_config_uuid = 23,
+    atomisp_config_id_uuid = 24,
+    atomisp_rgb1_gamma_table_uuid = 25,
+    atomisp_rgb2_gamma_table_uuid = 26,
+    atomisp_rgb3_gamma_table_uuid = 27,
+    atomisp_shading_table_uuid = 28,
+    atomisp_btdf_config_uuid = 29,
+    atomisp_bnr2_config_uuid = 30,
+    atomisp_bnlm_config_uuid = 31,
+    atomisp_eed_config_uuid = 32,
+    atomisp_xnr3_0_11_config_uuid = 33,
+    atomisp_iefd_config_uuid = 34,
+    atomisp_ctc2_config_uuid = 35,
+    atomisp_xnr3_0_5_config_uuid = 36, /*end of the AIC runtime config records */
+    atomisp_ctc_config_uuid,
+    atomisp_dvs_6axis_config_uuid,
+    atomisp_anr_config_uuid,
+    atomisp_dz_config_uuid,
+    atomisp_gamma_table_uuid,
+    atomisp_ctc_table_uuid,
+    atomisp_xnr_table_uuid,
+    atomisp_vector_uuid,
+    atomisp_morph_table_uuid,
+    atomisp_dvs_coefficients_uuid,
+    atomisp_dvs2_coefficients_uuid,
+    atomisp_capture_config_uuid,
+    atomisp_anr_thres_uuid,
+    atomisp_2500_lin_kernel_config_uuid,
+    atomisp_2500_obgrid_kernel_config_uuid,
+    atomisp_2500_bnr_kernel_config_uuid,
+    atomisp_2500_shd_kernel_config_uuid,
+    atomisp_2500_dm_kernel_config_uuid,
+    atomisp_2500_rgbpp_kernel_config_uuid,
+    atomisp_2500_yuvp1_kernel_config_uuid,
+    atomisp_2500_yuvp2_kernel_config_uuid,
+    atomisp_2500_tnr_kernel_config_uuid,
+    atomisp_2500_dpc_kernel_config_uuid,
+    atomisp_2500_awb_kernel_config_uuid,
+    atomisp_2500_awb_fr_kernel_config_uuid,
+    atomisp_2500_anr_kernel_config_uuid,
+    atomisp_2500_af_kernel_config_uuid,
+    atomisp_2500_ae_kernel_config_uuid,
+    atomisp_2500_bds_kernel_config_uuid,
+    atomisp_2500_dvs_kernel_config_uuid,
+    atomisp_frame_uuid
 };
 
 #define ATOMISP_ACC_FW_LOAD_FL_PREVIEW		(1 << 0)
