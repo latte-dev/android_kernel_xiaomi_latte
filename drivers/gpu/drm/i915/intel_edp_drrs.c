@@ -113,7 +113,7 @@ int intel_edp_drrs_init(struct i915_drrs *drrs,
 
 	if (!intel_dp->drrs_ops ||
 			!intel_dp->drrs_ops->set_drrs_state) {
-		DRM_ERROR("Required platform ops are NULL\n");
+		DRM_DEBUG("Required platform ops are NULL\n");
 		return ret;
 	}
 

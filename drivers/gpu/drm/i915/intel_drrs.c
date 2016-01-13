@@ -310,19 +310,19 @@ int intel_drrs_init(struct drm_device *dev,
 	int ret = 0, index;
 
 	if (!IS_PLATFORM_HAS_DRRS(dev)) {
-		DRM_ERROR("DRRS is not enabled on this platform\n");
+		DRM_DEBUG("DRRS is not enabled on this platform\n");
 		return -EPERM;
 	}
 
 	if (get_drrs_struct_index_for_connector(dev_priv, intel_connector)
 									>= 0) {
-		DRM_ERROR("DRRS is already initialized for this connector\n");
+		DRM_DEBUG("DRRS is already initialized for this connector\n");
 		return -EINVAL;
 	}
 
 	index = get_free_drrs_struct_index(dev_priv);
 	if (index < 0) {
-		DRM_ERROR("DRRS is initialized for all pipes\n");
+		DRM_DEBUG("DRRS is initialized for all pipes\n");
 		return -EBUSY;
 	}
 
@@ -340,34 +340,34 @@ int intel_drrs_init(struct drm_device *dev,
 	} else if (intel_encoder->type == INTEL_OUTPUT_EDP) {
 		drrs->encoder_ops = get_intel_edp_drrs_ops();
 	} else {
-		DRM_ERROR("DRRS: Unsupported Encoder\n");
+		DRM_DEBUG("DRRS: Unsupported Encoder\n");
 		ret = -EINVAL;
 		goto err_out;
 	}
 
 	if (!drrs->encoder_ops) {
-		DRM_ERROR("Encoder ops not initialized\n");
+		DRM_DEBUG("Encoder ops not initialized\n");
 		ret = -EINVAL;
 		goto err_out;
 	}
 
 	/* First check if DRRS is enabled from VBT struct */
 	if (dev_priv->vbt.drrs_type != SEAMLESS_DRRS_SUPPORT) {
-		DRM_INFO("Panel doesn't support SEAMLESS DRRS\n");
+		DRM_DEBUG("Panel doesn't support SEAMLESS DRRS\n");
 		ret = -EPERM;
 		goto err_out;
 	}
 
 	if (!drrs->encoder_ops->init || !drrs->encoder_ops->exit ||
 					!drrs->encoder_ops->set_drrs_state) {
-		DRM_ERROR("Essential func ptrs are NULL\n");
+		DRM_DEBUG("Essential func ptrs are NULL\n");
 		ret = -EINVAL;
 		goto err_out;
 	}
 
 	ret = drrs->encoder_ops->init(drrs, fixed_mode);
 	if (ret < 0) {
-		DRM_ERROR("Encoder DRRS init failed\n");
+		DRM_DEBUG("Encoder DRRS init failed\n");
 		goto err_out;
 	}
 

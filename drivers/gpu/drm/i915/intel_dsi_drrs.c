@@ -84,7 +84,7 @@ retry:
 		 * PLL Didn't lock for the programmed value
 		 * fall back to prev mode
 		 */
-		DRM_ERROR("Falling back to the previous DRRS state. %d->%d\n",
+		DRM_DEBUG("Falling back to the previous DRRS state. %d->%d\n",
 					work->target_rr_type,
 					drrs->drrs_state.current_rr_type);
 
@@ -112,9 +112,9 @@ retry:
 		 * mode all didn't go through.
 		 */
 		if (fallback_attempt)
-			DRM_ERROR("DRRS State Fallback attempt failed\n");
+			DRM_DEBUG("DRRS State Fallback attempt failed\n");
 		if (ret == -ETIMEDOUT)
-			DRM_ERROR("TIMEDOUT in all retry attempt\n");
+			DRM_DEBUG("TIMEDOUT in all retry attempt\n");
 	}
 
 	drm_mode_destroy(intel_encoder->base.dev, work->target_mode);
@@ -205,7 +205,7 @@ intel_dsi_calc_panel_downclock(struct i915_drrs *drrs,
 
 	if (dsi_drrs->min_vrefresh == 0 ||
 			dsi_drrs->min_vrefresh >= fixed_mode->vrefresh) {
-		DRM_ERROR("Invalid min Vrefresh. %d\n", dsi_drrs->min_vrefresh);
+		DRM_DEBUG("Invalid min Vrefresh. %d\n", dsi_drrs->min_vrefresh);
 		return NULL;
 	}
 
@@ -246,7 +246,7 @@ int intel_dsi_drrs_init(struct i915_drrs *drrs,
 	/* Modes Initialization */
 	downclock_mode = intel_dsi_calc_panel_downclock(drrs, fixed_mode);
 	if (!downclock_mode) {
-		DRM_ERROR("Downclock mode not Found\n");
+		DRM_DEBUG("Downclock mode not Found\n");
 		ret = -ENOMEM;
 		goto out_err_1;
 	}
@@ -261,14 +261,14 @@ int intel_dsi_drrs_init(struct i915_drrs *drrs,
 		/* VLV and CHV */
 		dsi_drrs->ops = get_vlv_dsi_drrs_ops();
 	} else {
-		DRM_ERROR("DRRS: Unsupported platform\n");
+		DRM_DEBUG("DRRS: Unsupported platform\n");
 		ret = -EINVAL;
 		goto out_err_2;
 	}
 
 	if (!dsi_drrs->ops || !dsi_drrs->ops->mnp_calculate_for_mode ||
 					!dsi_drrs->ops->configure_dsi_pll) {
-		DRM_ERROR("DSI platform ops not initialized\n");
+		DRM_DEBUG("DSI platform ops not initialized\n");
 		ret = -EINVAL;
 		goto out_err_2;
 	}
