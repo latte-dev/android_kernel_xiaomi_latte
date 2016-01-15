@@ -3235,24 +3235,15 @@ void atomisp_apply_css_parameters(
 	if (css_param->update_flag.dvs_6axis_config)
 		atomisp_css_set_dvs_6axis(asd, css_param->dvs_6axis);
 
-	/* Workaround for BTNS, apply default OB2 setting for IMX227.
-	   before AIQ for ISP2.7 is available,  we have to keep such
-	   workaround for a reasonable image color
-	 */
-#ifdef CONFIG_EXTERNAL_BTNS_CAMERA
-	{
-		static struct atomisp_css_ob2_config imx227_ob2_config =
-			{1024, 1024, 1024, 1024};
-		atomisp_css_set_ob2_config(asd, &imx227_ob2_config);
-	}
-#endif
-
 	/* Add some parameters for isp2.7 */
 	if (css_param->update_flag.dpc2_config)
 		atomisp_css_set_dpc2_config(asd, &css_param->dpc2_config);
 
 	if (css_param->update_flag.eed1_8_config)
 		atomisp_css_set_eed1_8_config(asd, &css_param->eed1_8_config);
+
+	if (css_param->update_flag.ob2_config)
+		atomisp_css_set_ob2_config(asd, &css_param->ob2_config);
 
 	if (css_param->update_flag.ctc2_config)
 		atomisp_css_set_ctc2_config(asd, &css_param->ctc2_config);
