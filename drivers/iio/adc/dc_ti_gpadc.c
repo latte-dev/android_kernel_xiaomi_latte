@@ -483,6 +483,9 @@ static int dc_ti_gpadc_suspend(struct device *dev)
 	struct gpadc_info *info = iio_priv(indio_dev);
 
 	mutex_lock(&info->lock);
+
+	/* Set MIRQ Register */
+	intel_soc_pmic_setb(DC_ADC_IRQ_MASK_REG, IRQ_MASK_ADC);
 	return 0;
 }
 
@@ -490,6 +493,9 @@ static int dc_ti_gpadc_resume(struct device *dev)
 {
 	struct iio_dev *indio_dev = dev_get_drvdata(dev);
 	struct gpadc_info *info = iio_priv(indio_dev);
+
+	/* Clear MIRQ Register */
+	intel_soc_pmic_clearb(DC_ADC_IRQ_MASK_REG, IRQ_MASK_ADC);
 
 	mutex_unlock(&info->lock);
 	return 0;
