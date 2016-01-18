@@ -15242,6 +15242,9 @@ bool chv_upfront_link_train(struct drm_device *dev,
 		if (intel_crtc_active(&crtc->base))
 			continue;
 
+		if (intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_DSI))
+			continue;
+
 		connector->new_encoder = encoder;
 		encoder->new_crtc = crtc;
 		encoder->base.crtc = &crtc->base;
