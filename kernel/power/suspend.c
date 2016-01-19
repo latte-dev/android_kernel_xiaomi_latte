@@ -272,7 +272,8 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 			log_suspend_abort_reason(suspend_abort);
 		}
 		syscore_resume();
-	}
+	} else
+		clockevents_notify(CLOCK_EVT_NOTIFY_RESUME, NULL);
 
 	clockevents_notify(CLOCK_EVT_NOTIFY_RESUME, NULL);
 
