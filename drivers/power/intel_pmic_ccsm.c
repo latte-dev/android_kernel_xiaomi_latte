@@ -2007,6 +2007,12 @@ static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 		if (chc.is_notify_otg) {
 			otg_evt = cable_state ? USB_EVENT_VBUS : USB_EVENT_NONE;
 			notify_otg = true;
+		} else if (!cable_state) {
+			/*
+			 * enable the flag to notify otg for the next events by
+			 * default, if the wall charger is removed.
+			 */
+			chc.is_notify_otg = true;
 		}
 		break;
 	case CABLE_TYPE_HOST:
@@ -2098,6 +2104,8 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 	chc.intmap = chc.pdata->intmap;
 	chc.intmap_size = chc.pdata->intmap_size;
 	chc.vbus_state = VBUS_ENABLE;
+	/* by default all the events should be notified to USB */
+	chc.is_notify_otg = true;
 
 	chc.pmic_model = get_pmic_model(pdev->name);
 	dev_info(chc.dev, "PMIC model is %d\n", chc.pmic_model);
