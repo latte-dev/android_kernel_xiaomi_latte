@@ -29,7 +29,7 @@
 #else
 #include <media/v4l2-chip-ident.h>
 #endif
-#ifdef CONFIG_PLATFORM_BTNS
+#ifdef CONFIG_EXTERNAL_BTNS_CAMERA
 #include "ov8858_btns.h"
 #else
 #include "ov8858.h"
@@ -1675,7 +1675,7 @@ static int __update_ov8858_device_settings(struct ov8858_device *dev,
 					   u16 sensor_id)
 {
 	if (sensor_id == OV8858_CHIP_ID)
-#ifdef CONFIG_PLATFORM_BTNS
+#ifdef CONFIG_EXTERNAL_BTNS_CAMERA
 		dev->vcm_driver = &ov8858_vcms[OV8858_ID_DEFAULT];
 #else
 		dev->vcm_driver = &ov8858_vcms[OV8858_SUNNY];
@@ -1933,7 +1933,7 @@ static int ov8858_g_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_EXPOSURE_ABSOLUTE:
 		ctrl->val = dev->exposure;
 		break;
-#ifdef CONFIG_PLATFORM_BTNS
+#ifdef CONFIG_EXTERNAL_BTNS_CAMERA
 	case V4L2_CID_LINK_FREQ:
 		ctrl->val = 360000000;
 		break;
@@ -2259,7 +2259,7 @@ static const struct v4l2_ctrl_config ctrls[] = {
 		.max = V4L2_EXPOSURE_APERTURE_PRIORITY,
 		.step = 1,
 	},
-#ifdef CONFIG_PLATFORM_BTNS
+#ifdef CONFIG_EXTERNAL_BTNS_CAMERA
 	{
 		.ops = &ctrl_ops,
 		.id = V4L2_CID_LINK_FREQ,

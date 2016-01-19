@@ -3239,7 +3239,7 @@ void atomisp_apply_css_parameters(
 	   before AIQ for ISP2.7 is available,	we have to keep such
 	   workaround for a reasonable image color
 	 */
-#ifdef CONFIG_PLATFORM_BTNS
+#ifdef CONFIG_EXTERNAL_BTNS_CAMERA
 	{
 		static struct atomisp_css_ob2_config imx227_ob2_config =
 			{1024, 1024, 1024, 1024};
