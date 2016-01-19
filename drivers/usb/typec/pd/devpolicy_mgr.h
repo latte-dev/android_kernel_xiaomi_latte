@@ -62,6 +62,10 @@ enum batt_soc_status {
 			psy->type == POWER_SUPPLY_TYPE_USB_ACA || \
 			psy->type == POWER_SUPPLY_TYPE_USB_TYPEC)
 
+#define IS_VCSTATE_VALID(x)	(x == VCONN_NONE ||	\
+					x == VCONN_SINK ||	\
+					x == VCONN_SOURCE)
+
 /* host mode: max of 5V, 1A */
 #define VBUS_5V		5000
 #define IBUS_1A		1000
@@ -91,6 +95,7 @@ enum devpolicy_mgr_events {
 	DEVMGR_EVENT_UFP_DISCONNECTED,
 	DEVMGR_EVENT_PR_SWAP,
 	DEVMGR_EVENT_DR_SWAP,
+	DEVMGR_EVENT_VCONN_SWAP,
 	DEVMGR_EVENT_VBUS_ON,
 	DEVMGR_EVENT_VBUS_OFF,
 };
@@ -105,6 +110,13 @@ enum policy_type {
 enum role_type {
 	ROLE_TYPE_DATA,
 	ROLE_TYPE_POWER,
+	ROLE_TYPE_VCONN,
+};
+
+enum vconn_state {
+	VCONN_NONE,
+	VCONN_SINK,
+	VCONN_SOURCE,
 };
 
 enum pwr_role {
@@ -165,6 +177,7 @@ struct devpolicy_mgr {
 	enum pwr_role prev_prole;
 	enum data_role cur_drole;
 	enum data_role prev_drole;
+	enum vconn_state cur_vcstate;
 	struct policy *p;
 	/* power delivery class device*/
 	struct device *pd_dev;
@@ -189,6 +202,7 @@ struct dpm_interface {
 					struct power_cap *cap);
 	int (*get_sink_power_caps)(struct devpolicy_mgr *dpm,
 					struct power_caps *caps);
+	bool (*get_vconn_state)(struct devpolicy_mgr *dpm);
 
 	/* methods to get/set the sink/source port states */
 	enum cable_state (*get_cable_state)(struct devpolicy_mgr *dpm,
@@ -198,6 +212,8 @@ struct dpm_interface {
 					enum data_role drole);
 	void (*update_power_role)(struct devpolicy_mgr *dpm,
 					enum pwr_role prole);
+	int (*set_vconn_state)(struct devpolicy_mgr *dpm,
+					enum vconn_state vcstate);
 	int (*set_charger_mode)(struct devpolicy_mgr *dpm,
 					enum charger_mode mode);
 	int (*update_charger)(struct devpolicy_mgr *dpm,
@@ -279,16 +295,18 @@ static inline bool devpolicy_get_vbus_state(struct devpolicy_mgr *dpm)
 
 static inline bool devpolicy_get_vconn_state(struct devpolicy_mgr *dpm)
 {
-	if (dpm && dpm->phy && dpm->phy->enable_vconn)
-		return dpm->phy->is_vconn_enabled(dpm->phy);
+	if (dpm && dpm->interface && dpm->interface->get_vconn_state)
+		return dpm->interface->get_vconn_state(dpm);
+
 	return false;
 }
 
 static inline int devpolicy_set_vconn_state(struct devpolicy_mgr *dpm,
-								bool state)
+						enum vconn_state vcstate)
 {
-	if (dpm && dpm->phy && dpm->phy->enable_vconn)
-		return dpm->phy->enable_vconn(dpm->phy, state);
+	if (dpm && dpm->interface && dpm->interface->set_vconn_state)
+		return dpm->interface->set_vconn_state(dpm, vcstate);
+
 	return -EINVAL;
 }
 

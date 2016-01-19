@@ -432,6 +432,56 @@ static int dpm_notify_cable_state(struct devpolicy_mgr *dpm,
 	return 0;
 }
 
+/*
+ * dpm_update_vconn_state will get called to update the dpm's vconn state,
+ * to expose the current vconn state to the outside world.
+ */
+static void dpm_update_vconn_state(struct devpolicy_mgr *dpm,
+				enum vconn_state vcstate)
+{
+	mutex_lock(&dpm->role_lock);
+	if (dpm->cur_vcstate == vcstate) {
+		pr_warn("DPM: vconn is already in %d state\n", vcstate);
+		mutex_unlock(&dpm->role_lock);
+		return;
+	}
+
+	dpm->cur_vcstate = vcstate;
+	pr_debug("DPM: vconn state updated to %d\n", vcstate);
+	mutex_unlock(&dpm->role_lock);
+}
+
+static int dpm_set_vconn_state(struct devpolicy_mgr *dpm,
+					enum vconn_state vcstate)
+{
+	int ret = -EINVAL;
+
+	if (dpm && dpm->phy && IS_VCSTATE_VALID(vcstate)) {
+		if (vcstate == VCONN_NONE || vcstate == VCONN_SINK)
+			ret = typec_enable_vconn(dpm->phy, false);
+		else if (vcstate == VCONN_SOURCE)
+			ret = typec_enable_vconn(dpm->phy, true);
+
+		if (ret < 0)
+			pr_err("DPM: Unable to enable/disable vconn %d\n", ret);
+		else
+			dpm_update_vconn_state(dpm, vcstate);
+	} else {
+		pr_warn("DPM: Invalid input to enable/disable vconn state %d\n",
+				vcstate);
+	}
+
+	return ret;
+}
+
+static bool dpm_get_vconn_state(struct devpolicy_mgr *dpm)
+{
+	if (dpm && dpm->phy)
+		return typec_is_vconn_enabled(dpm->phy);
+
+	return false;
+}
+
 static void dpm_update_data_role(struct devpolicy_mgr *dpm,
 				enum data_role drole)
 {
@@ -614,61 +664,66 @@ static void dpm_handle_ext_cable_event(struct devpolicy_mgr *dpm,
 	enum devpolicy_mgr_events dpm_evt = DEVMGR_EVENT_NONE;
 	enum pwr_role prole;
 	enum data_role drole;
+	enum vconn_state vcstate;
 
-		pr_debug("DPM:%s: Cable type=%s - %s\n", __func__,
+	pr_debug("DPM:%s: Cable type=%s - %s\n", __func__,
 			((evt->cbl_type == CABLE_TYPE_CONSUMER) ? "Consumer" :
 			((evt->cbl_type == CABLE_TYPE_PROVIDER) ? "Provider" :
 			"Unknown")),
 			evt->cbl_state ? "Connected" : "Disconnected");
 
-		mutex_lock(&dpm->role_lock);
-		if (evt->cbl_type == CABLE_TYPE_CONSUMER
-			&& evt->cbl_state != dpm->consumer_state) {
-			dpm->consumer_state = evt->cbl_state;
-			if (evt->cbl_state == CABLE_ATTACHED) {
-				dpm_evt = DEVMGR_EVENT_UFP_CONNECTED;
-				drole = DATA_ROLE_UFP;
-				prole = POWER_ROLE_SINK;
-			} else if (evt->cbl_state == CABLE_DETACHED) {
-				dpm_evt = DEVMGR_EVENT_UFP_DISCONNECTED;
-				drole = DATA_ROLE_NONE;
-				prole = POWER_ROLE_NONE;
-			} else
-				pr_warn("DPM:%s: Unknown consumer state=%d\n",
+	mutex_lock(&dpm->role_lock);
+	if (evt->cbl_type == CABLE_TYPE_CONSUMER
+		&& evt->cbl_state != dpm->consumer_state) {
+		dpm->consumer_state = evt->cbl_state;
+		if (evt->cbl_state == CABLE_ATTACHED) {
+			dpm_evt = DEVMGR_EVENT_UFP_CONNECTED;
+			drole = DATA_ROLE_UFP;
+			prole = POWER_ROLE_SINK;
+			vcstate = VCONN_SINK;
+		} else if (evt->cbl_state == CABLE_DETACHED) {
+			dpm_evt = DEVMGR_EVENT_UFP_DISCONNECTED;
+			drole = DATA_ROLE_NONE;
+			prole = POWER_ROLE_NONE;
+			vcstate = VCONN_NONE;
+		} else
+			pr_warn("DPM: %s: Unknown consumer state=%d\n",
 					__func__, evt->cbl_state);
 
-		} else if (evt->cbl_type == CABLE_TYPE_PROVIDER
+	} else if (evt->cbl_type == CABLE_TYPE_PROVIDER
 			&& evt->cbl_state != dpm->provider_state) {
 			dpm->provider_state = evt->cbl_state;
-			if (evt->cbl_state == CABLE_ATTACHED) {
-				dpm_evt = DEVMGR_EVENT_DFP_CONNECTED;
-				drole = DATA_ROLE_DFP;
-				prole = POWER_ROLE_SOURCE;
-			} else if (evt->cbl_state == CABLE_DETACHED) {
-				dpm_evt = DEVMGR_EVENT_DFP_DISCONNECTED;
-				drole = DATA_ROLE_NONE;
-				prole = POWER_ROLE_NONE;
-			} else
-				pr_warn("DPM:%s: Unknown consumer state=%d\n",
-					__func__, evt->cbl_state);
+		if (evt->cbl_state == CABLE_ATTACHED) {
+			dpm_evt = DEVMGR_EVENT_DFP_CONNECTED;
+			drole = DATA_ROLE_DFP;
+			prole = POWER_ROLE_SOURCE;
+			vcstate = VCONN_SOURCE;
+		} else if (evt->cbl_state == CABLE_DETACHED) {
+			dpm_evt = DEVMGR_EVENT_DFP_DISCONNECTED;
+			drole = DATA_ROLE_NONE;
+			prole = POWER_ROLE_NONE;
+			vcstate = VCONN_NONE;
 		} else
-			pr_debug("DPM: consumer/provider state not changed\n");
+			pr_warn("DPM: %s: Unknown consumer state=%d\n",
+				__func__, evt->cbl_state);
+	} else
+		pr_debug("DPM: consumer/provider state not changed\n");
 
 
-		/* Notify policy engine on valid event*/
-		if (dpm_evt != DEVMGR_EVENT_NONE) {
-			dpm->prev_drole = dpm->cur_drole;
-			dpm->cur_drole = drole;
+	/* Notify policy engine on valid event*/
+	if (dpm_evt != DEVMGR_EVENT_NONE) {
+		dpm->prev_drole = dpm->cur_drole;
+		dpm->cur_drole = drole;
 
-			dpm->prev_prole = dpm->cur_prole;
-			dpm->cur_prole = prole;
-			mutex_unlock(&dpm->role_lock);
+		dpm->prev_prole = dpm->cur_prole;
+		dpm->cur_prole = prole;
 
-			dpm_notify_policy_evt(dpm, dpm_evt);
+		dpm->cur_vcstate = vcstate;
+		mutex_unlock(&dpm->role_lock);
 
-		} else
-			mutex_unlock(&dpm->role_lock);
-
+		dpm_notify_policy_evt(dpm, dpm_evt);
+	} else
+		mutex_unlock(&dpm->role_lock);
 }
 
 static void dpm_cable_worker(struct work_struct *work)
@@ -685,7 +740,7 @@ static void dpm_cable_worker(struct work_struct *work)
 		list_del(&evt->node);
 		spin_unlock_irqrestore(&dpm->cable_event_queue_lock, flags);
 		/* Handle the event */
-		pr_debug("DPM:%s: Processing event\n", __func__);
+		pr_debug("DPM: %s: Processing event\n", __func__);
 		dpm_handle_ext_cable_event(dpm, evt);
 		kfree(evt);
 
@@ -807,6 +862,10 @@ static void dpm_trigger_role_swap(struct devpolicy_mgr *dpm,
 		dpm_notify_policy_evt(dpm,
 			DEVMGR_EVENT_PR_SWAP);
 		break;
+	case ROLE_TYPE_VCONN:
+		pr_debug("DPM: %s Triggering vconn swap\n", __func__);
+		dpm_notify_policy_evt(dpm, DEVMGR_EVENT_VCONN_SWAP);
+		break;
 	default:
 		pr_warn("DPM:%s: Invalid role type\n", __func__);
 	}
@@ -838,12 +897,14 @@ enum pd_sysfs_entries {
 	PD_DEV_SYSFS_NAME,
 	PD_DEV_SYSFS_PROLE,
 	PD_DEV_SYSFS_DROLE,
+	PD_DEV_SYSFS_VCONN,
 };
 
 static char *pd_dev_sysfs_strs[] = {
 	"dev_name",
 	"power_role",
 	"data_role",
+	"vconn",
 };
 
 /* Order and name should be same as pd_dev_sysfs_strs.*/
@@ -852,6 +913,7 @@ pd_dev_attrs[ARRAY_SIZE(pd_dev_sysfs_strs)] = {
 	PD_DEV_ATTR(dev_name),
 	PD_DEV_ATTR(power_role),
 	PD_DEV_ATTR(data_role),
+	PD_DEV_ATTR(vconn),
 };
 
 static struct attribute *
@@ -866,6 +928,18 @@ static const struct attribute_group *pd_attr_groups[] = {
 	&pd_attr_group,
 	NULL,
 };
+
+static enum vconn_state dpm_str_to_vcstate(const char *str, int cnt)
+{
+	enum vconn_state vcstate = VCONN_NONE;
+
+	if (!strncmp(str, PD_SYSFS_ROLE_TEXT_SINK, cnt))
+		vcstate = VCONN_SINK;
+	else if (!strncmp(str, PD_SYSFS_ROLE_TEXT_SRC, cnt))
+		vcstate = VCONN_SOURCE;
+
+	return vcstate;
+}
 
 static enum pwr_role dpm_str_to_prole(const char *str, int cnt)
 {
@@ -889,6 +963,22 @@ static enum data_role dpm_str_to_drole(const char *str, int cnt)
 		drole = DATA_ROLE_DFP;
 
 	return drole;
+}
+
+static void dpm_vcstate_to_str(enum vconn_state vcstate, char *str)
+{
+	int max_len = sizeof(str);
+
+	switch (vcstate) {
+	case VCONN_SINK:
+		strncpy(str, PD_SYSFS_ROLE_TEXT_SINK, max_len);
+		break;
+	case VCONN_SOURCE:
+		strncpy(str, PD_SYSFS_ROLE_TEXT_SRC, max_len);
+		break;
+	default:
+		strncpy(str, PD_SYSFS_ROLE_TEXT_NONE, max_len);
+	}
 }
 
 static void dpm_prole_to_str(enum pwr_role prole, char *str)
@@ -965,7 +1055,15 @@ static ssize_t dpm_pd_sysfs_show_property(struct device *dev,
 		cnt = snprintf(buf, PD_SYSFS_ROLE_TEXT_MAX_LEN,
 					"%s\n", role_str);
 		break;
+	case PD_DEV_SYSFS_VCONN:
+		mutex_lock(&dpm->role_lock);
+		role = dpm->cur_vcstate;
+		mutex_unlock(&dpm->role_lock);
 
+		dpm_vcstate_to_str(role, role_str);
+		cnt = snprintf(buf, PD_SYSFS_ROLE_TEXT_MAX_LEN,
+					"%s\n", role_str);
+		break;
 	default:
 		dev_warn(dev, "%s: Invalid attribute\n", __func__);
 	}
@@ -977,6 +1075,7 @@ static ssize_t dpm_pd_sysfs_store_property(struct device *dev,
 {
 	enum pwr_role req_prole, cur_prole;
 	enum data_role req_drole, cur_drole;
+	enum vconn_state req_vcstate, cur_vcstate;
 	struct devpolicy_mgr *dpm = dev_get_drvdata(dev);
 	const ptrdiff_t off = attr - pd_dev_attrs;
 
@@ -1015,6 +1114,24 @@ static ssize_t dpm_pd_sysfs_store_property(struct device *dev,
 			dpm_trigger_role_swap(dpm, ROLE_TYPE_DATA);
 		}
 		break;
+	case PD_DEV_SYSFS_VCONN:
+		req_vcstate = dpm_str_to_vcstate(buf, count - 1);
+		mutex_lock(&dpm->role_lock);
+		cur_vcstate = dpm->cur_vcstate;
+		mutex_unlock(&dpm->role_lock);
+		dev_dbg(dev, "vconn state to set %d\n", req_vcstate);
+		if (cur_vcstate != req_vcstate &&
+			req_vcstate != VCONN_NONE &&
+			(cur_vcstate == VCONN_SOURCE ||
+			 cur_vcstate == VCONN_SINK)) {
+			/* Trigger vconn swap. */
+			dpm_trigger_role_swap(dpm, ROLE_TYPE_VCONN);
+		} else {
+			dev_warn(dev,
+				"%s Can't request VCS in state %d for state %d",
+				__func__, cur_vcstate, req_vcstate);
+		}
+		break;
 	default:
 		dev_warn(dev, "%s: Invalid attribute\n", __func__);
 		break;
@@ -1036,6 +1153,7 @@ static umode_t dpm_pd_sysfs_attr_is_visible(struct kobject *kobj,
 		break;
 	case PD_DEV_SYSFS_PROLE:
 	case PD_DEV_SYSFS_DROLE:
+	case PD_DEV_SYSFS_VCONN:
 		mode = S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR;
 		break;
 	default:
@@ -1144,6 +1262,8 @@ static struct dpm_interface interface = {
 	.get_sink_power_cap = dpm_get_sink_power_cap,
 	.get_sink_power_caps = dpm_get_sink_power_caps,
 	.get_cable_state = dpm_get_cable_state,
+	.get_vconn_state = dpm_get_vconn_state,
+	.set_vconn_state = dpm_set_vconn_state,
 	.set_charger_mode = dpm_set_charger_mode,
 	.update_charger = dpm_update_charger,
 	.get_min_current = dpm_get_min_current,

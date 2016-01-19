@@ -126,7 +126,7 @@ static void pe_do_dpm_reset_entry(struct policy_engine *pe)
 	} else
 		log_err("Unexpected pwr role =%d", pe->cur_prole);
 	/*VCONN Off*/
-	devpolicy_set_vconn_state(pe->p.dpm, false);
+	devpolicy_set_vconn_state(pe->p.dpm, VCONN_NONE);
 }
 
 static void pe_do_dpm_reset_complete(struct policy_engine *pe)
@@ -135,7 +135,7 @@ static void pe_do_dpm_reset_complete(struct policy_engine *pe)
 		/* VBUS On if source*/
 		devpolicy_set_vbus_state(pe->p.dpm, true);
 		/*VCONN on if source*/
-		devpolicy_set_vconn_state(pe->p.dpm, true);
+		devpolicy_set_vconn_state(pe->p.dpm, VCONN_SOURCE);
 		/* Reset data role to DFP*/
 		pe_set_data_role(pe, DATA_ROLE_DFP);
 	} else if (pe->cur_prole == POWER_ROLE_SINK) {
@@ -352,6 +352,11 @@ static void pe_handle_gcrc_received(struct policy_engine *pe)
 		else
 			pe_change_state(pe, PE_VCS_TURN_ON_VCONN);
 		break;
+	case PE_VCS_SEND_SWAP:
+		/* Start sender response timer */
+		pe_start_timer(pe, SENDER_RESPONSE_TIMER,
+					PE_TIME_SENDER_RESPONSE);
+		break;
 	case PE_DFP_UFP_VDM_IDENTITY_REQUEST:
 	case PE_DFP_VDM_SVIDS_REQUEST:
 	case PE_DFP_VDM_MODES_REQUEST:
@@ -418,7 +423,13 @@ static int policy_engine_process_ctrl_msg(struct policy *p,
 		} else if (pe->cur_state == PE_SNK_SEND_SOFT_RESET) {
 			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
 			pe_change_state(pe, PE_SNK_WAIT_FOR_CAPABILITIES);
-
+		} else if (pe->cur_state == PE_VCS_SEND_SWAP) {
+			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
+			if (devpolicy_get_vconn_state(pe->p.dpm)) {
+				pe_change_state(pe,
+						PE_VCS_WAIT_FOR_VCONN);
+			} else
+				pe_change_state(pe, PE_VCS_TURN_ON_VCONN);
 		} else {
 			log_warn("Accept received in wrong state=%d",
 					pe->cur_state);
@@ -433,24 +444,24 @@ static int policy_engine_process_ctrl_msg(struct policy *p,
 			else
 				pe_change_state(pe,
 					PE_SNK_WAIT_FOR_CAPABILITIES);
-
 		} else if (pe->cur_state == PE_DRS_DFP_UFP_SEND_DR_SWAP ||
 				pe->cur_state == PE_DRS_UFP_DFP_SEND_DR_SWAP) {
 			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
 			log_info("DR SWAP Rejected");
 			pe_change_state_to_snk_or_src_ready(pe);
-
 		} else if (pe->cur_state == PE_PRS_SRC_SNK_SEND_PR_SWAP) {
 			log_dbg("PR SWAP Rejected");
 			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
 			pe->is_pr_swap_rejected = true;
 			pe_change_state(pe, PE_SRC_READY);
-
 		} else if (pe->cur_state == PE_PRS_SNK_SRC_SEND_PR_SWAP) {
 			log_dbg("PR SWAP Rejected");
 			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
 			pe_change_state(pe, PE_SNK_READY);
-
+		} else if (pe->cur_state == PE_VCS_SEND_SWAP) {
+			log_info("VCS Request Rejected! moving to ready state");
+			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
+			pe_change_state_to_snk_or_src_ready(pe);
 		} else {
 			log_warn("Reject received in wrong state=%d",
 					pe->cur_state);
@@ -465,20 +476,20 @@ static int policy_engine_process_ctrl_msg(struct policy *p,
 			else
 				pe_change_state(pe,
 					PE_SNK_WAIT_FOR_CAPABILITIES);
-
 		} else if (pe->cur_state == PE_DRS_DFP_UFP_SEND_DR_SWAP ||
 				pe->cur_state == PE_DRS_UFP_DFP_SEND_DR_SWAP) {
 			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
 			pe_change_state_to_snk_or_src_ready(pe);
-
 		} else if (pe->cur_state == PE_PRS_SRC_SNK_SEND_PR_SWAP) {
 			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
 			pe_change_state(pe, PE_SRC_READY);
-
 		} else if (pe->cur_state == PE_PRS_SNK_SRC_SEND_PR_SWAP) {
 			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
 			pe_change_state(pe, PE_SNK_READY);
-
+		} else if (pe->cur_state == PE_VCS_SEND_SWAP) {
+			log_info("Wait received for VCS moving to ready state");
+			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
+			pe_change_state_to_snk_or_src_ready(pe);
 		} else {
 			log_warn("Wait received in wrong state=%d",
 					pe->cur_state);
@@ -787,7 +798,6 @@ static enum pwr_role pe_get_power_role(struct policy *p)
 	return prole;
 }
 
-
 static void pe_set_data_role(struct policy_engine *pe, enum data_role role)
 {
 	if (pe->cur_drole == role)
@@ -922,7 +932,16 @@ static void pe_handle_dpm_event(struct policy_engine *pe,
 			log_info("Cann't trigger PR_SWAP in state=%d",
 					pe->cur_state);
 		break;
-
+	case DEVMGR_EVENT_VCONN_SWAP:
+		if (pe->cur_state == PE_SNK_READY ||
+			pe->cur_state == PE_SRC_READY) {
+			log_dbg("Received VCS request from dpm!!");
+			pe_change_state(pe, PE_VCS_SEND_SWAP);
+		} else {
+			log_info("Cann't trigger VCONN_SWAP in state=%d",
+					pe->cur_state);
+		}
+		break;
 	default:
 		log_err("Unknown dpm event=%d\n", evt);
 	}
@@ -1349,11 +1368,13 @@ static void pe_timer_expire_worker(struct work_struct *work)
 		} else if (pe->cur_state == PE_DR_SNK_GET_SINK_CAP) {
 			pe_change_state(pe, PE_SNK_READY);
 			break;
+		} else if (pe->cur_state == PE_VCS_SEND_SWAP) {
+			log_info("Accept not received for VCS Request!");
+			pe_change_state_to_snk_or_src_ready(pe);
+			break;
 		} else if (pe->cur_state == PE_SRC_SEND_SOFT_RESET
-				|| pe->cur_state == PE_SNK_SEND_SOFT_RESET) {
+				|| pe->cur_state == PE_SNK_SEND_SOFT_RESET)
 			log_info("Soft_Reset failed, Issue hard reset");
-			pe_change_state_to_snk_or_src_reset(pe);
-		}
 
 		log_warn("%s expired move to hard reset",
 				timer_to_str(type));
@@ -2203,7 +2224,7 @@ static void pe_process_state_pe_vcs_turn_on_vconn(struct policy_engine *pe)
 {
 	int ret;
 
-	ret = devpolicy_set_vconn_state(pe->p.dpm, true);
+	ret = devpolicy_set_vconn_state(pe->p.dpm, VCONN_SOURCE);
 	if (ret < 0) {
 		log_err("Erorr(%d) in turn of vconn, moving to error recovery.",
 				ret);
@@ -2218,7 +2239,7 @@ static void pe_process_state_pe_vcs_turn_off_vconn(struct policy_engine *pe)
 {
 	int ret;
 
-	ret = devpolicy_set_vconn_state(pe->p.dpm, false);
+	ret = devpolicy_set_vconn_state(pe->p.dpm, VCONN_SINK);
 	if (ret < 0) {
 		log_err("Erorr (%d)in turn of vconn, moving to error recovery",
 				ret);
@@ -2230,7 +2251,7 @@ static void pe_process_state_pe_vcs_turn_off_vconn(struct policy_engine *pe)
 }
 
 static void
-pe_process_state_pe_vcs_wait_for_vcon(struct policy_engine *pe)
+pe_process_state_pe_vcs_wait_for_vconn(struct policy_engine *pe)
 {
 	/* wait tVCONNSourceOn time to to receive PS Ready from source */
 	pe_start_timer(pe, VCONN_ON_TIMER, PE_TIME_VCONN_SOURCE_ON);
@@ -2250,13 +2271,19 @@ static void pe_process_state_pe_vcs_evaluate_swap(struct policy_engine *pe)
 	}
 }
 
+static void pe_process_state_pe_vcs_send_swap(struct policy_engine *pe)
+{
+	pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_VCONN_SWAP,
+				PE_EVT_SEND_VCONN_SWAP);
+}
+
 /******* Dual Role state ************/
 
 static void
 pe_process_state_pe_dr_src_get_source_cap(struct policy_engine *pe)
 {
 	pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_GET_SRC_CAP,
-					PE_EVT_SEND_GET_SRC_CAP);
+			PE_EVT_SEND_GET_SRC_CAP);
 }
 
 static void
@@ -2269,7 +2296,7 @@ static void
 pe_process_state_pe_dr_snk_get_sink_cap(struct policy_engine *pe)
 {
 	pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_GET_SINK_CAP,
-					PE_EVT_SEND_GET_SINK_CAP);
+			PE_EVT_SEND_GET_SINK_CAP);
 }
 
 static void
@@ -2378,7 +2405,7 @@ pe_process_state_pe_state_none(struct policy_engine *pe)
 	/* VBUS Off */
 	devpolicy_set_vbus_state(pe->p.dpm, false);
 	/*VCONN off */
-	devpolicy_set_vconn_state(pe->p.dpm, false);
+	devpolicy_set_vconn_state(pe->p.dpm, VCONN_NONE);
 	pe_set_data_role(pe, DATA_ROLE_NONE);
 	pe_set_power_role(pe, POWER_ROLE_NONE);
 	if (pe->prev_state == PE_ERROR_RECOVERY)
@@ -2624,7 +2651,7 @@ static void pe_state_change_worker(struct work_struct *work)
 		pe_process_state_pe_vcs_reject_vconn_swap(pe);
 		break;
 	case PE_VCS_WAIT_FOR_VCONN:
-		pe_process_state_pe_vcs_wait_for_vcon(pe);
+		pe_process_state_pe_vcs_wait_for_vconn(pe);
 		break;
 	case PE_VCS_TURN_ON_VCONN:
 		pe_process_state_pe_vcs_turn_on_vconn(pe);
@@ -2634,6 +2661,9 @@ static void pe_state_change_worker(struct work_struct *work)
 		break;
 	case PE_VCS_SEND_PS_RDY:
 		pe_process_state_pe_vcs_send_ps_rdy(pe);
+		break;
+	case PE_VCS_SEND_SWAP:
+		pe_process_state_pe_vcs_send_swap(pe);
 		break;
 	default:
 		log_info("Cannot process unknown state %d", state);
