@@ -536,6 +536,54 @@ static void heci_hbm_fw_disconnect_req(struct heci_device *dev,
 }
 
 
+/*
+ * heci_hbm_dma_xfer_ack - receive ack for HECI-over-DMA client message
+ *
+ * Constraint:
+ * First implementation is one HECI message per DMA transfer
+ */
+void heci_hbm_dma_xfer_ack(struct heci_device *dev,
+	struct dma_xfer_hbm *dma_xfer)
+{
+}
+
+
+/*
+ * heci_hbm_dma_xfer - receive HECI-over-DMA client message
+ */
+void heci_hbm_dma_xfer(struct heci_device *dev, struct dma_xfer_hbm *dma_xfer)
+{
+	void    *msg;
+	uint64_t	offs;
+	struct heci_msg_hdr hdr;
+	struct heci_msg_hdr	*heci_hdr = (struct heci_msg_hdr *) &dev->heci_msg_hdr;
+	struct dma_xfer_hbm	*prm = dma_xfer;
+	unsigned	msg_offs;
+
+	for (msg_offs = 0; msg_offs < heci_hdr->length;
+		msg_offs += sizeof(struct dma_xfer_hbm)) {
+
+		offs = dma_xfer->msg_addr - host_dma_rx_buf_phys;
+		if (offs > host_dma_rx_buf_size) {
+			dev_err(&dev->pdev->dev, "Bad DMA Rx message address\n");
+			return;
+		}
+		if (dma_xfer->msg_length > host_dma_rx_buf_size - offs) {
+			dev_err(&dev->pdev->dev, "Bad DMA Rx message size\n");
+			return;
+		}
+		msg = host_dma_rx_buf + offs;
+		recv_heci_cl_msg_dma(dev, msg, dma_xfer);
+		dma_xfer->hbm = DMA_XFER_ACK;   /* Prepare for response */
+		++dma_xfer;
+	}
+
+	/* Send DMA_XFER_ACK [...] */
+	heci_hbm_hdr(&hdr, heci_hdr->length);
+	heci_write_message(dev, &hdr, (unsigned char *)prm);
+}
+
+
 /**
  * heci_hbm_dispatch - bottom half read routine after ISR to
  * handle the read bus message cmd processing.
@@ -555,6 +603,8 @@ void heci_hbm_dispatch(struct heci_device *dev, struct heci_bus_message *hdr)
 	struct hbm_host_enum_response *enum_res;
 	struct heci_msg_hdr heci_hdr;
 	unsigned char data[4];	/* All HBM messages are 4 bytes */
+	struct dma_alloc_notify   dma_alloc_notify;
+	struct dma_xfer_hbm     *dma_xfer;
 
 	heci_msg = hdr;
 	dev_dbg(&dev->pdev->dev, "bus cmd = %lu\n", heci_msg->hbm_cmd);
@@ -654,6 +704,22 @@ void heci_hbm_dispatch(struct heci_device *dev, struct heci_bus_message *hdr)
 		/* request property for the next client */
 		heci_hbm_prop_req(dev);
 
+		if (dev->dev_state != HECI_DEV_ENABLED)
+			break;
+
+		heci_cl_alloc_dma_buf();
+		if (host_dma_rx_buf) {
+			const size_t len = sizeof(dma_alloc_notify);
+
+			memset(&dma_alloc_notify, 0, sizeof(dma_alloc_notify));
+			dma_alloc_notify.hbm = DMA_BUFFER_ALLOC_NOTIFY;
+			dma_alloc_notify.buf_size = host_dma_rx_buf_size;
+			dma_alloc_notify.buf_address = host_dma_rx_buf_phys;
+			heci_hbm_hdr(&heci_hdr, len);
+			heci_write_message(dev, &heci_hdr,
+				(unsigned char *)&dma_alloc_notify);
+		}
+
 		break;
 
 	case HOST_ENUM_RES_CMD:
@@ -705,12 +771,36 @@ void heci_hbm_dispatch(struct heci_device *dev, struct heci_bus_message *hdr)
 			wake_up(&dev->wait_dma_ready);
 		break;
 
+	case DMA_BUFFER_ALLOC_RESPONSE:
+		host_dma_enabled = 1;
+		break;
+
+	case DMA_XFER:
+		dma_xfer = (struct dma_xfer_hbm *)heci_msg;
+		if (!host_dma_enabled) {
+			dev_err(&dev->pdev->dev,
+				"DMA XFER requested but DMA is not enabled\n");
+			break;
+		}
+		heci_hbm_dma_xfer(dev, dma_xfer);
+		break;
+
+	case DMA_XFER_ACK:
+		dma_xfer = (struct dma_xfer_hbm *)heci_msg;
+		if (!host_dma_enabled || !host_dma_tx_buf) {
+			dev_err(&dev->pdev->dev,
+				"DMA XFER acknowledged but DMA Tx\n"
+				"is not enabled\n");
+			break;
+		}
+		heci_hbm_dma_xfer_ack(dev, dma_xfer);
+		break;
+
 	default:
 		/*BUG();*/
 		dev_err(&dev->pdev->dev, "unknown HBM: %u\n",
 			(unsigned)heci_msg->hbm_cmd);
 		break;
-
 	}
 }
 EXPORT_SYMBOL(heci_hbm_dispatch);
@@ -798,7 +888,8 @@ void	recv_hbm(struct heci_device *dev, struct heci_msg_hdr *heci_hdr)
 	 */
 	if (heci_msg->hbm_cmd == CLIENT_CONNECT_RES_CMD ||
 			heci_msg->hbm_cmd == CLIENT_DISCONNECT_RES_CMD ||
-			heci_msg->hbm_cmd == CLIENT_DISCONNECT_REQ_CMD) {
+			heci_msg->hbm_cmd == CLIENT_DISCONNECT_REQ_CMD ||
+			heci_msg->hbm_cmd == DMA_XFER) {
 		heci_hbm_dispatch(dev, heci_msg);
 		goto	eoi;
 	}
@@ -888,7 +979,7 @@ void send_suspend(struct heci_device *dev)
 	dev->print_log(dev, "%s() sends SUSPEND notification\n", __func__);
 	state_status_msg.states_status = current_state;
 
-	heci_write_message(dev, &heci_hdr, &state_status_msg);
+	heci_write_message(dev, &heci_hdr, (unsigned char *)&state_status_msg);
 }
 EXPORT_SYMBOL(send_suspend);
 
@@ -907,7 +998,7 @@ void send_resume(struct heci_device *dev)
 	dev->print_log(dev, "%s() sends RESUME notification\n", __func__);
 	state_status_msg.states_status = current_state;
 
-	heci_write_message(dev, &heci_hdr, &state_status_msg);
+	heci_write_message(dev, &heci_hdr, (unsigned char *)&state_status_msg);
 }
 EXPORT_SYMBOL(send_resume);
 
@@ -922,6 +1013,6 @@ void query_subscribers(struct heci_device *dev)
 	memset(&query_subscribers_msg, 0, len);
 	query_subscribers_msg.hdr.cmd = SYSTEM_STATE_QUERY_SUBSCRIBERS;
 
-	heci_write_message(dev, &heci_hdr, &query_subscribers_msg);
+	heci_write_message(dev, &heci_hdr, (unsigned char *)&query_subscribers_msg);
 }
 

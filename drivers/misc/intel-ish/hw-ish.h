@@ -17,6 +17,7 @@
 #define _HECI_HW_ISH_H_
 
 #include <linux/pci.h>
+#include <linux/interrupt.h>
 #include "hw-ish-regs.h"
 #include "heci_dev.h"
 

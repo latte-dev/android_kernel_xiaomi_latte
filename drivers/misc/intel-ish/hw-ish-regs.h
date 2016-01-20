@@ -85,7 +85,7 @@ ISS FW may not write to them */
 
 /*
  * FW status bits (relevant)
- */ 
+ */
 #define	IPC_FWSTS_ILUP		0x1
 #define	IPC_FWSTS_HECI_UP	(1<<1)
 #define	IPC_FWSTS_DMA0		(1<<16)

@@ -17,7 +17,7 @@
 #define PLATFORM_CONFIG__H
 
 /* Build ID string */
-#define	BUILD_ID	"0195-fix-recv-hid-hw-reset"
+#define BUILD_ID        "236-dx-si-dma-impl-upstream-rc"
 
 #define	ISH_DEBUG	0
 #if ISH_DEBUG
@@ -49,7 +49,7 @@
 #endif
 
 #define	REVISION_ID_CHT_A0	0x6
-#define	REVISION_ID_CHT_A0_SI	0x0
+#define	REVISION_ID_CHT_Ax_SI	0x0
 #define	REVISION_ID_CHT_Bx_SI	0x10
 #define	REVISION_ID_CHT_Kx_SI	0x20
 #define	REVISION_ID_CHT_Dx_SI	0x30

@@ -442,8 +442,6 @@ int __init heci_cl_bus_init(void)
 
 	ISH_DBG_PRINT(KERN_ALERT "%s(): Registering HECI bus\n", __func__);
 	rv = bus_register(&heci_cl_bus_type);
-	if (!rv)
-		heci_cl_alloc_dma_buf();
 	return	rv;
 }
 

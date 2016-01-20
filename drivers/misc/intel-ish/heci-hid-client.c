@@ -232,12 +232,6 @@ static void	process_recv(void *recv_buf, size_t data_len)
 			break;
 
 		case HOSTIF_GET_REPORT_DESCRIPTOR:
-			ISH_DBG_PRINT(KERN_ALERT
-				"[hid-ish]: %s(): received HOSTIF_GET_REPORT_DESCRIPTOR [cur_pos=%u] [%02X %02X %02X %02X]\n",
-				__func__, cur_pos, ((unsigned char*)recv_msg)[0], ((unsigned char*)recv_msg)[1], ((unsigned char*)recv_msg)[2], ((unsigned char*)recv_msg)[3]);
-			ISH_DBG_PRINT(KERN_ALERT
-				"[hid-ish]: %s(): Length of report descriptor is %u\n",
-				__func__, (unsigned)payload_len);
 			if ((!(recv_msg->hdr.command & ~CMD_MASK) ||
 					init_done)) {
 				++bad_recv_cnt;
@@ -572,7 +566,7 @@ struct heci_cl_driver	hid_heci_cl_driver = {
 
 /****************************************************************/
 
-void workqueue_init_function(struct work_struct *work)
+static void workqueue_init_function(struct work_struct *work)
 {
 	int	rv;
 	static unsigned char	buf[4096];
@@ -595,7 +589,7 @@ void workqueue_init_function(struct work_struct *work)
 		__func__, hid_heci_client_found);
 
 	if (!hid_heci_client_found) {
-		printk(KERN_ERR "[hid-ish]: timed out waiting for hid_heci_client_found\n");
+		dev_err(NULL, "[hid-ish]: timed out waiting for hid_heci_client_found\n");
 		rv = -ENODEV;
 		goto	ret;
 	}
@@ -676,15 +670,8 @@ void workqueue_init_function(struct work_struct *work)
 	}
 
 	/* Send GET_HID_DESCRIPTOR for each device */
-
-	/*
-	 * Temporary work-around for multi-descriptor traffic:
-	 * read only the first one
-	 * Will be removed when multi-TLC are supported
-	 */
-
 	num_hid_devices = hid_dev_count;
-	dev_err(&hid_heci_cl->device->dev,
+	dev_warn(&hid_heci_cl->device->dev,
 		"[hid-ish]: enum_devices_done OK, num_hid_devices=%d\n",
 		num_hid_devices);
 
@@ -713,12 +700,14 @@ void workqueue_init_function(struct work_struct *work)
 			wait_event_timeout(init_wait, hid_descr_done, 30 * HZ);
 #endif
 		if (!hid_descr_done) {
-			printk(KERN_ERR "[hid-ish]: timed out waiting for hid_descr_done\n");
+			dev_err(&hid_heci_cl->device->dev,
+				"[hid-ish]: timed out waiting for hid_descr_done\n");
 			continue;
 		}
 
 		if (!hid_descr[i]) {
-			printk(KERN_ERR "[hid-ish]: failed to allocate HID descriptor buffer\n");
+			dev_err(&hid_heci_cl->device->dev,
+				"[hid-ish]: failed to allocate HID descriptor buffer\n");
 			continue;
 		}
 

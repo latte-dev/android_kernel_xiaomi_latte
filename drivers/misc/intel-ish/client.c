@@ -34,35 +34,35 @@ static void no_dev_dbg(void *v, char *s, ...)
 #define dev_dbg no_dev_dbg
 /* #define dev_dbg dev_err */
 
-int	host_dma_enabled;
-void	*host_dma_buf;
-unsigned	host_dma_buf_size = (1024*1024);
-uint64_t	host_dma_buf_phys;
-int	dma_ready = 1;
+int	host_dma_enabled;       /* New bi-directional DMA */
+int	dma_ready = 1;          /* Legacy host->FW only DMA */
 
+void	*host_dma_tx_buf;
+unsigned	host_dma_tx_buf_size = (1024*1024);
+uint64_t	host_dma_tx_buf_phys;
+
+void	*host_dma_rx_buf;
+unsigned	host_dma_rx_buf_size = (1024*1024);
+uint64_t	host_dma_rx_buf_phys;
 
 void	heci_cl_alloc_dma_buf(void)
 {
 	int	order;
 	unsigned	temp;
 
-	/*
-	 * Try to allocate 256 contiguous pages (1 M)
-	 * for DMA and enabled host DMA
-	 */
-	for (order = 0, temp = host_dma_buf_size / PAGE_SIZE + 1; temp;
+	for (order = 0, temp = host_dma_tx_buf_size / PAGE_SIZE + 1; temp;
 			temp >>= 1)
 		++order;
-	host_dma_buf = (void *)__get_free_pages(GFP_KERNEL, order);
-	if (host_dma_buf) {
-		host_dma_buf_phys = __pa(host_dma_buf);
-		host_dma_enabled = 1;
-	}
+	host_dma_tx_buf = (void *)__get_free_pages(GFP_KERNEL, order);
+	if (host_dma_tx_buf)
+		host_dma_tx_buf_phys = __pa(host_dma_tx_buf);
 
-	ISH_DBG_PRINT(KERN_ALERT
-		"%s(): host_dma_enabled=%d host_dma_buf=%p host_dma_buf_phys=%llX host_dma_buf_size=%u order=%d\n",
-		__func__, host_dma_enabled, host_dma_buf, host_dma_buf_phys,
-		host_dma_buf_size, order);
+	for (order = 0, temp = host_dma_rx_buf_size / PAGE_SIZE + 1; temp;
+			temp >>= 1)
+		++order;
+	host_dma_rx_buf = (void *)__get_free_pages(GFP_KERNEL, order);
+	if (host_dma_rx_buf)
+		host_dma_rx_buf_phys = __pa(host_dma_rx_buf);
 }
 
 
@@ -870,7 +870,7 @@ int heci_cl_send(struct heci_cl *cl, u8 *buf, size_t length)
 				dev->me_clients[id].props.dma_hdr_len & 0x7F;
 			spin_unlock_irqrestore(&dev->me_clients_lock, me_flags);
 			/* DMA max msg size is 1M */
-			if (length > host_dma_buf_size) {
+			if (length > host_dma_tx_buf_size) {
 				++cl->err_send_msg;
 				return	-EMSGSIZE;
 			}
@@ -892,14 +892,14 @@ int heci_cl_send(struct heci_cl *cl, u8 *buf, size_t length)
 			 * First 'preview_len' bytes of buffer are preview
 			 * bytes, omitted from DMA message
 			 */
-			memcpy(host_dma_buf, buf + preview_len,
+			memcpy(host_dma_tx_buf, buf + preview_len,
 				length - preview_len);
 			heci_hbm_hdr(&hdr, len);
 			heci_dma_request_msg.hbm_cmd = CLIENT_DMA_REQ_CMD;
 			heci_dma_request_msg.me_addr = cl->me_client_id;
 			heci_dma_request_msg.host_addr = cl->host_client_id;
 			heci_dma_request_msg.reserved = 0;
-			heci_dma_request_msg.msg_addr = host_dma_buf_phys;
+			heci_dma_request_msg.msg_addr = host_dma_tx_buf_phys;
 			heci_dma_request_msg.msg_len = length - preview_len;
 			heci_dma_request_msg.reserved2 = 0;
 			memcpy(heci_dma_request_msg.msg_preview, buf,
@@ -1232,7 +1232,7 @@ void	recv_heci_cl_msg(struct heci_device *dev, struct heci_msg_hdr *heci_hdr)
 		do_gettimeofday(&tv);
 		cl->rx_sec = tv.tv_sec;
 		cl->rx_usec = tv.tv_usec;
-		++cl->recv_msg_cnt;
+		++cl->recv_msg_cnt_ipc;
 		heci_cl_read_complete(complete_rb);
 	}
 
@@ -1241,3 +1241,111 @@ eoi:
 }
 EXPORT_SYMBOL(recv_heci_cl_msg);
 
+void	recv_heci_cl_msg_dma(struct heci_device *dev, void *msg,
+	struct dma_xfer_hbm *hbm)
+{
+	struct heci_cl *cl;
+	struct heci_cl_rb *rb, *next;
+	struct heci_cl_rb *new_rb;
+	unsigned char *buffer = NULL;
+	struct heci_cl_rb *complete_rb = NULL;
+	unsigned long   dev_flags;
+	unsigned long   flags;
+
+	spin_lock_irqsave(&dev->read_list_spinlock, dev_flags);
+	list_for_each_entry_safe(rb, next, &dev->read_list.list, list) {
+		cl = rb->cl;
+		if (!cl || !(cl->host_client_id == hbm->host_client_id &&
+				cl->me_client_id == hbm->fw_client_id) ||
+				!(cl->state == HECI_CL_CONNECTED))
+			continue;
+
+		/*
+		 * FIXME: in both if() closes rb must return to free pool
+		 * and/or disband and/or disconnect client
+		 */
+		if (rb->buffer.size == 0 || rb->buffer.data == NULL) {
+			spin_unlock_irqrestore(&dev->read_list_spinlock,
+				dev_flags);
+			dev_err(&dev->pdev->dev,
+				"response buffer is not allocated.\n");
+			list_del(&rb->list);
+			goto    eoi;
+		}
+
+		if (rb->buffer.size < hbm->msg_length) {
+			spin_unlock_irqrestore(&dev->read_list_spinlock,
+				dev_flags);
+			dev_err(&dev->pdev->dev,
+				"message overflow. size %d len %d idx %ld\n",
+				rb->buffer.size, hbm->msg_length, rb->buf_idx);
+			list_del(&rb->list);
+			goto    eoi;
+		}
+
+		buffer = rb->buffer.data;
+		memcpy(buffer, msg, hbm->msg_length);
+		rb->buf_idx = hbm->msg_length;
+
+		/* Last fragment in message - it's complete */
+		cl->status = 0;
+		list_del(&rb->list);
+		complete_rb = rb;
+
+		--cl->out_flow_ctrl_creds;
+		/*
+		 * the whole msg arrived, send a new FC, and add a new
+		 * rb buffer for the next coming msg
+		 */
+		spin_lock_irqsave(&cl->free_list_spinlock, flags);
+
+		if (!list_empty(&cl->free_rb_list.list)) {
+			new_rb = list_entry(cl->free_rb_list.list.next,
+				struct heci_cl_rb, list);
+			list_del_init(&new_rb->list);
+			spin_unlock_irqrestore(&cl->free_list_spinlock,
+				flags);
+			new_rb->cl = cl;
+			new_rb->buf_idx = 0;
+			INIT_LIST_HEAD(&new_rb->list);
+			list_add_tail(&new_rb->list,
+				&dev->read_list.list);
+
+			heci_hbm_cl_flow_control_req(dev, cl);
+		} else {
+			spin_unlock_irqrestore(&cl->free_list_spinlock,
+				flags);
+		}
+
+		/* One more fragment in message (this is always last) */
+		++cl->recv_msg_num_frags;
+
+		/*
+		 * We can safely break here (and in BH too),
+		 * a single input message can go only to a single request!
+		 */
+		break;
+	}
+
+	spin_unlock_irqrestore(&dev->read_list_spinlock, dev_flags);
+	/* If it's nobody's message, just read and discard it */
+	if (!buffer) {
+		dev_err(&dev->pdev->dev, "%s(): Dropped msg - no request\n",
+			__func__);
+		goto    eoi;
+	}
+
+	/* Looks like this is interrupt-safe */
+	if (complete_rb) {
+		struct timeval  tv;
+		do_gettimeofday(&tv);
+		cl->rx_sec = tv.tv_sec;
+		cl->rx_usec = tv.tv_usec;
+		++cl->recv_msg_cnt_dma;
+		heci_cl_read_complete(complete_rb);
+		}
+
+eoi:
+	return;
+}
+EXPORT_SYMBOL(recv_heci_cl_msg_dma);

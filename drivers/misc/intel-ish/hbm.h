@@ -25,57 +25,63 @@ struct heci_cl;
 /*
  * Timeouts in Seconds
  */
-#define HECI_INTEROP_TIMEOUT         7  /* Timeout on ready message */
-#define HECI_CONNECT_TIMEOUT         3  /* HPS: at least 2 seconds */
+#define HECI_INTEROP_TIMEOUT		7  /* Timeout on ready message */
+#define HECI_CONNECT_TIMEOUT		3  /* HPS: at least 2 seconds */
 
-#define HECI_CL_CONNECT_TIMEOUT     15  /* HPS: Client Connect Timeout */
-#define HECI_CLIENTS_INIT_TIMEOUT   15  /* HPS: Clients Enumeration Timeout */
+#define HECI_CL_CONNECT_TIMEOUT		15  /* HPS: Client Connect Timeout */
+#define HECI_CLIENTS_INIT_TIMEOUT	15  /* HPS: Clients Enumeration Timeout */
 
 #if 0
-#define HECI_IAMTHIF_STALL_TIMER    12  /* HPS */
-#define HECI_IAMTHIF_READ_TIMER     10  /* HPS */
+#define HECI_IAMTHIF_STALL_TIMER	12  /* HPS */
+#define HECI_IAMTHIF_READ_TIMER		10  /* HPS */
 #endif
 
 
 /*
  * HECI Version
  */
-#define HBM_MINOR_VERSION                   0
-#define HBM_MAJOR_VERSION                   1
-#define HBM_TIMEOUT                         1	/* 1 second */
+#define HBM_MINOR_VERSION		0
+#define HBM_MAJOR_VERSION		1
+#define HBM_TIMEOUT			1 /* 1 second */
 
 /* Host bus message command opcode */
-#define HECI_HBM_CMD_OP_MSK                  0x7f
+#define HECI_HBM_CMD_OP_MSK		0x7f
 /* Host bus message command RESPONSE */
-#define HECI_HBM_CMD_RES_MSK                 0x80
+#define HECI_HBM_CMD_RES_MSK		0x80
 
 /*
  * HECI Bus Message Command IDs
  */
-#define HOST_START_REQ_CMD                  0x01
-#define HOST_START_RES_CMD                  0x81
+#define HOST_START_REQ_CMD		0x01
+#define HOST_START_RES_CMD		0x81
 
-#define HOST_STOP_REQ_CMD                   0x02
-#define HOST_STOP_RES_CMD                   0x82
+#define HOST_STOP_REQ_CMD		0x02
+#define HOST_STOP_RES_CMD		0x82
 
-#define ME_STOP_REQ_CMD                     0x03
+#define ME_STOP_REQ_CMD			0x03
 
-#define HOST_ENUM_REQ_CMD                   0x04
-#define HOST_ENUM_RES_CMD                   0x84
+#define HOST_ENUM_REQ_CMD		0x04
+#define HOST_ENUM_RES_CMD		0x84
 
-#define HOST_CLIENT_PROPERTIES_REQ_CMD      0x05
-#define HOST_CLIENT_PROPERTIES_RES_CMD      0x85
+#define HOST_CLIENT_PROPERTIES_REQ_CMD	0x05
+#define HOST_CLIENT_PROPERTIES_RES_CMD	0x85
 
-#define CLIENT_CONNECT_REQ_CMD              0x06
-#define CLIENT_CONNECT_RES_CMD              0x86
+#define CLIENT_CONNECT_REQ_CMD		0x06
+#define CLIENT_CONNECT_RES_CMD		0x86
 
-#define CLIENT_DISCONNECT_REQ_CMD           0x07
-#define CLIENT_DISCONNECT_RES_CMD           0x87
+#define CLIENT_DISCONNECT_REQ_CMD	0x07
+#define CLIENT_DISCONNECT_RES_CMD	0x87
 
-#define HECI_FLOW_CONTROL_CMD                0x08
+#define HECI_FLOW_CONTROL_CMD		0x08
 
 #define CLIENT_DMA_REQ_CMD		0x10
 #define CLIENT_DMA_RES_CMD		0x90
+
+#define DMA_BUFFER_ALLOC_NOTIFY		0x11
+#define DMA_BUFFER_ALLOC_RESPONSE	0x91
+
+#define DMA_XFER			0x12
+#define DMA_XFER_ACK			0x92
 
 /*
  * HECI Stop Reason
@@ -279,6 +285,27 @@ struct hbm_client_dma_response {
 	u64 msg_addr;
 	u32 msg_len;
 } __packed;
+
+struct dma_alloc_notify {
+	u8 hbm;
+	u8 status;
+	u8 reserved[2];
+	u32 buf_size;
+	u64 buf_address;
+	/* [...] May come more size/address pairs */
+} __packed;
+
+
+struct dma_xfer_hbm {
+	u8 hbm;
+	u8 fw_client_id;
+	u8 host_client_id;
+	u8 reserved;
+	u64 msg_addr;
+	u32 msg_length;
+	u32 reserved2;
+} __packed;
+
 
 /**
  * enum heci_hbm_state - host bus message protocol state

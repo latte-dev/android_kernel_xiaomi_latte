@@ -132,7 +132,7 @@ void ish_intr_enable(struct heci_device *dev)
 	dev_dbg(&dev->pdev->dev, "ish_intr_enable\n");
 	if (dev->pdev->revision == REVISION_ID_CHT_A0 ||
 			(dev->pdev->revision & REVISION_ID_SI_MASK) ==
-			REVISION_ID_CHT_A0_SI)
+			REVISION_ID_CHT_Ax_SI)
 		ish_reg_write(dev, IPC_REG_HOST_COMM, 0x81);
 	else if (dev->pdev->revision == REVISION_ID_CHT_B0 ||
 			(dev->pdev->revision & REVISION_ID_SI_MASK) ==
@@ -159,7 +159,7 @@ void ish_intr_disable(struct heci_device *dev)
 	dev_dbg(&dev->pdev->dev, "ish_intr_disable\n");
 	if (dev->pdev->revision == REVISION_ID_CHT_A0 ||
 			(dev->pdev->revision & REVISION_ID_SI_MASK) ==
-			REVISION_ID_CHT_A0_SI)
+			REVISION_ID_CHT_Ax_SI)
 		/*ish_reg_write(dev, IPC_REG_HOST_COMM, 0xC1)*/;
 	else if (dev->pdev->revision == REVISION_ID_CHT_B0 ||
 			(dev->pdev->revision & REVISION_ID_SI_MASK) ==
@@ -473,7 +473,8 @@ static void	fw_reset_work_fn(struct work_struct *unused)
 			__func__);
 
 	} else
-		printk(KERN_ERR "[heci-ish]: FW reset failed (%d)\n", rv);
+		dev_err(&heci_dev->pdev->dev,
+			"[heci-ish]: FW reset failed (%d)\n", rv);
 }
 
 
@@ -615,6 +616,7 @@ irqreturn_t ish_irq_handler(int irq, void *dev_id)
 	sync_fw_clock(dev);
 
 	heci_hdr = (struct heci_msg_hdr *)&msg_hdr;
+	dev->heci_msg_hdr = msg_hdr;
 
 	/* Sanity check: HECI frag. length in header */
 	if (heci_hdr->length > dev->mtu) {
@@ -761,9 +763,10 @@ static int ish_hw_reset(struct heci_device *dev)
 	writel(0, hw->mem_addr + IPC_REG_ISH_RMP2);
 
 	for (dma_delay = 0; dma_delay < MAX_DMA_DELAY &&
-		ish_reg_read(dev, IPC_REG_ISH_HOST_FWSTS) & (IPC_ISH_IN_DMA);
-		dma_delay += 5);
-			mdelay(5);
+			ish_reg_read(dev, IPC_REG_ISH_HOST_FWSTS) &
+				(IPC_ISH_IN_DMA);
+			dma_delay += 5)
+		mdelay(5);
 
 	if (dma_delay >= MAX_DMA_DELAY) {
 		dev_err(&pdev->dev,
@@ -967,10 +970,6 @@ struct heci_device *ish_dev_init(struct pci_dev *pdev)
 
 void	heci_device_disable(struct heci_device *dev)
 {
-	unsigned long	flags;
-	struct wr_msg_ctl_info	*ipc_link;
-	struct heci_cl	*cl;
-
 	dev->dev_state = HECI_DEV_DISABLED;
 	ish_clr_host_rdy(dev);
 	ish_intr_disable(dev);
