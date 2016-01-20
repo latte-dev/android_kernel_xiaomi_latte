@@ -129,7 +129,7 @@ struct senscol_sample {
  *   cover for 10 seconds of data
  */
 /*#define	SENSCOL_DATA_BUF_SIZE	(24*2600*10)*/
-#define	SENSCOL_DATA_BUF_SIZE	(24*2600)
+#define	SENSCOL_DATA_BUF_SIZE	0x40000
 #define	SENSCOL_DATA_BUF_LAST	(SENSCOL_DATA_BUF_SIZE-128)
 
 /*
