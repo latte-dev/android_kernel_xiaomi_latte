@@ -101,7 +101,9 @@ static void heci_hid_request(struct hid_device *hid, struct hid_report *rep,
 		hid_heci_get_report(hid, rep->id, rep->type);
 		break;
 	case HID_REQ_SET_REPORT:
-		buf = kzalloc(len, GFP_KERNEL);
+		/* Spare 7 bytes for 64b accesses thru
+		get/put_unaligned_le64() */
+		buf = kzalloc(len + 7, GFP_KERNEL);
 		if (!buf)
 			return;
 		hid_output_report(rep, buf + header_size);
