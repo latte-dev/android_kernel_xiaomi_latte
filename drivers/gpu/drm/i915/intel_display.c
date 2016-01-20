@@ -5405,8 +5405,8 @@ static void valleyview_modeset_global_pipes(struct drm_device *dev,
 	struct intel_crtc *intel_crtc;
 	int max_pixclk = intel_mode_max_pixclk(dev_priv);
 
-	if (valleyview_calc_cdclk(dev_priv, max_pixclk) ==
-	    dev_priv->vlv_cdclk_freq)
+	dev_priv->req_cdclk_freq = valleyview_calc_cdclk(dev_priv, max_pixclk);
+	if (dev_priv->req_cdclk_freq <= dev_priv->vlv_cdclk_freq)
 		return;
 
 	/* disable/enable all currently active pipes while we change cdclk */
@@ -5418,10 +5418,9 @@ static void valleyview_modeset_global_pipes(struct drm_device *dev,
 static void valleyview_modeset_global_resources(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int max_pixclk = intel_mode_max_pixclk(dev_priv);
-	int req_cdclk = valleyview_calc_cdclk(dev_priv, max_pixclk);
+	int req_cdclk = dev_priv->req_cdclk_freq;
 
-	if (req_cdclk != dev_priv->vlv_cdclk_freq) {
+	if (dev_priv->vlv_cdclk_freq < dev_priv->req_cdclk_freq) {
 		if (IS_CHERRYVIEW(dev))
 			cherryview_set_cdclk(dev, req_cdclk);
 		else
@@ -6002,6 +6001,9 @@ void intel_encoder_destroy(struct drm_encoder *encoder)
 static void intel_encoder_dpms(struct intel_encoder *encoder, int mode)
 {
 	struct drm_device *dev = encoder->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_crtc *crtc;
+
 	if (mode == DRM_MODE_DPMS_ON) {
 		encoder->connectors_active = true;
 		intel_crtc_update_dpms(encoder->base.crtc);
@@ -6016,6 +6018,24 @@ static void intel_encoder_dpms(struct intel_encoder *encoder, int mode)
 		intel_save_clr_mgr_status(dev);
 
 		intel_crtc_update_dpms(encoder->base.crtc);
+
+		if (!IS_VALLEYVIEW(dev))
+			return;
+
+		for_each_crtc(dev, crtc) {
+			if (!crtc || !to_intel_crtc(crtc))
+				continue;
+			if (to_intel_crtc(crtc)->active)
+				return;
+		}
+
+		/*HACK: force cdclock change by setting current to 0 */
+		if (dev_priv->vlv_cdclk_freq != dev_priv->req_cdclk_freq) {
+			dev_priv->vlv_cdclk_freq = 0;
+			DRM_DEBUG_KMS("Lowering CD clock to %d\n",
+				dev_priv->req_cdclk_freq);
+			valleyview_modeset_global_resources(dev);
+		}
 	}
 }
 
