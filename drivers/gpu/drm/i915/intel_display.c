@@ -5423,7 +5423,11 @@ int valleyview_cur_cdclk(struct drm_i915_private *dev_priv)
 static int valleyview_calc_cdclk(struct drm_i915_private *dev_priv,
 				 int max_pixclk)
 {
+	struct drm_device *dev = dev_priv->dev;
+	struct drm_crtc *crtc;
+	struct intel_encoder *encoder;
 	int new_cdclk;
+
 	/*
 	 * Really only a few cases to deal with, as only 4 CDclks are supported:
 	 *   200MHz
@@ -5433,14 +5437,50 @@ static int valleyview_calc_cdclk(struct drm_i915_private *dev_priv,
 	 * So we check to see whether we're above 90% of the lower bin and
 	 * adjust if needed.
 	 */
-	if (max_pixclk > 288000 && !IS_CHERRYVIEW(dev_priv->dev))
+	if (max_pixclk > 288000 && !IS_CHERRYVIEW(dev))
 		new_cdclk = 400;
 	else if (max_pixclk > 240000)
 		new_cdclk = 320;
-	else
+	else {
 		new_cdclk = 266;
-	/* Looks like the 200MHz CDclk freq doesn't work on some configs */
+		/*
+		 * Looks like the 200MHz CDclk freq doesn't work on some configs
+		 * hence minimum is 266 programmed above.
+		 *
+		 * Also, running on 4 lanes, at HBR link rate and enabling audio
+		 * results in blankout of the display at 266MHz hence
+		 * use 320 MHz always if DP that has audio support is enabled.
+		 */
+		for_each_crtc(dev, crtc) {
+			if (!to_intel_crtc(crtc)->new_enabled)
+				continue;
 
+			/*
+			 * we have not linked CRTC, encoder & connector yet
+			 * (too early in the mode set sequence for that)
+			 * so we have to manualy check for each encoder
+			 * that is to be associated with our CRTC.
+			 */
+			list_for_each_entry(encoder,
+				&dev->mode_config.encoder_list, base.head) {
+				struct intel_dp *intel_dp;
+
+				if (&encoder->new_crtc->base != crtc)
+					continue;
+
+				if (encoder->type != INTEL_OUTPUT_DISPLAYPORT)
+					continue;
+
+				intel_dp = &(enc_to_dig_port
+							(&encoder->base)->dp);
+
+				if (intel_dp->has_audio) {
+					DRM_DEBUG_KMS("Using 320MHz for DP\n");
+					return 320;
+				}
+			}
+		}
+	}
 	return new_cdclk;
 }
 
