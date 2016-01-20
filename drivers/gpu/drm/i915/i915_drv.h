@@ -1760,6 +1760,7 @@ struct drm_i915_private {
 
 	unsigned int fsb_freq, mem_freq, is_ddr3;
 	unsigned int vlv_cdclk_freq;
+	unsigned int req_cdclk_freq; /* requested value, can be < current */
 	u16 stepping_id;
 
 	/**
