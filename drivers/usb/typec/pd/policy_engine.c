@@ -1008,7 +1008,7 @@ static void pe_fetch_self_sink_cap(struct policy_engine *pe)
 	pdo[0].data_role_swap = FEATURE_SUPPORTED;
 	pdo[0].usb_comm = FEATURE_SUPPORTED;
 	pdo[0].ext_powered = FEATURE_NOT_SUPPORTED;
-	pdo[0].higher_cap = FEATURE_SUPPORTED;
+	pdo[0].higher_cap = FEATURE_NOT_SUPPORTED;
 	pdo[0].dual_role_pwr = FEATURE_SUPPORTED;
 
 	for (i = 0; i < pcaps.n_cap; i++) {
@@ -1846,9 +1846,9 @@ static void pe_process_state_pe_src_discovery(struct policy_engine *pe)
 		return;
 	}
 	if (pe->is_typec_port)
-		time_out = PE_TIME_TYPEC_SEND_SOURCE_CAP;
+		time_out = PE_TIME_TYPEC_SEND_SOURCE_CAP - PE_TIME_RECEIVE;
 	else
-		time_out = PE_TIME_SEND_SOURCE_CAP;
+		time_out = PE_TIME_SEND_SOURCE_CAP - PE_TIME_RECEIVE;
 	pe_start_timer(pe, SOURCE_CAPABILITY_TIMER, time_out);
 
 }
