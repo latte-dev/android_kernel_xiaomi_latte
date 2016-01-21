@@ -1105,7 +1105,6 @@ static int fusb300_enable_vconn(struct typec_phy *phy, bool en)
 	int ret;
 	unsigned int val = 0;
 
-
 	mutex_lock(&chip->lock);
 	if (en) {
 		if (phy->valid_cc == TYPEC_PIN_CC1)
@@ -1761,6 +1760,8 @@ static int fusb300_probe(struct i2c_client *client,
 	chip->phy.ops.measure_cc = fusb300_measure_cc;
 	chip->phy.ops.set_host_current = fusb300_set_host_current;
 	chip->phy.ops.get_host_current = fusb300_get_host_current;
+	chip->phy.ops.is_vconn_enabled = fusb300_is_vconn_enabled;
+	chip->phy.ops.enable_vconn = fusb300_enable_vconn;
 	chip->phy.ops.switch_mode = fusb300_switch_mode;
 	chip->phy.ops.setup_cc = fusb300_setup_cc;
 	chip->phy.ops.enable_valid_pu = fusb300_enable_valid_pu;
@@ -1774,8 +1775,6 @@ static int fusb300_probe(struct i2c_client *client,
 	chip->phy.is_vbus_on = fusb300_is_vbus_on;
 	chip->phy.set_pu_pd = fusb300_set_pu_pd;
 	chip->phy.set_swap_state = fusb300_set_swap_state;
-	chip->phy.is_vconn_enabled = fusb300_is_vconn_enabled;
-	chip->phy.enable_vconn = fusb300_enable_vconn;
 	if (!chip->is_fusb300) {
 		chip->phy.setup_role = fusb300_setup_role;
 		chip->phy.enable_autocrc = fusb300_enable_autocrc;

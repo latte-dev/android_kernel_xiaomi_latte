@@ -181,6 +181,8 @@ struct typec_ops {
 	int (*setup_cc)(struct typec_phy *phy, enum typec_cc_pin cc,
 					enum typec_state state);
 	int (*enable_valid_pu)(struct typec_phy *phy);
+	bool (*is_vconn_enabled)(struct typec_phy *phy);
+	int (*enable_vconn)(struct typec_phy *phy, bool en);
 };
 
 
@@ -223,8 +225,6 @@ struct typec_phy {
 	int (*set_swap_state)(struct typec_phy *phy, bool swap);
 	int (*enable_detection)(struct typec_phy *phy, bool en);
 	bool (*is_vbus_on)(struct typec_phy *phy);
-	bool (*is_vconn_enabled)(struct typec_phy *phy);
-	int (*enable_vconn)(struct typec_phy *phy, bool en);
 };
 
 extern struct typec_phy *typec_get_phy(int type);
@@ -252,6 +252,22 @@ static inline int typec_set_host_current(struct typec_phy *phy,
 {
 	if (phy && phy->ops.set_host_current)
 		return phy->ops.set_host_current(phy, cur);
+	return -ENOTSUPP;
+}
+
+static inline bool typec_is_vconn_enabled(struct typec_phy *phy)
+{
+	if (phy && phy->ops.is_vconn_enabled)
+		return phy->ops.is_vconn_enabled(phy);
+
+	return false;
+}
+
+static inline int typec_enable_vconn(struct typec_phy *phy, bool en)
+{
+	if (phy && phy->ops.enable_vconn)
+		return phy->ops.enable_vconn(phy, en);
+
 	return -ENOTSUPP;
 }
 
