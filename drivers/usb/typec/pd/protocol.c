@@ -198,6 +198,7 @@ static int pd_prot_rcv_pkt_from_policy(struct pd_prot *prot, u8 msg_type,
 						void *buf, int len)
 {
 	struct pd_packet *pkt;
+	int ret;
 
 	if (msg_type == PD_CMD_HARD_RESET) {
 		pd_prot_reset_protocol(prot);
@@ -207,6 +208,21 @@ static int pd_prot_rcv_pkt_from_policy(struct pd_prot *prot, u8 msg_type,
 		return pd_tx_fsm_state(prot, PROT_TX_PHY_LAYER_RESET);
 	} else if (msg_type == PD_CTRL_MSG_SOFT_RESET) {
 		pd_prot_reset_protocol(prot);
+	}
+
+	/*
+	 * By default msg auto retry is disabled.
+	 * Except for src_cap, enable it while sending msg.
+	 */
+	if (msg_type != PD_DATA_MSG_SRC_CAP
+		&& !prot->is_auto_retry_enable) {
+		ret = typec_enable_auto_retry(prot->phy, true);
+		if (ret)
+			dev_warn(prot->phy->dev,
+			"%s: failed to enable msg auto retry, ret=%d\n",
+			__func__, ret);
+		else
+			prot->is_auto_retry_enable = true;
 	}
 
 	pkt = &prot->tx_buf;
@@ -567,11 +583,23 @@ static void prot_role_chnage_worker(struct work_struct *work)
 
 static void pd_protocol_enable_pd(struct pd_prot *prot, bool en)
 {
+	int ret;
+
 	mutex_lock(&prot->rx_data_lock);
 	prot->is_pd_enabled = en;
 	mutex_unlock(&prot->rx_data_lock);
 	prot_clear_rx_msg_list(prot);
 	typec_enable_autocrc(prot->phy, en);
+	/* Disable msg auto retry while disabling PD */
+	if (!en) {
+		ret = typec_enable_auto_retry(prot->phy, false);
+		if (ret)
+			dev_warn(prot->phy->dev,
+			"%s: failed to disable msg auto retry, ret=%d\n",
+			__func__, ret);
+		else
+			prot->is_auto_retry_enable = false;
+	}
 }
 
 int protocol_bind_pe(struct policy *p)

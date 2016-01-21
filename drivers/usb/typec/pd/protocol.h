@@ -66,7 +66,8 @@ struct pd_prot {
 					enum pwr_role prole);
 	void (*protocol_enable_pd)(struct pd_prot *prot, bool en);
 
-	bool is_pd_enabled;
+	unsigned is_pd_enabled:1;
+	unsigned is_auto_retry_enable:1;
 };
 
 static inline int pd_prot_send_phy_packet(struct pd_prot *pd, void *buf,
