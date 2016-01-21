@@ -582,6 +582,24 @@ end:
 	return 0;
 }
 
+static int fusb300_enable_auto_retry(struct typec_phy *phy, bool en)
+{
+	struct fusb300_chip *chip;
+	int ret;
+
+	if (!phy)
+		return -ENODEV;
+
+	chip = dev_get_drvdata(phy->dev);
+
+	mutex_lock(&chip->lock);
+	ret = regmap_update_bits(chip->map, FUSB302_CONTROL3_REG,
+				FUSB302_CONTROL3_AUTO_RETRY,
+				en ? FUSB302_CONTROL3_AUTO_RETRY : 0);
+	mutex_unlock(&chip->lock);
+	dev_dbg(phy->dev, "%s: en %d\n", __func__, en);
+	return ret;
+}
 
 #ifdef DEBUG
 static void dump_registers(struct fusb300_chip *chip)
@@ -641,8 +659,7 @@ static inline int fusb302_configure_pd(struct fusb300_chip *chip)
 {
 	unsigned int val;
 
-	val = FUSB302_CONTROL3_AUTO_RETRY |
-		(FUSB302_CONTROL3_RETRY3 << FUSB302_CONTROL3_N_RETRY_SHIFT);
+	val = FUSB302_CONTROL3_RETRY3 << FUSB302_CONTROL3_N_RETRY_SHIFT;
 	regmap_write(chip->map, FUSB302_CONTROL3_REG, val);
 	return 0;
 }
@@ -750,14 +767,17 @@ static void fusb300_enable_valid_pu_pd(struct fusb300_chip *chip, int tog_stat)
 {
 	unsigned int val;
 
-	if (tog_stat == FUSB302_TOG_STAT_DFP_CC1)
+	if (tog_stat == FUSB302_TOG_STAT_DFP_CC1) {
 		val = FUSB300_SWITCH0_PU_CC1_EN;
-	else if (tog_stat == FUSB302_TOG_STAT_DFP_CC1)
+	} else if (tog_stat == FUSB302_TOG_STAT_DFP_CC2) {
 		val = FUSB300_SWITCH0_PU_CC2_EN;
-
-	if ((tog_stat == FUSB302_TOG_STAT_UFP_CC1) ||
-		(tog_stat == FUSB302_TOG_STAT_UFP_CC2))
+	} else if (tog_stat == FUSB302_TOG_STAT_UFP_CC1 ||
+			tog_stat == FUSB302_TOG_STAT_UFP_CC2) {
 		val = FUSB300_SWITCH0_PD_CC1_EN | FUSB300_SWITCH0_PD_CC2_EN;
+	} else {
+		dev_warn(chip->dev, "Invalid tog_stat: %x\n", tog_stat);
+		return;
+	}
 
 	regmap_write(chip->map, FUSB300_SWITCH0_REG, val);
 }
@@ -1779,6 +1799,7 @@ static int fusb300_probe(struct i2c_client *client,
 		chip->phy.setup_role = fusb300_setup_role;
 		chip->phy.enable_autocrc = fusb300_enable_autocrc;
 		chip->phy.enable_detection = fusb300_enable_typec_detection;
+		chip->phy.enable_auto_retry = fusb300_enable_auto_retry;
 	}
 
 	if (IS_ENABLED(CONFIG_ACPI))

@@ -225,6 +225,7 @@ struct typec_phy {
 	int (*set_swap_state)(struct typec_phy *phy, bool swap);
 	int (*enable_detection)(struct typec_phy *phy, bool en);
 	bool (*is_vbus_on)(struct typec_phy *phy);
+	int (*enable_auto_retry)(struct typec_phy *phy, bool en);
 };
 
 extern struct typec_phy *typec_get_phy(int type);
@@ -341,6 +342,14 @@ static inline int typec_enable_autocrc(struct typec_phy *phy, bool en)
 {
 	if (phy && phy->enable_autocrc)
 		return phy->enable_autocrc(phy, en);
+
+	return -ENOTSUPP;
+}
+
+static inline int typec_enable_auto_retry(struct typec_phy *phy, bool en)
+{
+	if (phy && phy->enable_auto_retry)
+		return phy->enable_auto_retry(phy, en);
 
 	return -ENOTSUPP;
 }
