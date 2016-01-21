@@ -705,6 +705,11 @@ int sst_free_stream(int str_id)
 		ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 		retval = sst_wait_timeout(sst_drv_ctx, block);
 		pr_debug("sst: wait for free returned %d\n", retval);
+		/*
+		 * Reset to 0 as sst_free_stream might block
+		 * the calling of _put when closing the stream
+		 */
+		retval = 0;
 		mutex_lock(&sst_drv_ctx->stream_lock);
 		sst_clean_stream(str_info);
 		mutex_unlock(&sst_drv_ctx->stream_lock);

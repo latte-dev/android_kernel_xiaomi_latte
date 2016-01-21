@@ -535,15 +535,18 @@ put:
 	stream->compr_cb_param = NULL;
 	stream->compr_cb = NULL;
 
-	/* The free_stream will return a error if there is no stream to free,
-	(i.e. the alloc failure case). And in this case the open does a put in
-	the error scenario, so skip in this case.
-		In the close we need to handle put in the success scenario and
-	the timeout error(EBUSY) scenario. */
-	if (!retval || (retval == -EBUSY))
-		sst_pm_runtime_put(sst_drv_ctx);
+	/*
+	 * The free_stream will return error -EINVAL if there is
+	 * no stream to free, (i.e. the alloc failure case). And
+	 * in this case the open does a put in the error scenario,
+	 * so skip in this case. In the close we need to handle
+	 * put in the success scenario and the timeout error(EBUSY)
+	 * scenario.
+	 */
+	if (retval == -EINVAL)
+		WARN(1, "%s: free stream returned err %d\n", __func__, retval);
 	else
-		pr_err("%s: free stream returned err %d\n", __func__, retval);
+		sst_pm_runtime_put(sst_drv_ctx);
 
 	pr_debug("%s: End\n", __func__);
 	return retval;
@@ -789,15 +792,18 @@ put:
 	stream->period_elapsed = NULL;
 	sst_drv_ctx->stream_cnt--;
 
-	/* The free_stream will return a error if there is no stream to free,
-	(i.e. the alloc failure case). And in this case the open does a put in
-	the error scenario, so skip in this case.
-		In the close we need to handle put in the success scenario and
-	the timeout error(EBUSY) scenario. */
-	if (!retval || (retval == -EBUSY))
-		sst_pm_runtime_put(sst_drv_ctx);
+	/*
+	 * The free_stream will return error -EINVAL if there is
+	 * no stream to free, (i.e. the alloc failure case). And
+	 * in this case the open does a put in the error scenario,
+	 * so skip in this case. In the close we need to handle
+	 * put in the success scenario and the timeout error(EBUSY)
+	 * scenario.
+	 */
+	if (retval == -EINVAL)
+		WARN(1, "%s: free stream returned err %d\n", __func__, retval);
 	else
-		pr_err("%s: free stream returned err %d\n", __func__, retval);
+		sst_pm_runtime_put(sst_drv_ctx);
 
 	pr_debug("%s: Exit\n", __func__);
 	return 0;
