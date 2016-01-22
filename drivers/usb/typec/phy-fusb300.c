@@ -1200,8 +1200,6 @@ static int fusb300_phy_reset(struct typec_phy *phy)
 	else
 		fusb302_pd_send_hard_rst(phy);
 	mutex_unlock(&chip->lock);
-	/* Reset the fusb tranceiver */
-	fusb300_reset_pd(phy);
 	return 0;
 }
 
