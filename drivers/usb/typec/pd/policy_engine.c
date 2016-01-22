@@ -76,9 +76,8 @@ static void pe_enable_pd(struct policy_engine *pe, bool en)
 	}
 }
 
-static void pe_do_self_reset(struct policy_engine *pe)
+static void pe_do_pe_reset(struct policy_engine *pe)
 {
-	pe_deactivate_all_timers(pe);
 	/*
 	 * Cancel pending state works. Donot use sync as this
 	 * reset itself might be runnig in the worker.
@@ -109,6 +108,12 @@ static void pe_do_self_reset(struct policy_engine *pe)
 
 	/* Disable PD, auto crc */
 	pe_enable_pd(pe, false);
+}
+
+static void pe_do_self_reset(struct policy_engine *pe)
+{
+	pe_deactivate_all_timers(pe);
+	pe_do_pe_reset(pe);
 }
 
 static void pe_do_dpm_reset_entry(struct policy_engine *pe)
@@ -281,9 +286,6 @@ static void pe_handle_gcrc_received(struct policy_engine *pe)
 			pe_cancel_timer(pe, NO_RESPONSE_TIMER);
 		pe->hard_reset_counter = 0;
 		pe->src_caps_couner = 0;
-		/* Start sender response timer */
-		pe_start_timer(pe, SENDER_RESPONSE_TIMER,
-					PE_TIME_SENDER_RESPONSE);
 		break;
 
 	case PE_SRC_NEGOTIATE_CAPABILITY:
@@ -1456,6 +1458,7 @@ static void pe_timer_expire_worker(struct work_struct *work)
 
 	case CRC_RECEIVE_TIMER:
 		if (pe->cur_state == PE_SRC_SEND_CAPABILITIES) {
+			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
 			pe_change_state(pe, PE_SRC_DISCOVERY);
 			break;
 		} else if (pe->cur_state == PE_PRS_SRC_SNK_WAIT_SOURCE_ON) {
@@ -1614,9 +1617,11 @@ static void pe_timer_expire_worker(struct work_struct *work)
 static void pe_timer_expire_callback(unsigned long data)
 {
 	struct pe_timer *cur_timer = (struct pe_timer *) data;
+	struct policy_engine *pe = (struct policy_engine *)cur_timer->data;
 
 	log_dbg("%s expired!!!", timer_to_str(cur_timer->timer_type));
-	schedule_work(&cur_timer->work);
+	/* Use high priority pd work queue to achive spec timings */
+	pe_schedule_work_pd_wq(&pe->p, &cur_timer->work);
 }
 
 /************************ Sink State Handlers ********************/
@@ -1688,6 +1693,7 @@ pe_process_state_pe_snk_wait_for_capabilities(struct policy_engine *pe)
 	else
 		time_out = PE_TIME_SINK_WAIT_CAP;
 	pe_start_timer(pe, SINK_WAIT_CAP_TIMER, time_out);
+	pe_enable_pd(pe, true);
 }
 
 static void
@@ -1756,12 +1762,13 @@ pe_process_state_pe_snk_ready(struct policy_engine *pe)
 static void
 pe_process_state_pe_snk_hard_reset(struct policy_engine *pe)
 {
-	pe_do_self_reset(pe);
+	pe_deactivate_all_timers(pe);
 	pe->hard_reset_counter++;
 	pe_send_packet(pe, NULL, 0, PD_CMD_HARD_RESET,
 			PE_EVT_SEND_HARD_RESET);
 	pe_start_timer(pe, HARD_RESET_COMPLETE_TIMER,
 		PE_TIME_HARD_RESET + PE_TIME_HARD_RESET_COMPLETE);
+	pe_do_pe_reset(pe);
 }
 
 static void
@@ -1883,6 +1890,7 @@ pe_process_state_pe_src_send_capabilities(struct policy_engine *pe)
 		pe_change_state(pe, PE_SRC_DISCOVERY);
 		return;
 	}
+	pe_start_timer(pe, SENDER_RESPONSE_TIMER, PE_TIME_SENDER_RESPONSE);
 }
 
 static void
@@ -1892,6 +1900,13 @@ pe_process_state_pe_src_negotiate_capability(struct policy_engine *pe)
 	struct pd_fixed_supply_pdo *src_pdo =
 		(struct pd_fixed_supply_pdo *) &pe->self_src_pdos.pdo[0];
 
+	if (snk_rdo->obj_pos < PD_MIN_PDO ||
+		snk_rdo->obj_pos > pe->self_src_pdos.num_pdos) {
+		log_err("object position mismatch\n");
+		pe_send_packet(pe, NULL, 0,
+				PD_CTRL_MSG_REJECT, PE_EVT_SEND_REJECT);
+		return;
+	}
 	/* TODO: Support multiple request PDOs*/
 	if (snk_rdo->cap_mismatch)
 		log_warn("Capability mismatch!!\n");
@@ -1958,17 +1973,19 @@ static void pe_process_state_pe_src_hard_reset(struct policy_engine *pe)
 	pe_send_packet(pe, NULL, 0,
 		PD_CMD_HARD_RESET, PE_EVT_SEND_HARD_RESET);
 	pe->hard_reset_counter++;
-	pe_do_self_reset(pe);
+	pe_deactivate_all_timers(pe);
+	/* Do pe reset after starting timer to avoid reset delay */
 	pe_start_timer(pe, PS_HARD_RESET_TIMER, PE_TIME_PS_HARD_RESET_MIN);
+	pe_do_pe_reset(pe);
 }
 
 static void
 pe_process_state_pe_src_hard_reset_received(struct policy_engine *pe)
 {
-
-	pe_do_self_reset(pe);
+	pe_deactivate_all_timers(pe);
+	/* Do pe reset after starting timer to avoid reset delay */
 	pe_start_timer(pe, PS_HARD_RESET_TIMER, PE_TIME_PS_HARD_RESET_MIN);
-
+	pe_do_pe_reset(pe);
 }
 
 static void

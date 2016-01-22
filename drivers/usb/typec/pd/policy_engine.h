@@ -45,12 +45,14 @@
 #define PE_TIME_PS_HARD_RESET_MIN	25
 #define PE_TIME_PS_SOURCE_OFF		920
 #define PE_TIME_PS_SOURCE_ON		480
-#define PE_TIME_PS_TRANSITION		550
+/* 450 >= tPsTransition <= 550 ms, keep 500 for os delay*/
+#define PE_TIME_PS_TRANSITION		500
 /* tReceive is time to receive gcrc and it is 1.1mS as per spec */
-/* Due to software delay, here it is defines as 10mS */
-#define PE_TIME_RECEIVE			20
+/* Due to software delay, here it is defines as 15mS */
+#define PE_TIME_RECEIVE			15
 #define PE_TIME_RECEIVER_RESPONSE	15
-#define PE_TIME_SENDER_RESPONSE		30
+/* tSenderResponse min = 24ms, max = 30ms */
+#define PE_TIME_SENDER_RESPONSE		24
 #define PE_TIME_SEND_SOURCE_CAP		2000
 #define PE_TIME_SINK_ACTIVITY		150
 #define PE_TIME_SINK_REQUEST		100
@@ -60,7 +62,8 @@
 #define PE_TIME_SWAP_SINK_READY		15
 #define PE_TIME_SWAP_SOURCE_START	20
 #define PE_TIME_TYPEC_SEND_SOURCE_CAP	180
-#define PE_TIME_TYPEC_SINK_WAIT_CAP	620
+/* TypecSinkWaitCap min = 310ms, max = 620ms, taking 550ms for os delays */
+#define PE_TIME_TYPEC_SINK_WAIT_CAP	550
 #define PE_TIME_VCONN_SOURCE_OFF	25
 #define PE_TIME_VCONN_SOURCE_ON		100
 #define PE_TIME_VDM_BUSSY		50
@@ -123,6 +126,9 @@
 #define CURRENT_TO_DATA_OBJ(x)	((x / 10) & SNK_FSPDO_MAX_CURRENT)
 #define VOLT_TO_CAP_DATA_OBJ(x)		(x / 50)
 #define CURRENT_TO_CAP_DATA_OBJ(x)	(x / 10)
+
+
+#define PD_MIN_PDO			1
 
 #define FEATURE_SUPPORTED	1
 #define FEATURE_NOT_SUPPORTED	0
