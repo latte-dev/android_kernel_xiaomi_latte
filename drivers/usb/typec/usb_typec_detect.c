@@ -473,6 +473,7 @@ static void detect_dfp_work(struct work_struct *work)
 	int ret, vbus_on;
 	enum typec_cc_pin use_cc = 0;
 	struct typec_phy *phy = detect->phy;
+	bool audio_debug_detected = 0;
 
 	/**
 	 * when processing cable event if phy goes to suspend, there is an i2c
@@ -524,8 +525,14 @@ static void detect_dfp_work(struct work_struct *work)
 		/* enable VBUS */
 	} else if (detect_audio_attached(&phy->cc1, &phy->cc2)) {
 		dev_info(detect->phy->dev, "Audio Accessory Detected");
+		audio_debug_detected = 1;
+		typec_setup_cc(phy, TYPEC_PIN_CC2,
+					TYPEC_STATE_ATTACHED_AUDIO_ACC);
 	} else if (detect_debug_attached(&phy->cc1, &phy->cc2)) {
 		dev_info(detect->phy->dev, "Debug Accessory Detected");
+		audio_debug_detected = 1;
+		typec_setup_cc(phy, TYPEC_PIN_CC2,
+					TYPEC_STATE_ATTACHED_DEBUG_ACC);
 	} else
 		goto end;
 
@@ -534,6 +541,8 @@ static void detect_dfp_work(struct work_struct *work)
 	detect->state = DETECT_STATE_ATTACHED_DFP;
 	mutex_unlock(&detect->lock);
 
+	if (audio_debug_detected)
+		goto end_ra_rd_detect;
 	typec_detect_notify_extcon(detect,
 				TYPEC_CABLE_USB_SRC, true);
 	typec_detect_notify_extcon(detect,
@@ -554,6 +563,7 @@ end:
 		mutex_unlock(&detect->lock);
 		typec_switch_mode(phy, TYPEC_MODE_DRP);
 	}
+end_ra_rd_detect:
 	pm_runtime_put(detect->phy->dev);
 }
 

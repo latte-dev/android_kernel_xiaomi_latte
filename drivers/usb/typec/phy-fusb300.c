@@ -528,6 +528,7 @@ static int fusb300_setup_cc(struct typec_phy *phy, enum typec_cc_pin cc,
 {
 	struct fusb300_chip *chip;
 	unsigned int val = 0;
+	unsigned int int_mask;
 	u8 val_s1;
 
 	if (!phy)
@@ -546,6 +547,18 @@ static int fusb300_setup_cc(struct typec_phy *phy, enum typec_cc_pin cc,
 	case TYPEC_STATE_POWERED:
 		phy->state = state;
 		break;
+	case TYPEC_STATE_ATTACHED_AUDIO_ACC:
+	case TYPEC_STATE_ATTACHED_DEBUG_ACC:
+		phy->state = state;
+		regmap_read(chip->map, FUSB300_INT_MASK_REG, &int_mask);
+		int_mask &= ~FUSB300_INT_MASK_COMP;
+		regmap_write(chip->map, FUSB300_INT_MASK_REG, int_mask);
+		regmap_write(chip->map, FUSB300_SWITCH0_REG,
+				FUSB300_SWITCH0_MEASURE_CC1 |
+				FUSB300_SWITCH0_PU_CC1_EN);
+		mutex_unlock(&chip->lock);
+		fusb300_set_host_current(phy, TYPEC_CURRENT_USB);
+		return 0;
 	default:
 		break;
 	}
@@ -988,8 +1001,10 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 		 * DFP or UFP state as comp change can also happen
 		 * during role swap.
 		 */
-		if ((phy_state == TYPEC_STATE_ATTACHED_UFP) ||
-			(phy_state == TYPEC_STATE_ATTACHED_DFP)) {
+		if (phy_state == TYPEC_STATE_ATTACHED_UFP ||
+			phy_state == TYPEC_STATE_ATTACHED_DFP ||
+			phy_state == TYPEC_STATE_ATTACHED_AUDIO_ACC ||
+			phy_state == TYPEC_STATE_ATTACHED_DEBUG_ACC) {
 			schedule_delayed_work(&chip->dfp_disconn_work, 0);
 		}
 	}
@@ -1005,7 +1020,8 @@ static irqreturn_t fusb300_interrupt(int id, void *dev)
 			phy->notify_protocol(phy, PROT_PHY_EVENT_COLLISION);
 	}
 
-	if (process_pd && (chip->int_stat.int_reg & FUSB300_INT_CRCCHK)) {
+	if (process_pd && (chip->int_stat.int_reg & FUSB300_INT_CRCCHK
+		|| chip->int_stat.stat1_reg & FUSB300_STAT1_RXEMPTY)) {
 		if (phy->notify_protocol)
 			phy->notify_protocol(phy, PROT_PHY_EVENT_MSG_RCV);
 	}
@@ -1893,7 +1909,9 @@ static int fusb300_late_suspend(struct device *dev)
 	struct typec_phy *phy = &chip->phy;
 
 	if (phy->state == TYPEC_STATE_ATTACHED_UFP ||
-		phy->state == TYPEC_STATE_ATTACHED_DFP) {
+		phy->state == TYPEC_STATE_ATTACHED_DFP ||
+		phy->state == TYPEC_STATE_ATTACHED_AUDIO_ACC ||
+		phy->state == TYPEC_STATE_ATTACHED_DEBUG_ACC) {
 		/* enable power for wakeup block and measure block*/
 		regmap_write(chip->map, FUSB300_PWR_REG,
 			FUSB300_PWR_BG_WKUP | FUSB300_PWR_BMC |
@@ -1920,7 +1938,9 @@ static int fusb300_early_resume(struct device *dev)
 	struct typec_phy *phy = &chip->phy;
 
 	if (phy->state == TYPEC_STATE_ATTACHED_UFP ||
-		phy->state == TYPEC_STATE_ATTACHED_DFP) {
+		phy->state == TYPEC_STATE_ATTACHED_DFP ||
+		phy->state == TYPEC_STATE_ATTACHED_AUDIO_ACC ||
+		phy->state == TYPEC_STATE_ATTACHED_DEBUG_ACC) {
 		/* enable the power for wakeup + measurement block and
 		 * internal osc */
 		regmap_write(chip->map, FUSB300_PWR_REG,
