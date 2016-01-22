@@ -134,11 +134,13 @@ static void pe_do_dpm_reset_complete(struct policy_engine *pe)
 	if (pe->cur_prole == POWER_ROLE_SOURCE) {
 		/* VBUS On if source*/
 		devpolicy_set_vbus_state(pe->p.dpm, true);
-		/*VCONN on if source*/
+		/* VCONN on if source*/
 		devpolicy_set_vconn_state(pe->p.dpm, VCONN_SOURCE);
 		/* Reset data role to DFP*/
 		pe_set_data_role(pe, DATA_ROLE_DFP);
 	} else if (pe->cur_prole == POWER_ROLE_SINK) {
+		/* VCONN off if sink */
+		devpolicy_set_vconn_state(pe->p.dpm, VCONN_SINK);
 		/* Reset data role to UFP*/
 		pe_set_data_role(pe, DATA_ROLE_UFP);
 	} else
