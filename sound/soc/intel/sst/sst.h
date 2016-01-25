@@ -732,12 +732,8 @@ void sst_stream_recovery(struct intel_sst_drv *sst);
 
 static inline int sst_pm_runtime_put(struct intel_sst_drv *sst_drv)
 {
-	int ret;
-
 	pm_runtime_mark_last_busy(sst_drv->dev);
-	ret = pm_runtime_put_autosuspend(sst_drv->dev);
-	if (ret < 0)
-		return ret;
+	pm_runtime_put_autosuspend(sst_drv->dev);
 	atomic_dec(&sst_drv->pm_usage_count);
 
 	pr_debug("%s: count is %d now..\n", __func__,
