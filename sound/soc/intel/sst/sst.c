@@ -1302,6 +1302,7 @@ static int intel_sst_suspend(struct device *dev)
 	struct intel_sst_drv *ctx = dev_get_drvdata(dev);
 	bool reset_dapm;
 	struct sst_platform_cb_params cb_params;
+	int ret = 0;
 
 	pr_debug("Enter: %s\n", __func__);
 
@@ -1320,10 +1321,18 @@ static int intel_sst_suspend(struct device *dev)
 	sst_drv_ctx->sst_suspend_state = true;
 	mutex_unlock(&ctx->sst_lock);
 
+	ret = intel_sst_runtime_suspend(dev);
+	if (ret){
+		dev_err(dev, "can't suspend, ret[%d]\n", ret);
+		mutex_lock(&ctx->sst_lock);
+		sst_drv_ctx->sst_suspend_state = false;
+		mutex_unlock(&ctx->sst_lock);
+		return ret;
+	}
+
 	if (ctx->pdata->start_recovery_timer)
 		sst_set_timer(&ctx->monitor_lpe, false);
 
-	intel_sst_runtime_suspend(dev);
 	cb_params.params = &reset_dapm;
 	cb_params.event = SST_PLATFORM_TRIGGER_DAPM_STATE_CHANGE;
 	reset_dapm = true;
