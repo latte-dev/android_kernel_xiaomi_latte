@@ -322,7 +322,7 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 			udelay(10);
 		else
 			usleep_range(10, 100);
-	} while (timeout--);
+	} while (--timeout);
 
 	if (unlikely(timeout == 0))
 		dev_err(dev->dev, "controller time out\n");
