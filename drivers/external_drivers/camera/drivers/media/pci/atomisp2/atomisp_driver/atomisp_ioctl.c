@@ -1815,15 +1815,6 @@ static int atomisp_streamon(struct file *file, void *fh,
 				dev_dbg(isp->dev, "ZSL last preview raw buffer id: %u\n",
 					asd->latest_preview_exp_id);
 
-			if (asd->delayed_init == ATOMISP_DELAYED_INIT_QUEUED) {
-				flush_work(&asd->delayed_init_work);
-				rt_mutex_unlock(&isp->mutex);
-				if (wait_for_completion_interruptible(
-						&asd->init_done) != 0)
-					return -ERESTARTSYS;
-				rt_mutex_lock(&isp->mutex);
-			}
-
 			/* handle per_frame_setting parameter and buffers */
 			atomisp_handle_parameter_and_buffer(pipe);
 
@@ -1839,6 +1830,22 @@ static int atomisp_streamon(struct file *file, void *fh,
 			 * atomisp_css_exp_id_capture and trigger real capture
 			 */
 			if (!asd->enable_raw_buffer_lock->val) {
+				/*
+				 * If raw lock/unlock turned on, streamon video0
+				 * does not mean trigger capture, therefore
+				 * we can delay flushing the delayed_init_work
+				 * until 1st time capture is triggered.
+				 */
+				if (asd->delayed_init ==
+					ATOMISP_DELAYED_INIT_QUEUED) {
+					flush_work(&asd->delayed_init_work);
+					rt_mutex_unlock(&isp->mutex);
+					if (wait_for_completion_interruptible(
+							&asd->init_done) != 0)
+						return -ERESTARTSYS;
+					rt_mutex_lock(&isp->mutex);
+				}
+
 				ret = atomisp_css_offline_capture_configure(asd,
 					asd->params.offline_parm.num_captures,
 					asd->params.offline_parm.skip_frames,

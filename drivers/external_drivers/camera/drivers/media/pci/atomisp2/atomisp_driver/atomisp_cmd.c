@@ -6425,6 +6425,16 @@ int atomisp_exp_id_capture(struct atomisp_sub_device *asd, int *exp_id)
 		return -EINVAL;
 	}
 
+	/* Flush the delayed init work thread */
+	if (asd->delayed_init == ATOMISP_DELAYED_INIT_QUEUED) {
+		flush_work(&asd->delayed_init_work);
+		rt_mutex_unlock(&isp->mutex);
+		if (wait_for_completion_interruptible(
+				&asd->init_done) != 0)
+			return -ERESTARTSYS;
+		rt_mutex_lock(&isp->mutex);
+	}
+
 	dev_dbg(isp->dev, "%s exp_id %d\n", __func__, value);
 	ret = atomisp_css_exp_id_capture(asd, value);
 	if (ret) {
