@@ -3347,10 +3347,15 @@ static enum ia_css_err add_capture_pp_stage(
 	ia_css_pipe_util_create_output_frames(out_frames);
 
 	last_fw = last_output_firmware(pipe->output_stage);
-	err = ia_css_frame_allocate_from_info(&vf_frame,
+
+	/* ISP 2.7 - VF is to use a shared buffer */
+	if (capture_pp_binary->info->sp.pipeline.isp_pipe_version != SH_CSS_ISP_PIPE_VERSION_2_7) {
+		err = ia_css_frame_allocate_from_info(&vf_frame,
 				    &capture_pp_binary->vf_frame_info);
-	if (err != IA_CSS_SUCCESS)
-		return err;
+		if (err != IA_CSS_SUCCESS)
+			return err;
+	}
+
 	if(last_fw)	{
 		ia_css_pipe_util_set_output_frames(out_frames, 0, NULL);
 		ia_css_pipe_get_generic_stage_desc(&stage_desc,
