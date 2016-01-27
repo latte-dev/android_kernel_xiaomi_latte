@@ -1347,10 +1347,17 @@ static void pe_timer_expire_worker(struct work_struct *work)
 	enum pe_timers type = cur_timer->timer_type;
 
 	mutex_lock(&pe->pe_lock);
+	if (pe->cur_state == PE_ERROR_RECOVERY
+		|| pe->cur_state == PE_STATE_NONE) {
+		log_info("Ignore timer expiries in state=%d",
+				pe->cur_state);
+		mutex_unlock(&pe->pe_lock);
+		return;
+	}
 	log_dbg("%s expiration handling!!!",
 			timer_to_str(type));
-	switch (type) {
 
+	switch (type) {
 	case SENDER_RESPONSE_TIMER:
 		if (pe->cur_state == PE_SRC_SEND_CAPABILITIES) {
 			if (pe->is_gcrc_received)
@@ -2423,11 +2430,12 @@ pe_process_state_pe_error_recovery(struct policy_engine *pe)
 static void
 pe_process_state_pe_state_none(struct policy_engine *pe)
 {
-	pe_do_complete_reset(pe);
-	/* VBUS Off */
-	devpolicy_set_vbus_state(pe->p.dpm, false);
+	pe_deactivate_all_timers(pe);
 	/*VCONN off */
 	devpolicy_set_vconn_state(pe->p.dpm, VCONN_NONE);
+	/* VBUS Off */
+	devpolicy_set_vbus_state(pe->p.dpm, false);
+	pe_do_complete_reset(pe);
 	pe_set_data_role(pe, DATA_ROLE_NONE);
 	pe_set_power_role(pe, POWER_ROLE_NONE);
 	if (pe->prev_state == PE_ERROR_RECOVERY)
