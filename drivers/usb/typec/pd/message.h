@@ -141,7 +141,7 @@ struct vdm_header {
 	u16 svid;
 } __packed;
 
-struct id_header {
+struct id_header_vdo {
 	u16 vendor_id;
 	u16 rsvd:10;
 	u16 modal_op_supported:1;
@@ -178,6 +178,21 @@ struct product_vdo {
 	u16 product_id;
 } __packed;
 
+/* Alternate mode adapter vdo */
+struct ama_vdo {
+	u32 superspeed_signal_support:3;
+	u32 vbus_req:1;
+	u32 vconn_req:1;
+	u32 vconn_pwr:3;
+	u32 ssrx2_dir_supp:1;
+	u32 ssrx1_dir_supp:1;
+	u32 sstx2_dir_supp:1;
+	u32 sstx1_dir_supp:1;
+	u32 rsvd:12;
+	u32 fw_ver:4;
+	u32 hw_ver:4;
+} __packed;
+
 struct vdm_req_pkt {
 	struct pd_pkt_header msg_hdr;
 	struct vdm_header vdm_hdr;
@@ -186,7 +201,7 @@ struct vdm_req_pkt {
 struct dis_id_response_cable_pkt {
 	struct pd_pkt_header msg_hdr;
 	struct vdm_header vdm_hdr;
-	struct id_header id_hdr;
+	struct id_header_vdo id_hdr;
 	struct cert_stat_vdo vdo1;
 	struct cable_vdo vdo2;
 } __packed;
@@ -194,7 +209,7 @@ struct dis_id_response_cable_pkt {
 struct dis_id_response_hub_pkt {
 	struct pd_pkt_header msg_hdr;
 	struct vdm_header vdm_hdr;
-	struct id_header id_hdr;
+	struct id_header_vdo id_hdr;
 	struct cert_stat_vdo vdo1;
 	struct product_vdo vdo2;
 } __packed;

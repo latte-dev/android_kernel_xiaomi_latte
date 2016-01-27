@@ -84,8 +84,23 @@ enum batt_soc_status {
 #define ICHRG_P5A	500
 
 #define DPM_PSY_TYPE_FIXED	0
-#define DPM_PSY_TYPE_VARIABLE	2
 #define DPM_PSY_TYPE_BATTERY	1
+#define DPM_PSY_TYPE_VARIABLE	2
+
+#define PRODUCT_TYPE_UNDEFINED		0
+#define PRODUCT_TYPE_HUB		1
+#define PRODUCT_TYPE_PERIPHERAL		2
+#define PRODUCT_TYPE_PASSIVE_CABLE	3
+#define PRODUCT_TYPE_ACTIVE_CABLE	4
+#define PRODUCT_TYPE_AMA		5 /* alternate mode adapter */
+
+#define USB_SS_USB_2P0_ONLY		0
+#define USB_SS_USB_3P1_GEN1		1
+#define USB_SS_USB_3P1_GEN1_GEN2	2
+#define USB_SS_USB_2P0_BILLBOARD	3
+
+#define MAX_SRC_PWR_CAPS	7
+#define MAX_SNK_PWR_CAPS	7
 
 enum devpolicy_mgr_events {
 	DEVMGR_EVENT_NONE,
@@ -157,6 +172,34 @@ struct pd_policy {
 	size_t num_policies;
 };
 
+struct pd_platfrom_config {
+	u16 num_src_pwr_caps;
+	u16 num_snk_pwr_caps;
+	struct power_cap src_pwr_caps[MAX_SRC_PWR_CAPS];
+	struct power_cap snk_pwr_caps[MAX_SNK_PWR_CAPS];
+	u32 usb_dev_supp:1;
+	u32 usb_host_supp:1;
+	u32 dfp_modal_op_supp:1;
+	u32 ufp_modal_op_supp:1;
+	u32 vconn_req:1;
+	u32 vbus_req:1;
+	u32 usb_suspend_supp:1;
+	u32 dual_data_role:1;
+	u32 dual_pwr_role:1;
+	u32 ext_pwrd:1;
+	/* power supply type */
+	unsigned short psy_type;
+	unsigned short product_type;
+	u16 vendor_id;
+	u16 usb_product_id;
+	u16 usb_bcd_device_id;
+	u32 test_id;
+	unsigned short hw_ver;
+	unsigned short fw_ver;
+	unsigned short vconn_pwr_req;
+	unsigned short usb_ss_signaling;
+};
+
 struct devpolicy_mgr {
 	struct pd_policy *policy;
 	struct extcon_specific_cable_nb provider_cable_nb;
@@ -169,6 +212,7 @@ struct devpolicy_mgr {
 	struct mutex role_lock;
 	struct mutex charger_lock;
 	struct dpm_interface *interface;
+	struct pd_platfrom_config  plat_conf;
 	spinlock_t cable_event_queue_lock;
 	enum cable_state consumer_state;    /* cosumer cable state */
 	enum cable_state provider_state;    /* provider cable state */

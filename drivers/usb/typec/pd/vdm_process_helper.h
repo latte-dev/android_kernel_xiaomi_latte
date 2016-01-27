@@ -25,7 +25,6 @@
 #define VDM_PROCESS_HELPER_H
 int pe_handle_vendor_msg(struct policy_engine *pe, struct pd_packet *pkt);
 int pe_send_discover_identity(struct policy_engine *pe);
-int pe_send_discover_identity_rnak(struct policy_engine *pe);
 int pe_send_discover_svid(struct policy_engine *pe);
 int pe_send_discover_mode(struct policy_engine *pe);
 int pe_send_enter_mode(struct policy_engine *pe, int index);

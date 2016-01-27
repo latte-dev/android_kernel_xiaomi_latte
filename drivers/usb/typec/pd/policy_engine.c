@@ -1764,7 +1764,7 @@ pe_process_state_pe_snk_ready(struct policy_engine *pe)
 		devpolicy_update_charger(pe->p.dpm, rcap->op_ma, 0);
 		pe_store_port_partner_caps(pe, &pe->pp_src_pdos);
 		schedule_delayed_work(&pe->post_ready_work,
-				msecs_to_jiffies(PE_AUTO_TRIGGERING_DELAY));
+				msecs_to_jiffies(PE_SNK_AUTO_TRIGGERING_DELAY));
 	} else
 		schedule_delayed_work(&pe->post_ready_work, 0);
 }
@@ -1950,7 +1950,7 @@ pe_process_state_pe_src_ready(struct policy_engine *pe)
 	log_dbg("In PE_SRC_READY");
 
 	if (pe->prev_state == PE_SRC_TRANSITION_SUPPLY)
-		delay = PE_AUTO_TRIGGERING_DELAY;
+		delay = PE_SRC_AUTO_TRIGGERING_DELAY;
 	schedule_delayed_work(&pe->post_ready_work,
 					msecs_to_jiffies(delay));
 }
@@ -2857,6 +2857,7 @@ int policy_engine_bind_dpm(struct devpolicy_mgr *dpm)
 	}
 
 	pe->p.dpm = dpm;
+	pe->plat_conf = &dpm->plat_conf;
 	ret = protocol_bind_pe(&pe->p);
 	if (ret) {
 		log_err("Failed to bind pe to protocol\n");

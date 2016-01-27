@@ -36,7 +36,7 @@
 #include "pd_policy.h"
 #include "protocol.h"
 
-static struct power_cap spcaps[] = {
+static struct power_cap default_snk_pwr_caps[] = {
 	{
 		.mv = VIN_5V,
 		.ma = ICHRG_3A,
@@ -45,6 +45,14 @@ static struct power_cap spcaps[] = {
 	{
 		.mv = VIN_12V,
 		.ma = ICHRG_3A,
+		.psy_type = DPM_PSY_TYPE_FIXED,
+	},
+};
+
+static struct power_cap default_src_pwr_caps[] = {
+	{
+		.mv = VIN_5V,
+		.ma = IBUS_0P9A,
 		.psy_type = DPM_PSY_TYPE_FIXED,
 	},
 };
@@ -227,11 +235,11 @@ static int dpm_get_sink_power_caps(struct devpolicy_mgr *dpm,
 					struct power_caps *caps)
 {
 
-	if (spcaps == NULL)
+	if (default_snk_pwr_caps == NULL)
 		return -ENODATA;
 
-	caps->pcap = spcaps;
-	caps->n_cap = ARRAY_SIZE(spcaps);
+	caps->pcap = default_snk_pwr_caps;
+	caps->n_cap = ARRAY_SIZE(default_snk_pwr_caps);
 	return 0;
 }
 
@@ -1255,6 +1263,50 @@ static void dpm_clear_notify_list(struct devpolicy_mgr *dpm)
 	mutex_unlock(&dpm->cable_notify_lock);
 }
 
+static void dpm_load_default_pd_config(struct devpolicy_mgr *dpm)
+{
+	struct pd_platfrom_config *conf = &dpm->plat_conf;
+
+	conf->num_snk_pwr_caps = ARRAY_SIZE(default_snk_pwr_caps);
+	if (conf->num_snk_pwr_caps > MAX_SNK_PWR_CAPS)
+		conf->num_snk_pwr_caps = MAX_SNK_PWR_CAPS;
+	memcpy(conf->src_pwr_caps, default_snk_pwr_caps,
+		(sizeof(struct power_cap)) * conf->num_snk_pwr_caps);
+
+	conf->num_src_pwr_caps = ARRAY_SIZE(default_src_pwr_caps);
+	if (conf->num_src_pwr_caps > MAX_SRC_PWR_CAPS)
+		conf->num_src_pwr_caps = MAX_SRC_PWR_CAPS;
+	memcpy(conf->snk_pwr_caps, default_src_pwr_caps,
+		(sizeof(struct power_cap)) * conf->num_src_pwr_caps);
+
+	conf->usb_dev_supp = 1;
+	conf->usb_host_supp = 1;
+	conf->dfp_modal_op_supp = 1;
+	conf->ufp_modal_op_supp = 0;
+	conf->vconn_req = 0;
+	conf->vbus_req = 1;
+	conf->usb_suspend_supp = 1;
+	conf->dual_data_role = 1;
+	conf->dual_pwr_role = 1;
+	conf->ext_pwrd = 0;
+	conf->psy_type = DPM_PSY_TYPE_FIXED;
+	conf->product_type = PRODUCT_TYPE_PERIPHERAL;
+	conf->vendor_id = 0x8086; /* Intel VID */
+	conf->usb_product_id = 0x1234;
+	conf->usb_bcd_device_id = 0x0010;
+	conf->test_id = 0x0;
+	conf->hw_ver = 0;
+	conf->fw_ver = 0;
+	conf->vconn_pwr_req = 0;
+	conf->usb_ss_signaling = USB_SS_USB_3P1_GEN1;
+}
+
+static void dpm_init_pd_platform_config(struct devpolicy_mgr *dpm)
+{
+	/* TODO: Get platform configuration from acpi */
+	dpm_load_default_pd_config(dpm);
+}
+
 static struct dpm_interface interface = {
 	.get_max_srcpwr_cap = dpm_get_max_srcpwr_cap,
 	.get_max_snkpwr_cap = dpm_get_max_snkpwr_cap,
@@ -1303,6 +1355,7 @@ struct devpolicy_mgr *dpm_register_syspolicy(struct typec_phy *phy,
 	INIT_WORK(&dpm->cable_notify_work, dpm_notify_cable_state_worker);
 	mutex_init(&dpm->cable_notify_lock);
 	INIT_LIST_HEAD(&dpm->cable_notify_list);
+	dpm_init_pd_platform_config(dpm);
 
 	/* register for extcon notifier */
 	dpm->consumer_nb.notifier_call = dpm_consumer_cable_event;

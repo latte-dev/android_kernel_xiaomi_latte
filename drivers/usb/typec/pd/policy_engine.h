@@ -144,7 +144,8 @@
 	pr_warn(LOG_TAG":%s:"format"\n", __func__, ##__VA_ARGS__)
 
 #define PE_MAX_RETRY			20
-#define PE_AUTO_TRIGGERING_DELAY	100 /* 100 mSec */
+#define PE_SRC_AUTO_TRIGGERING_DELAY	100 /* 100 mSec */
+#define PE_SNK_AUTO_TRIGGERING_DELAY	200 /* 200 mSec */
 
 enum pe_states {
 
@@ -514,6 +515,7 @@ struct pe_req_cap {
 
 struct policy_engine {
 	struct policy p;
+	struct pd_platfrom_config *plat_conf;
 
 	struct mutex pe_lock;
 	struct mutex dpm_evt_lock;
