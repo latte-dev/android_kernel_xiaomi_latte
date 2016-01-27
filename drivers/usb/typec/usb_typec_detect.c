@@ -522,6 +522,7 @@ static void detect_dfp_work(struct work_struct *work)
 	if (detect_src_attached(&phy->cc1, &phy->cc2)) {
 		use_cc = get_active_cc(phy->cc1.rd, phy->cc2.rd);
 		typec_setup_cc(phy, use_cc, TYPEC_STATE_ATTACHED_DFP);
+		typec_set_host_current(phy, TYPEC_CURRENT_USB);
 		/* enable VBUS */
 	} else if (detect_audio_attached(&phy->cc1, &phy->cc2)) {
 		dev_info(detect->phy->dev, "Audio Accessory Detected");
