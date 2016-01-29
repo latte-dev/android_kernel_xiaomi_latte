@@ -360,4 +360,63 @@ static inline u32 pd_fixed_pdo_to_volt(u32 pdo)
 	return (pdo & 0x3ff) * 50;
 }
 
+static char *pd_data_msg_to_str(u8 msg)
+{
+	switch (msg) {
+	case PD_DATA_MSG_SRC_CAP:
+		return "PD_DATA_MSG_SRC_CAP";
+	case PD_DATA_MSG_REQUEST:
+		return "PD_DATA_MSG_REQUEST";
+	case PD_DATA_MSG_BIST:
+		return "PD_DATA_MSG_BIST";
+	case PD_DATA_MSG_SINK_CAP:
+		return "PD_DATA_MSG_SINK_CAP";
+	case PD_DATA_MSG_VENDOR_DEF:
+		return "PD_DATA_MSG_VENDOR_DEF";
+	default:
+		return "PD_DATA_MSG_INVALID/RESERVED";
+	}
+}
+
+static char *pd_ctrl_msg_to_str(u8 msg)
+{
+	switch (msg) {
+	case PD_CTRL_MSG_GOODCRC:
+		return "PD_CTRL_MSG_GOODCRC";
+	case PD_CTRL_MSG_GOTOMIN:
+		return "PD_CTRL_MSG_GOTOMIN";
+	case PD_CTRL_MSG_ACCEPT:
+		return "PD_CTRL_MSG_ACCEPT";
+	case PD_CTRL_MSG_REJECT:
+		return "PD_CTRL_MSG_REJECT";
+	case PD_CTRL_MSG_PING:
+		return "PD_CTRL_MSG_PING";
+	case PD_CTRL_MSG_PS_RDY:
+		return "PD_CTRL_MSG_PS_RDY";
+	case PD_CTRL_MSG_GET_SRC_CAP:
+		return "PD_CTRL_MSG_GET_SRC_CAP";
+	case PD_CTRL_MSG_GET_SINK_CAP:
+		return "PD_CTRL_MSG_GET_SINK_CAP";
+	case PD_CTRL_MSG_DR_SWAP:
+		return "PD_CTRL_MSG_DR_SWAP";
+	case PD_CTRL_MSG_PR_SWAP:
+		return "PD_CTRL_MSG_PR_SWAP";
+	case PD_CTRL_MSG_VCONN_SWAP:
+		return "PD_CTRL_MSG_VCONN_SWAP";
+	case PD_CTRL_MSG_WAIT:
+		return "PD_CTRL_MSG_WAIT";
+	case PD_CTRL_MSG_SOFT_RESET:
+		return "PD_CTRL_MSG_SOFT_RESET";
+	default:
+		return "PD_CTRL_MSG_INVALID/RESERVED";
+	}
+}
+
+static inline char *pd_msg_to_str(u8 msg, int len)
+{
+	if (len)
+		return pd_data_msg_to_str(msg);
+	return pd_ctrl_msg_to_str(msg);
+}
+
 #endif /* __PD_MESSAGE_H__ */

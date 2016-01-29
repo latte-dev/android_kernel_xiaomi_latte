@@ -37,7 +37,6 @@ struct prot_msg {
 	enum pd_pkt_type sop_type;
 };
 
-
 static int pd_ctrl_msg(struct pd_prot *pd, u8 msg_type, u8 msg_id)
 {
 	struct pd_packet *buf = &pd->tx_buf;
@@ -196,8 +195,10 @@ static int pd_prot_rcv_pkt_from_policy(struct pd_prot *prot, u8 msg_type,
 
 	if (msg_type == PD_CMD_HARD_RESET) {
 		pd_prot_reset_protocol(prot);
+		pr_debug("%s: Sending HARD_RESET\n", __func__);
 		return pd_prot_reset_phy(prot);
 	} else if (msg_type == PD_CMD_PROTOCOL_RESET) {
+		pr_debug("%s: PROTOCOL_RESET\n", __func__);
 		pd_prot_reset_protocol(prot);
 		return pd_tx_fsm_state(prot, PROT_TX_PHY_LAYER_RESET);
 	} else if (msg_type == PD_CTRL_MSG_SOFT_RESET) {
@@ -248,9 +249,10 @@ static int pd_prot_rcv_pkt_from_policy(struct pd_prot *prot, u8 msg_type,
 	pkt->header.num_data_obj = len / 4;
 	memcpy((u8 *)pkt + sizeof(struct pd_pkt_header), buf, len);
 
+	pr_debug("%s: Sending pkt, msg=%s, msg_id=%d\n", __func__,
+			pd_msg_to_str(msg_type, len), pkt->header.msg_id);
 	pd_prot_send_phy_packet(prot, &prot->tx_buf,
 		len + PD_MSG_HEADER_SIZE, type);
-
 	return 0;
 }
 
@@ -467,7 +469,6 @@ static void pd_prot_phy_rcv(struct pd_prot *pd)
 	enum pd_pkt_type type = 0;
 
 	mutex_lock(&pd->rx_data_lock);
-
 	memset(&rcv_buf, 0, sizeof(struct pd_packet));
 	len = pd_prot_recv_phy_packet(pd, &rcv_buf, &type);
 	if (len == 0)
@@ -477,14 +478,18 @@ static void pd_prot_phy_rcv(struct pd_prot *pd)
 		goto phy_rcv_end;
 
 	msg_type = PD_MSG_TYPE(&rcv_buf.header);
+	if (msg_type == PD_CTRL_MSG_RESERVED_0)
+		goto phy_rcv_end;
+
+	pr_debug("%s: Received msg=%s, msg_id=%d\n", __func__,
+			pd_msg_to_str(rcv_buf.header.msg_type,
+			rcv_buf.header.num_data_obj),
+			rcv_buf.header.msg_id);
 	if (!pd->is_pd_enabled) {
 		dev_dbg(pd->phy->dev, "%s:PD disabled, Ignore the pkt=%d\n",
 					__func__, msg_type);
 		goto phy_rcv_end;
 	}
-
-	if (msg_type == PD_CTRL_MSG_RESERVED_0)
-		goto phy_rcv_end;
 
 	msg_id = PD_MSG_ID(&rcv_buf.header);
 	send_good_crc = 1;

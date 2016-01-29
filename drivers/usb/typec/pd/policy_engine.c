@@ -167,7 +167,6 @@ static int policy_engine_process_data_msg(struct policy *p, enum pe_event evt,
 	struct policy_engine *pe = container_of(p, struct policy_engine, p);
 	int data_len = PD_MSG_NUM_DATA_OBJS(&pkt->header);
 
-	log_dbg("Data msg received evt - %d\n", evt);
 	if (sop_type == PKT_TYPE_SOP_P
 		&& pe->cur_state != PE_SRC_VDM_IDENTITY_REQUEST) {
 		log_dbg("Ignore SOPP pkt in state=%d", pe->cur_state);
@@ -398,7 +397,6 @@ static int policy_engine_process_ctrl_msg(struct policy *p, enum pe_event evt,
 	int ret = 0;
 	struct policy_engine *pe = container_of(p, struct policy_engine, p);
 
-	log_dbg("Ctrl msg received evt - %d\n", evt);
 	if (sop_type != PKT_TYPE_SOP) {
 		log_dbg("Not an SOP packet, ignore");
 		return -EINVAL;
@@ -752,7 +750,6 @@ int pe_send_packet(struct policy_engine *pe, void *data, int len,
 
 	/* Send the pd_packet to protocol */
 	pe->is_gcrc_received = false;
-	log_dbg("Sending pkt, evt=%d", evt);
 	if (pe->p.prot && pe->p.prot->policy_fwd_pkt)
 		pe->p.prot->policy_fwd_pkt(pe->p.prot, msg_type, data,
 			len, type);
