@@ -354,7 +354,8 @@ static void set_cht_platform_config(void)
 	sst_platform_pdata.dfw_enable = 1;
 	memcpy(sst_platform_pdata.ssp_config, sst_ssp_configs_mrfld, sizeof(sst_ssp_configs_mrfld));
 	board_name = dmi_get_system_info(DMI_BOARD_NAME);
-	if (strcmp(board_name, "Cherry Trail CR") == 0) {
+	if ((strcmp(board_name, "Cherry Trail CR") == 0) ||
+			(strcmp(board_name, "Cherry Trail MRD") == 0)) {
 		pr_debug("Load CHT CR SSP Config %s\n", board_name);
 		memcpy(sst_platform_pdata.ssp_config, sst_ssp_configs_cht_cr,
 					sizeof(sst_ssp_configs_cht_cr));
