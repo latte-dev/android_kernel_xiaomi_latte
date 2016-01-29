@@ -24,6 +24,7 @@ static const char const *filter[] = {
 	"Watchdog detected",	/* Hard lockup */
 	"softlockup:",		/* Soft lockup */
 	"Kernel Watchdog",	/* iTCO warning */
+	"hung_task:", 		/* Hung task detector */
 };
 
 static int force_en;
