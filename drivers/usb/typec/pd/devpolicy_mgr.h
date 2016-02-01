@@ -367,6 +367,14 @@ static inline bool devpolicy_get_vconn_state(struct devpolicy_mgr *dpm)
 	return false;
 }
 
+static inline int devpolicy_set_bist_cm2(struct devpolicy_mgr *dpm, bool en)
+{
+	if (dpm && dpm->phy)
+		return typec_set_bist_cm2(dpm->phy, en);
+
+	return -EINVAL;
+}
+
 static inline void devpolicy_update_data_role(struct devpolicy_mgr *dpm,
 					enum data_role role)
 {

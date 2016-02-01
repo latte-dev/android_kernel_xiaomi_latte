@@ -161,6 +161,80 @@ static void pe_do_complete_reset(struct policy_engine *pe)
 	pe->is_pp_pd_capable = 0;
 }
 
+static bool pe_is_source_vsafe5v(struct policy_engine *pe)
+{
+	struct pd_fixed_supply_pdo *pdo;
+	u8 obj_pos = pe->pp_sink_req_caps.obj_pos;
+
+	if (obj_pos < PD_MIN_PDO || obj_pos > pe->self_src_pdos.num_pdos) {
+		log_err("Object position mismatch obj_pos %d num_pdo %d",
+				obj_pos, pe->self_src_pdos.num_pdos);
+		return false;
+	}
+
+	pdo = (struct pd_fixed_supply_pdo *)
+			&pe->self_src_pdos.pdo[obj_pos - 1];
+	if (CAP_DATA_OBJ_TO_VOLT(pdo->volt) == VBUS_5V)
+		return true;
+
+	return false;
+}
+
+static inline bool pe_is_sink_vsafe5v(struct policy_engine *pe)
+{
+	return VIN_5V == pe->self_sink_req_cap.mv;
+}
+
+static bool pe_is_vsafe5v(struct policy_engine *pe)
+{
+	if (pe->cur_prole == POWER_ROLE_SOURCE)
+		return pe_is_source_vsafe5v(pe);
+	else if (pe->cur_prole == POWER_ROLE_SINK)
+		return pe_is_sink_vsafe5v(pe);
+	else
+		log_err("Unknown power role %d!!", pe->cur_prole);
+
+	return false;
+}
+
+static void pe_handle_bist_msg(struct policy_engine *pe, u32 *data, u8 num_bdos)
+{
+	struct pd_bist_data_obj bdo[MAX_NUM_DATA_OBJ];
+	enum bdo_type btype;
+	int i;
+
+	if (num_bdos <= 0 || num_bdos > MAX_NUM_DATA_OBJ) {
+		log_err("Wrong number of bdo's %d\n", num_bdos);
+		return;
+	}
+	memcpy(bdo, data, num_bdos * 4);
+
+	for (i = 0; i < num_bdos; i++) {
+		btype = bdo[i].type;
+
+		switch (btype) {
+		case BIST_CARRIER_MODE2:
+			pe_change_state(pe, PE_BIST_CARRIER_MODE_2);
+			/*
+			 * returning here, as not handling anything else except
+			 * BIST career2 mode at once per bist message.
+			 */
+			return;
+		case BIST_RECEIVER_MODE:
+		case BIST_TRANSMIT_MODE:
+		case RETURNED_BIST_COUNTERS:
+		case BIST_CARRIER_MODE0:
+		case BIST_CARRIER_MODE1:
+		case BIST_CARRIER_MODE3:
+		case BIST_EYE_PATTERN:
+		case BIST_TEST_DATA:
+		default:
+			log_info("BDO[%d] Type - %d not supported!\n",
+					i, btype);
+		}
+	}
+}
+
 static int policy_engine_process_data_msg(struct policy *p, enum pe_event evt,
 			struct pd_packet *pkt, enum pd_pkt_type sop_type)
 {
@@ -180,6 +254,12 @@ static int policy_engine_process_data_msg(struct policy *p, enum pe_event evt,
 		data_len = MAX_NUM_DATA_OBJ;
 
 	mutex_lock(&pe->pe_lock);
+	if (pe->cur_state == PE_BIST_CARRIER_MODE_2) {
+		log_warn("State Machine is in BIST operation, Can't process %d",
+				evt);
+		goto end;
+	}
+
 	pe->is_pp_pd_capable = true;
 	switch (evt) {
 	case PE_EVT_RCVD_SRC_CAP:
@@ -250,11 +330,23 @@ static int policy_engine_process_data_msg(struct policy *p, enum pe_event evt,
 		break;
 
 	case PE_EVT_RCVD_BIST:
+		if (pe->cur_state == PE_SRC_READY ||
+				pe->cur_state == PE_SNK_READY) {
+			if (pe_is_vsafe5v(pe))
+				pe_handle_bist_msg(pe, pkt->data_obj, data_len);
+			else
+				log_warn("Can't process BIST in non vasfe5v");
+		} else {
+			log_warn("Can't process BIST in %d state",
+					pe->cur_state);
+		}
+		break;
 	default:
 		log_warn("Invalid data msg, event=%d\n", evt);
 		pe_dump_data_msg(pkt);
 	}
 
+end:
 	mutex_unlock(&pe->pe_lock);
 	return 0;
 }
@@ -403,7 +495,13 @@ static int policy_engine_process_ctrl_msg(struct policy *p, enum pe_event evt,
 	}
 
 	mutex_lock(&pe->pe_lock);
+	if (pe->cur_state == PE_BIST_CARRIER_MODE_2) {
+		log_warn("State Machine is in BIST operation, Can't process %d",
+				evt);
+		goto end;
+	}
 	pe->is_pp_pd_capable = true;
+
 	switch (evt) {
 	case PE_EVT_RCVD_GOODCRC:
 		pe_cancel_timer(pe, CRC_RECEIVE_TIMER);
@@ -617,6 +715,7 @@ static int policy_engine_process_ctrl_msg(struct policy *p, enum pe_event evt,
 		log_warn("Not a valid ctrl msg to process, event=%d\n", evt);
 		pe_dump_header(&pkt->header);
 	}
+end:
 	mutex_unlock(&pe->pe_lock);
 	return ret;
 }
@@ -865,7 +964,7 @@ static void pe_handle_dpm_event(struct policy_engine *pe,
 					enum devpolicy_mgr_events evt)
 {
 
-	log_info("event - %d\n", evt);
+	log_info("event - %d at cur_state - %d\n", evt, pe->cur_state);
 	mutex_lock(&pe->pe_lock);
 	switch (evt) {
 	case DEVMGR_EVENT_UFP_CONNECTED:
@@ -1490,11 +1589,21 @@ static void pe_timer_expire_worker(struct work_struct *work)
 		break;
 
 	case BIST_CONT_MODE_TIMER:
+		if (pe->cur_state != PE_BIST_CARRIER_MODE_2) {
+			log_warn("%s expired in wrong state=%d",
+				timer_to_str(type), pe->cur_state);
+			break;
+		}
+
+		/* Stop BIST CM2 transmission */
+		if (devpolicy_set_bist_cm2(pe->p.dpm, false))
+			log_err("Unable to stop BIST CM2, move to hard reset");
+		else
+			log_dbg("BIST CM2 Transmission Stopped.");
+		pe_change_state_to_snk_or_src_reset(pe);
 		break;
 
 	case BIST_RECEIVE_ERROR_TIMER:
-		break;
-
 	case BIST_START_TIMER:
 		break;
 
@@ -2273,6 +2382,23 @@ pe_process_state_pe_prs_snk_src_source_on(struct policy_engine *pe)
 	pe_start_timer(pe, VBUS_CHECK_TIMER, T_SAFE_5V_MAX);
 }
 
+/********* BIST States **************/
+static void pe_process_state_pe_bist_carrier_mode2(struct policy_engine *pe)
+{
+	int ret;
+
+	ret = devpolicy_set_bist_cm2(pe->p.dpm, true);
+	if (ret < 0) {
+		log_err("Unable to start BIST CM2, moving to hard reset");
+		pe_change_state_to_snk_or_src_reset(pe);
+		return;
+	}
+
+	log_dbg("BIST CM2 Transmission Started..\n");
+	/* Start BIST ContMode Timer to transmit BIST CM2 */
+	pe_start_timer(pe, BIST_CONT_MODE_TIMER, PE_TIME_BIST_CONT_MODE);
+}
+
 /******** VCONN SWAP State **********/
 static void
 pe_process_state_pe_vcs_reject_vconn_swap(struct policy_engine *pe)
@@ -2738,6 +2864,10 @@ static void pe_state_change_worker(struct work_struct *work)
 		break;
 	case PE_VCS_SEND_SWAP:
 		pe_process_state_pe_vcs_send_swap(pe);
+		break;
+	/* BIST states */
+	case PE_BIST_CARRIER_MODE_2:
+		pe_process_state_pe_bist_carrier_mode2(pe);
 		break;
 	default:
 		log_info("Cannot process unknown state %d", state);

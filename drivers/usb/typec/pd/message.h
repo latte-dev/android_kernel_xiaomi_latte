@@ -90,6 +90,18 @@
 #define PD_MSG_HEADER_MSGID_BITS_MASK	0x7
 #define PD_MSG_HEADER_N_DOBJ_BITS_MASK	0x7
 
+enum bdo_type {
+	BIST_RECEIVER_MODE,
+	BIST_TRANSMIT_MODE,
+	RETURNED_BIST_COUNTERS,
+	BIST_CARRIER_MODE0,
+	BIST_CARRIER_MODE1,
+	BIST_CARRIER_MODE2,
+	BIST_CARRIER_MODE3,
+	BIST_EYE_PATTERN,
+	BIST_TEST_DATA,
+};
+
 enum vdm_cmd_type {
 	INITIATOR,
 	REP_ACK,
@@ -313,6 +325,12 @@ struct pd_fixed_var_rdo {
 	u32 give_back:1;
 	u32 obj_pos:3;
 	u32 rsvd2:1;
+} __packed;
+
+struct pd_bist_data_obj {
+	u32 err_counter:16;
+	u32 reserved:12;
+	u32 type:4;
 } __packed;
 
 struct pd_packet {
