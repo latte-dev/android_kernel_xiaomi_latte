@@ -110,44 +110,44 @@ enum vdm_cmd {
 };
 
 struct pd_pkt_header {
-	u8 msg_type:4;
-	u8 rsvd_a:1;
-	u8 data_role:1;
-	u8 rev_id:2;
-	u8 pwr_role:1;
-	u8 msg_id:3;
-	u8 num_data_obj:3;
-	u8 rsvd_b:1;
+	u16 msg_type:4;
+	u16 rsvd_a:1;
+	u16 data_role:1;
+	u16 rev_id:2;
+	u16 pwr_role:1;
+	u16 msg_id:3;
+	u16 num_data_obj:3;
+	u16 rsvd_b:1;
 } __packed;
 
 struct vdm_msg_header {
-	u8 msg_type:4;
-	u8 rsvd_a:2;
-	u8 spec_rev:2;
-	u8 pwr_role:1;
-	u8 msg_id:3;
-	u8 num_data_obj:3;
-	u8 rsvd_b:1;
+	u16 msg_type:4;
+	u16 rsvd_a:2;
+	u16 spec_rev:2;
+	u16 pwr_role:1;
+	u16 msg_id:3;
+	u16 num_data_obj:3;
+	u16 rsvd_b:1;
 } __packed;
 
 struct vdm_header {
-	u8 cmd:5;
-	u8 rsvd_a:1;
-	u8 cmd_type:2;
-	u8 obj_pos:3;
-	u8 rsvd_b:2;
-	u8 str_vdm_version:2;
-	u8 vdm_type:1;
-	u16 svid;
+	u32 cmd:5;
+	u32 rsvd_a:1;
+	u32 cmd_type:2;
+	u32 obj_pos:3;
+	u32 rsvd_b:2;
+	u32 str_vdm_version:2;
+	u32 vdm_type:1;
+	u32 svid:16;
 } __packed;
 
 struct id_header_vdo {
-	u16 vendor_id;
-	u16 rsvd:10;
-	u16 modal_op_supported:1;
-	u16 product_type:3;
-	u16 is_usb_dev_capable:1;
-	u16 is_usb_host_capable:1;
+	u32 vendor_id:16;
+	u32 rsvd:10;
+	u32 modal_op_supported:1;
+	u32 product_type:3;
+	u32 is_usb_dev_capable:1;
+	u32 is_usb_host_capable:1;
 } __packed;
 
 struct cert_stat_vdo {
