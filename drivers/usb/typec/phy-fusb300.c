@@ -1177,6 +1177,42 @@ static int fusb300_enable_vconn(struct typec_phy *phy, bool en)
 	return ret;
 }
 
+static int fusb300_set_bist_cm2(struct typec_phy *phy, bool en)
+{
+	struct fusb300_chip *chip = dev_get_drvdata(phy->dev);
+	int ret;
+
+	mutex_lock(&chip->lock);
+	/* enable/disable BIST_MODE2 */
+	ret = regmap_update_bits(chip->map,
+		FUSB300_CONTROL1_REG, FUSB300_CONTROL1_BIST_MODE,
+		en ? FUSB300_CONTROL1_BIST_MODE : ~FUSB300_CONTROL1_BIST_MODE);
+	if (ret < 0) {
+		dev_err(phy->dev, "%s failed to update %d for bist mode2\n",
+				__func__, en);
+		goto error;
+	}
+
+	/* start/stop BIST_MODE2 transmission */
+	ret = regmap_update_bits(chip->map,
+		FUSB300_CONTROL0_REG, FUSB300_CONTROL0_TX_START,
+		en ? FUSB300_CONTROL0_TX_START : ~FUSB300_CONTROL0_TX_START);
+	if (ret < 0) {
+		dev_err(phy->dev, "%s failed to %s bist mode2\n",
+				__func__, en ? "start" : "stop");
+		goto error;
+	}
+	mutex_unlock(&chip->lock);
+
+	dev_dbg(phy->dev, "%s BIST Mode2 %s\n", __func__,
+			en ? "started" : "stopped");
+	return 0;
+
+error:
+	mutex_unlock(&chip->lock);
+	return ret;
+}
+
 static bool fusb300_is_vbus_on(struct typec_phy *phy)
 {
 	struct fusb300_chip *chip = dev_get_drvdata(phy->dev);
@@ -1862,6 +1898,7 @@ static int fusb300_probe(struct i2c_client *client,
 	chip->phy.ops.get_host_current = fusb300_get_host_current;
 	chip->phy.ops.is_vconn_enabled = fusb300_is_vconn_enabled;
 	chip->phy.ops.enable_vconn = fusb300_enable_vconn;
+	chip->phy.ops.set_bist_cm2 = fusb300_set_bist_cm2;
 	chip->phy.ops.switch_mode = fusb300_switch_mode;
 	chip->phy.ops.setup_cc = fusb300_setup_cc;
 	chip->phy.ops.enable_valid_pu = fusb300_enable_valid_pu;

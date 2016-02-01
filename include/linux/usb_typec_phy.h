@@ -192,6 +192,7 @@ struct typec_ops {
 	int (*enable_valid_pu)(struct typec_phy *phy);
 	bool (*is_vconn_enabled)(struct typec_phy *phy);
 	int (*enable_vconn)(struct typec_phy *phy, bool en);
+	int (*set_bist_cm2)(struct typec_phy *phy, bool en);
 };
 
 
@@ -265,6 +266,15 @@ static inline int typec_set_host_current(struct typec_phy *phy,
 {
 	if (phy && phy->ops.set_host_current)
 		return phy->ops.set_host_current(phy, cur);
+	return -ENOTSUPP;
+}
+
+static inline int typec_set_bist_cm2(struct typec_phy *phy,
+					bool en)
+{
+	if (phy && phy->ops.set_bist_cm2)
+		return phy->ops.set_bist_cm2(phy, en);
+
 	return -ENOTSUPP;
 }
 
