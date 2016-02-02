@@ -80,6 +80,11 @@
 #define DECI_KELVIN_TO_CELSIUS(t) ((t - KELVIN_OFFSET) / 10)
 #define CELSIUS_TO_DECI_KELVIN(t) (((t * 100) + KELVIN_OFFSET) / 10)
 
+#define IS_ALL_CABLE_DISCONNECTED(x)	(!(x)->host_cable_state &&	\
+					!(x)->device_cable_state &&	\
+					!(x)->snk_cable_state &&	\
+					!(x)->src_cable_state)
+
 /* Type definitions */
 static void pmic_bat_zone_changed(void);
 static int intel_pmic_handle_otgmode(bool enable);
@@ -2032,8 +2037,12 @@ static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 	if (notify_otg) {
 		dev_dbg(chc.dev, "%s notified %d to otg\n", __func__, otg_evt);
 		atomic_notifier_call_chain(&chc.otg->notifier, otg_evt, NULL);
-		pmic_write_reg(chc.reg_map->pmic_usbphyctrl,
-				cable_state ? USBPHYRSTB_EN : USBPHYRSTB_DIS);
+		if (IS_ALL_CABLE_DISCONNECTED(&chc))
+			pmic_write_reg(chc.reg_map->pmic_usbphyctrl,
+					USBPHYRSTB_DIS);
+		else if (cable_state)
+			pmic_write_reg(chc.reg_map->pmic_usbphyctrl,
+					USBPHYRSTB_EN);
 	}
 
 vbus_fail:
