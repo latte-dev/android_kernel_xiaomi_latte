@@ -572,19 +572,15 @@ static int fusb300_setup_cc(struct typec_phy *phy, enum typec_cc_pin cc,
 		val_s1 = FUSB300_SWITCH1_TXCC1;
 		if (phy->state == TYPEC_STATE_ATTACHED_UFP)
 			val |= FUSB300_SWITCH0_PD_CC1_EN;
-		else if (phy->state == TYPEC_STATE_ATTACHED_DFP) {
+		else if (phy->state == TYPEC_STATE_ATTACHED_DFP)
 			val |= FUSB300_SWITCH0_PU_CC1_EN;
-			val |= FUSB300_SWITCH0_VCONN_CC2_EN;
-		}
 	} else if (cc == TYPEC_PIN_CC2) {
 		val |= FUSB300_SWITCH0_MEASURE_CC2;
 		val_s1 = FUSB300_SWITCH1_TXCC2;
 		if (phy->state == TYPEC_STATE_ATTACHED_UFP)
 			val |= FUSB300_SWITCH0_PD_CC2_EN;
-		else if (phy->state == TYPEC_STATE_ATTACHED_DFP) {
+		else if (phy->state == TYPEC_STATE_ATTACHED_DFP)
 			val |= FUSB300_SWITCH0_PU_CC2_EN;
-			val |= FUSB300_SWITCH0_VCONN_CC1_EN;
-		}
 	} else { /* cc removal */
 		goto end;
 	}
@@ -1177,6 +1173,7 @@ static int fusb300_enable_vconn(struct typec_phy *phy, bool en)
 	if (ret)
 		dev_err(phy->dev, "%s: Failed to SWITCH0_REG\n", __func__);
 
+	dev_dbg(phy->dev, "%s: en=%d\n", __func__, en);
 	return ret;
 }
 
@@ -1806,6 +1803,7 @@ static int fusb300_enable_autocrc(struct typec_phy *phy, bool en)
 		goto err;
 
 	chip->process_pd = en;
+	dev_dbg(chip->dev, "%s: en = %x", __func__, en);
 
 	mutex_unlock(&chip->lock);
 	return ret;
