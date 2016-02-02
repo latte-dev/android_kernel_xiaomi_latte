@@ -120,6 +120,17 @@ static int wcgpio_update_vbus_state(struct wcove_gpio_info *info, bool state)
 	return ret;
 }
 
+int wcgpio_set_vconn_state(bool state)
+{
+	if (!wc_info)
+		return -EINVAL;
+	gpiod_set_value_cansleep(wc_info->gpio_vconn, state);
+	dev_info(&wc_info->pdev->dev, "%s: vconn=%d\n",
+						__func__, state);
+	return 0;
+}
+EXPORT_SYMBOL(wcgpio_set_vconn_state);
+
 int wcgpio_set_vbus_state(bool state)
 {
 	int ret;
@@ -129,9 +140,9 @@ int wcgpio_set_vbus_state(bool state)
 
 	/* enable/disable vbus based on the provider(source) event */
 	if (!ret) {
+		gpiod_set_value_cansleep(wc_info->gpio_otg, state);
 		dev_info(&wc_info->pdev->dev, "%s: VBUS=%d\n",
 						__func__, state);
-		gpiod_set_value_cansleep(wc_info->gpio_otg, state);
 	}
 	return ret;
 }
@@ -317,11 +328,7 @@ static int wcove_gpio_probe(struct platform_device *pdev)
 		goto error_gpio;
 	}
 	dev_dbg(&pdev->dev, "wcove gpio probed\n");
-
 	check_initial_events(info);
-
-	/* Enable vconn always to typec chip */
-	gpiod_set_value_cansleep(info->gpio_vconn, 1);
 	wc_info = info;
 
 	return 0;
