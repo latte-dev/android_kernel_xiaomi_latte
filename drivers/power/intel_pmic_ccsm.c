@@ -486,7 +486,7 @@ static void pmic_debugfs_init(void)
 	reg = (u16 *)chc.reg_map;
 	for (i = 0; i < chc.reg_cnt; i++, reg++) {
 
-		sprintf(name, "%s", pmic_regs_name[i]);
+		snprintf(name, sizeof(name), "%s", pmic_regs_name[i]);
 
 		fentry = debugfs_create_file(name,
 				S_IRUGO,
@@ -507,7 +507,7 @@ static void pmic_debugfs_init(void)
 
 	for (i = 0; i < pmic_tt_reg_cnt; i++) {
 
-		sprintf(name, "%s", pmic_tt_regs[i].reg_name);
+		snprintf(name, sizeof(name), "%s", pmic_tt_regs[i].reg_name);
 
 		fentry = debugfs_create_file(name,
 				S_IRUGO,
