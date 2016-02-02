@@ -154,6 +154,13 @@ enum typec_dp_cable_type {
 	TYPEC_DP_TYPE_4X,
 };
 
+enum pd_pkt_type {
+	PKT_TYPE_NONE,
+	PKT_TYPE_SOP,	/* SOP */
+	PKT_TYPE_SOP_P, /* SOP prime */
+	PKT_TYPE_SOP_PP /* SOP double prime */
+};
+
 struct typec_cc_psy {
 	enum typec_cc_level v_rd;
 	enum typec_current cur;
@@ -217,8 +224,10 @@ struct typec_phy {
 	int (*get_pd_version)(struct typec_phy *phy);
 	int (*phy_reset)(struct typec_phy *phy);
 	int (*flush_fifo)(struct typec_phy *phy, enum typec_fifo fifo_type);
-	int (*send_packet)(struct typec_phy *phy, u8 *msg, int len);
-	int (*recv_packet)(struct typec_phy *phy, u8 *msg);
+	int (*send_packet)(struct typec_phy *phy, u8 *msg, int len,
+				enum pd_pkt_type type);
+	int (*recv_packet)(struct typec_phy *phy,
+					u8 *msg, enum pd_pkt_type *type);
 	int (*setup_role)(struct typec_phy *phy, int data_role, int pwr_role);
 	void (*notify_protocol)(struct typec_phy *phy, unsigned long event);
 	bool (*is_pd_capable)(struct typec_phy *phy);
@@ -228,6 +237,7 @@ struct typec_phy {
 	int (*enable_detection)(struct typec_phy *phy, bool en);
 	bool (*is_vbus_on)(struct typec_phy *phy);
 	int (*enable_auto_retry)(struct typec_phy *phy, bool en);
+	int (*enable_sop_prime)(struct typec_phy *phy, bool en);
 };
 
 extern struct typec_phy *typec_get_phy(int type);
@@ -352,6 +362,14 @@ static inline int typec_enable_auto_retry(struct typec_phy *phy, bool en)
 {
 	if (phy && phy->enable_auto_retry)
 		return phy->enable_auto_retry(phy, en);
+
+	return -ENOTSUPP;
+}
+
+static inline int typec_enable_sop_prime(struct typec_phy *phy, bool en)
+{
+	if (phy && phy->enable_sop_prime)
+		return phy->enable_sop_prime(phy, en);
 
 	return -ENOTSUPP;
 }
