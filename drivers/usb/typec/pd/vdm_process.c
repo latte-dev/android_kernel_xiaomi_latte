@@ -71,15 +71,15 @@ static void pe_prepare_initiator_vdm_header(struct vdm_header *v_hdr,
 	pe_prepare_vdm_header(v_hdr, cmd, INITIATOR, svid, obj_pos);
 }
 
-int pe_send_discover_identity(struct policy_engine *pe)
+int pe_send_discover_identity(struct policy_engine *pe, int type)
 {
 	struct vdm_header v_hdr = { 0 };
 	int ret;
 
 	pe_prepare_initiator_vdm_header(&v_hdr, DISCOVER_IDENTITY,
 						PD_SID, 0);
-	ret = pe_send_packet(pe, &v_hdr, 4,
-				PD_DATA_MSG_VENDOR_DEF, PE_EVT_SEND_VDM);
+	ret = pe_send_packet_type(pe, &v_hdr, 4, PD_DATA_MSG_VENDOR_DEF,
+				PE_EVT_SEND_VDM, type);
 
 	return ret;
 }
@@ -343,24 +343,43 @@ static int pe_handle_discover_identity(struct policy_engine *pe,
 		}
 		return 0;
 	}
-	if (pe->cur_state != PE_DFP_UFP_VDM_IDENTITY_REQUEST) {
-		log_warn("DI RACK received in wrong state,state=%d",
+	if (pe->cur_state != PE_DFP_UFP_VDM_IDENTITY_REQUEST &&
+		pe->cur_state != PE_SRC_VDM_IDENTITY_REQUEST) {
+		log_warn("DI RACK received in wrong state,state=%d\n",
 				pe->cur_state);
 		return -EINVAL;
 	}
+	/*
+	 * consider response initiated from cable when in
+	 * SRC_VDM_IDENTITY_REQUEST state
+	 */
 	switch (cmd_type) {
 	case REP_ACK:
 		/* TODO: Process the port partner's DI */
 		log_dbg(" DI Acked ");
+		if (pe->cur_state == PE_SRC_VDM_IDENTITY_REQUEST) {
+			memcpy(&pe->cable_pkt, &pkt->data_obj[0],
+				pkt->header.num_data_obj * 4);
+			pe_change_state(pe, PE_SRC_WAIT_FOR_VBUS);
+			return 0;
+		}
 		pe->alt_state = PE_ALT_STATE_DI_ACKED;
 		break;
 	case REP_NACK:
 		log_dbg(" DI Nacked!!! ");
-		log_err("Responder doesn't support alternate mode");
+		log_err("Responder doesn't support alternate mode\n");
+		if (pe->cur_state == PE_SRC_VDM_IDENTITY_REQUEST) {
+			pe_change_state(pe, PE_SRC_WAIT_FOR_VBUS);
+			return 0;
+		}
 		pe->alt_state = PE_ALT_STATE_ALT_MODE_FAIL;
 		break;
 	case REP_BUSY:
-		log_info("Responder BUSY!!. Retry Discover Identity");
+		log_info("Responder BUSY!!. Retry Discover Identity\n");
+		if (pe->cur_state == PE_SRC_VDM_IDENTITY_REQUEST) {
+			pe_change_state(pe, PE_SRC_WAIT_FOR_VBUS);
+			return 0;
+		}
 		pe->alt_state = PE_ALT_STATE_NONE;
 		break;
 	}

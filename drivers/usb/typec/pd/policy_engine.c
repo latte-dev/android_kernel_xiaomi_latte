@@ -50,7 +50,7 @@ static void pe_change_state_to_snk_or_src_reset(struct policy_engine *pe);
 static void pe_store_port_partner_caps(struct policy_engine *pe,
 					struct pe_port_pdos *pdos);
 
-static void pe_change_state(struct policy_engine *pe, enum pe_states state)
+void pe_change_state(struct policy_engine *pe, enum pe_states state)
 {
 	pe->prev_state = pe->cur_state;
 	pe->cur_state = state;
@@ -161,13 +161,22 @@ static void pe_do_complete_reset(struct policy_engine *pe)
 	pe->is_pp_pd_capable = 0;
 }
 
-static int policy_engine_process_data_msg(struct policy *p,
-				enum pe_event evt, struct pd_packet *pkt)
+static int policy_engine_process_data_msg(struct policy *p, enum pe_event evt,
+			struct pd_packet *pkt, enum pd_pkt_type sop_type)
 {
 	struct policy_engine *pe = container_of(p, struct policy_engine, p);
 	int data_len = PD_MSG_NUM_DATA_OBJS(&pkt->header);
 
 	log_dbg("Data msg received evt - %d\n", evt);
+	if (sop_type == PKT_TYPE_SOP_P
+		&& pe->cur_state != PE_SRC_VDM_IDENTITY_REQUEST) {
+		log_dbg("Ignore SOPP pkt in state=%d", pe->cur_state);
+		return -EINVAL;
+	}
+	if (sop_type != PKT_TYPE_SOP) {
+		log_dbg("Not an SOP packet, ignore");
+		return -EINVAL;
+	}
 	if (data_len > MAX_NUM_DATA_OBJ)
 		data_len = MAX_NUM_DATA_OBJ;
 
@@ -220,8 +229,8 @@ static int policy_engine_process_data_msg(struct policy *p,
 		break;
 
 	case PE_EVT_RCVD_VDM:
-		if (pe_is_timer_pending(pe, VMD_RESPONSE_TIMER))
-			pe_cancel_timer(pe, VMD_RESPONSE_TIMER);
+		if (pe_is_timer_pending(pe, VDM_RESPONSE_TIMER))
+			pe_cancel_timer(pe, VDM_RESPONSE_TIMER);
 		pe_handle_vendor_msg(pe, pkt);
 		break;
 
@@ -367,7 +376,8 @@ static void pe_handle_gcrc_received(struct policy_engine *pe)
 	case PE_DFP_VDM_MODES_ENTRY_REQUEST:
 	case PE_DFP_VDM_STATUS_REQUEST:
 	case PE_DFP_VDM_CONF_REQUEST:
-		pe_start_timer(pe, VMD_RESPONSE_TIMER,
+	case PE_SRC_VDM_IDENTITY_REQUEST:
+		pe_start_timer(pe, VDM_RESPONSE_TIMER,
 				PE_TIME_VDM_SENDER_RESPONSE);
 		break;
 	case PE_SNK_SOFT_RESET:
@@ -382,13 +392,17 @@ static void pe_handle_gcrc_received(struct policy_engine *pe)
 	}
 }
 
-static int policy_engine_process_ctrl_msg(struct policy *p,
-				enum pe_event evt, struct pd_packet *pkt)
+static int policy_engine_process_ctrl_msg(struct policy *p, enum pe_event evt,
+			struct pd_packet *pkt, enum pd_pkt_type sop_type)
 {
 	int ret = 0;
 	struct policy_engine *pe = container_of(p, struct policy_engine, p);
 
 	log_dbg("Ctrl msg received evt - %d\n", evt);
+	if (sop_type != PKT_TYPE_SOP) {
+		log_dbg("Not an SOP packet, ignore");
+		return -EINVAL;
+	}
 
 	mutex_lock(&pe->pe_lock);
 	pe->is_pp_pd_capable = true;
@@ -681,12 +695,29 @@ static void pe_dump_data_msg(struct pd_packet *pkt)
 #endif /* DBG */
 }
 
+int pe_send_packet_type(struct policy_engine *pe, void *data, int len,
+		u8 msg_type, enum pe_event evt, int type)
+{
+	int ret = 0;
+	if (evt == PE_EVT_SEND_VDM && pe->p.prot &&
+		pe->p.prot->policy_fwd_pkt) {
+		pe->p.prot->policy_fwd_pkt(pe->p.prot, msg_type, data,
+			len, type);
+		pe->last_sent_evt = evt;
+		pe_start_timer(pe, CRC_RECEIVE_TIMER, PE_TIME_RECEIVE);
+	} else {
+		log_err("Invalid event %d", evt);
+		ret = -EINVAL;
+	}
+	return ret;
+}
 
 int pe_send_packet(struct policy_engine *pe, void *data, int len,
 				u8 msg_type, enum pe_event evt)
 {
 	int ret = 0;
 	bool is_crc_timer_req = true;
+	enum pd_pkt_type type;
 
 	switch (evt) {
 	case PE_EVT_SEND_GOTOMIN:
@@ -706,10 +737,12 @@ int pe_send_packet(struct policy_engine *pe, void *data, int len,
 	case PE_EVT_SEND_BIST:
 	case PE_EVT_SEND_VDM:
 	case PE_EVT_SEND_SOFT_RESET:
+		type = PKT_TYPE_SOP;
 		break;
 	case PE_EVT_SEND_HARD_RESET:
 	case PE_EVT_SEND_PROTOCOL_RESET:
 		is_crc_timer_req = false;
+		type = PKT_TYPE_NONE;
 		break;
 	default:
 		ret = -EINVAL;
@@ -721,7 +754,8 @@ int pe_send_packet(struct policy_engine *pe, void *data, int len,
 	pe->is_gcrc_received = false;
 	log_dbg("Sending pkt, evt=%d", evt);
 	if (pe->p.prot && pe->p.prot->policy_fwd_pkt)
-		pe->p.prot->policy_fwd_pkt(pe->p.prot, msg_type, data, len);
+		pe->p.prot->policy_fwd_pkt(pe->p.prot, msg_type, data,
+			len, type);
 
 	pe->last_sent_evt = evt;
 	if (is_crc_timer_req)
@@ -1271,8 +1305,8 @@ static char *timer_to_str(enum pe_timers timer_type)
 		return "VDM_MODE_ENTRY_TIMER";
 	case VDM_MODE_EXIT_TIMER:
 		return "VDM_MODE_EXIT_TIMER";
-	case VMD_RESPONSE_TIMER:
-		return "VMD_RESPONSE_TIMER";
+	case VDM_RESPONSE_TIMER:
+		return "VDM_RESPONSE_TIMER";
 	case VBUS_CHECK_TIMER:
 		return "VBUS_CHECK_TIMER";
 	case SRC_RESET_RECOVER_TIMER:
@@ -1487,6 +1521,9 @@ static void pe_timer_expire_worker(struct work_struct *work)
 			/* Issue Hard Reset */
 			pe_change_state_to_snk_or_src_reset(pe);
 			break;
+		} else if (pe->cur_state == PE_SRC_VDM_IDENTITY_REQUEST) {
+			pe_change_state(pe, PE_SRC_WAIT_FOR_VBUS);
+			break;
 		}
 		if (pe_is_timer_pending(pe, SENDER_RESPONSE_TIMER))
 			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
@@ -1530,13 +1567,9 @@ static void pe_timer_expire_worker(struct work_struct *work)
 		break;
 
 	case SWAP_SOURCE_START_TIMER:
-		if (pe->cur_state == PE_SRC_STARTUP) {
-			/*
-			 * Move to PE_SRC_WAIT_FOR_VBUS to check
-			 * VBUS before sending SrcCap.
-			 */
-			pe_change_state(pe, PE_SRC_WAIT_FOR_VBUS);
-		} else
+		if (pe->cur_state == PE_SRC_STARTUP)
+			pe_change_state(pe, PE_SRC_VDM_IDENTITY_REQUEST);
+		else
 			log_warn("%s expired in wrong state=%d",
 				timer_to_str(type), pe->cur_state);
 		break;
@@ -1552,7 +1585,7 @@ static void pe_timer_expire_worker(struct work_struct *work)
 	case VDM_MODE_ENTRY_TIMER:
 	case VDM_MODE_EXIT_TIMER:
 		break;
-	case VMD_RESPONSE_TIMER:
+	case VDM_RESPONSE_TIMER:
 		if (pe->cur_state == PE_DFP_UFP_VDM_IDENTITY_REQUEST
 			|| pe->cur_state == PE_DFP_VDM_SVIDS_REQUEST
 			|| pe->cur_state == PE_DFP_VDM_MODES_REQUEST
@@ -1561,6 +1594,12 @@ static void pe_timer_expire_worker(struct work_struct *work)
 			|| pe->cur_state == PE_DFP_VDM_CONF_REQUEST) {
 			log_warn("no response for VDM");
 			pe_change_state_to_snk_or_src_ready(pe);
+		} else if (pe->cur_state == PE_SRC_VDM_IDENTITY_REQUEST) {
+			/*
+			 * Move to PE_SRC_WAIT_FOR_VBUS to check
+			 * VBUS before sending SrcCap.
+			 */
+			pe_change_state(pe, PE_SRC_WAIT_FOR_VBUS);
 		} else
 			log_warn("%s expired in wrong state=%d",
 				timer_to_str(type), pe->cur_state);
@@ -1703,7 +1742,6 @@ pe_process_state_pe_snk_wait_for_capabilities(struct policy_engine *pe)
 	else
 		time_out = PE_TIME_SINK_WAIT_CAP;
 	pe_start_timer(pe, SINK_WAIT_CAP_TIMER, time_out);
-	pe_enable_pd(pe, true);
 }
 
 static void
@@ -1817,6 +1855,8 @@ pe_process_state_pe_snk_hard_reset_received(struct policy_engine *pe)
 /********** Source Port State Handlers **********************/
 static void pe_process_state_pe_src_wait_for_vbus(struct policy_engine *pe)
 {
+	pe_send_packet(pe, NULL, 0, PD_CMD_PROTOCOL_RESET,
+				PE_EVT_SEND_PROTOCOL_RESET);
 	if (!devpolicy_get_vbus_state(pe->p.dpm)) {
 		log_dbg("VBUS not present, Start %s",
 				timer_to_str(VBUS_CHECK_TIMER));
@@ -1825,6 +1865,12 @@ static void pe_process_state_pe_src_wait_for_vbus(struct policy_engine *pe)
 		log_dbg("VBUS present, move to PE_SRC_SEND_CAPABILITIES");
 		pe_change_state(pe, PE_SRC_SEND_CAPABILITIES);
 	}
+}
+
+static void pe_process_state_pe_src_vdm_id_request(struct policy_engine *pe)
+{
+	pe_enable_pd(pe, true);
+	pe_send_discover_identity(pe, PKT_TYPE_SOP_P);
 }
 
 static void pe_process_state_pe_src_startup(struct policy_engine *pe)
@@ -1843,13 +1889,10 @@ static void pe_process_state_pe_src_startup(struct policy_engine *pe)
 	if (pe->prev_state == PE_PRS_SNK_SRC_SOURCE_ON) {
 		pe_start_timer(pe, SWAP_SOURCE_START_TIMER,
 					PE_TIME_SWAP_SOURCE_START);
-	} else {
-		/*
-		 * Move to PE_SRC_WAIT_FOR_VBUS to check
-		 * VBUS before sending SrcCap.
-		 */
+	} else if (pe->prev_state == PE_STATE_NONE)
+		pe_change_state(pe, PE_SRC_VDM_IDENTITY_REQUEST);
+	else
 		pe_change_state(pe, PE_SRC_WAIT_FOR_VBUS);
-	}
 }
 
 static void pe_process_state_pe_src_discovery(struct policy_engine *pe)
@@ -2339,7 +2382,7 @@ pe_process_state_pe_dr_snk_give_source_cap(struct policy_engine *pe)
 static void
 pe_process_state_pe_dfp_ufp_vdm_identity_request(struct policy_engine *pe)
 {
-	pe_send_discover_identity(pe);
+	pe_send_discover_identity(pe, PKT_TYPE_SOP);
 }
 
 static void
@@ -2505,9 +2548,12 @@ static void pe_state_change_worker(struct work_struct *work)
 		pe_process_state_pe_snk_hard_reset_received(pe);
 		break;
 
-	/* Soirce Port States */
+	/* Source Port States */
 	case PE_SRC_STARTUP:
 		pe_process_state_pe_src_startup(pe);
+		break;
+	case PE_SRC_VDM_IDENTITY_REQUEST:
+		pe_process_state_pe_src_vdm_id_request(pe);
 		break;
 	case PE_SRC_WAIT_FOR_VBUS:
 		pe_process_state_pe_src_wait_for_vbus(pe);
@@ -2813,18 +2859,15 @@ static void pe_init_policy(struct work_struct *work)
 
 	pe = container_of(work, struct policy_engine, policy_init_work);
 	mutex_init(&pe->pe_lock);
-	pe->cur_drole = DATA_ROLE_NONE;
-	pe->cur_prole = POWER_ROLE_NONE;
 	pe->is_typec_port = true;
 
 	/* Initialize pe timers */
 	pe_init_timers(pe);
 	INIT_WORK(&pe->policy_state_work, pe_state_change_worker);
 	INIT_DELAYED_WORK(&pe->post_ready_work, pe_post_ready_worker);
-	pe->cur_state = PE_STATE_NONE;
-	pe->alt_state = PE_ALT_STATE_NONE;
 
 	pe->p.ops = &ops;
+	pe_change_state(pe, PE_STATE_NONE);
 	return;
 }
 

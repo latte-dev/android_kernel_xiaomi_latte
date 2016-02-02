@@ -70,7 +70,8 @@
 #define PE_TIME_VDM_ENTER_MODE		25
 #define PE_TIME_VDM_EXIT_MODE		25
 #define PE_TIME_VDM_RECEIVER_RESPONSE	15
-#define PE_TIME_VDM_SENDER_RESPONSE	30
+/* 24 >= vdm_sender_response <= 30 */
+#define PE_TIME_VDM_SENDER_RESPONSE	25
 #define PE_TIME_VDM_WAIT_MODE_ENTRY	50
 #define PE_TIME_VDM_WAIT_MODE_EXIT	50
 
@@ -386,8 +387,13 @@ enum pe_states {
 	/* Cable Hard Reset (209) */
 	PE_CBL_HARD_RESET,
 
-	/* CBL Reserved States  (210 - 215 */
-	PE_CBL_RESERVED = 215,
+	PE_DFP_CBL_SEND_SOFT_RESET,
+	PE_DFP_CBL_SEND_CABLE_RESET,
+	PE_UFP_CBL_SEND_SOFT_RESET,
+
+	PE_SRC_VDM_IDENTITY_REQUEST,
+	PE_SRC_VDM_IDENTITY_ACK,
+	PE_SRC_VDM_IDENTITY_NACK,
 
 	/* BIST Receive Mode (216, 217) */
 	PE_BIST_RECEIVE_MODE,
@@ -451,7 +457,7 @@ enum pe_timers {
 	/* 20 - 22 */
 	VDM_MODE_ENTRY_TIMER,
 	VDM_MODE_EXIT_TIMER,
-	VMD_RESPONSE_TIMER,
+	VDM_RESPONSE_TIMER,
 	/*23, Misc timer */
 	VBUS_CHECK_TIMER,
 	SRC_RESET_RECOVER_TIMER,
@@ -536,6 +542,7 @@ struct policy_engine {
 	/* Timer structs for pe_timers */
 	struct pe_timer timers[PE_TIMER_CNT];
 
+	struct dis_id_response_cable_pkt cable_pkt;
 	enum pe_states cur_state;
 	enum pe_states prev_state;
 	enum data_role	cur_drole;
@@ -574,4 +581,7 @@ extern void protocol_unbind_pe(struct policy *p);
 void pe_change_state_to_snk_or_src_ready(struct policy_engine *pe);
 int pe_send_packet(struct policy_engine *pe, void *data, int len,
 				u8 msg_type, enum pe_event evt);
+int pe_send_packet_type(struct policy_engine *pe, void *data, int len,
+			u8 msg_type, enum pe_event evt, int type);
+void pe_change_state(struct policy_engine *pe, enum pe_states state);
 #endif /*  __POLICY_ENGINE_H__ */

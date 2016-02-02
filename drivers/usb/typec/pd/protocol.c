@@ -34,6 +34,7 @@
 struct prot_msg {
 	struct list_head node;
 	struct pd_packet pkt;
+	enum pd_pkt_type sop_type;
 };
 
 
@@ -94,6 +95,8 @@ static void pd_policy_update_power_role(struct pd_prot *prot,
 		prot->pwr_role = PD_POWER_ROLE_CONSUMER;
 	else if (prole == POWER_ROLE_SOURCE)
 		prot->pwr_role = PD_POWER_ROLE_PROVIDER;
+
+	typec_enable_sop_prime(prot->phy, prole == POWER_ROLE_SOURCE);
 
 	pe_schedule_work_pd_wq(prot->p, &prot->role_chng_work);
 }
@@ -178,15 +181,6 @@ static int pd_tx_fsm_state(struct pd_prot *pd, int tx_state)
 	return 0;
 }
 
-static void pd_prot_tx_work(struct pd_prot *prot)
-{
-	int len;
-
-	len = PD_MSG_LEN(&prot->tx_buf.header) + PD_MSG_HEADER_SIZE;
-	pd_prot_send_phy_packet(prot, &prot->tx_buf, len);
-
-}
-
 static void pd_prot_reset_protocol(struct pd_prot *prot)
 {
 	pd_prot_flush_fifo(prot, FIFO_TYPE_RX | FIFO_TYPE_TX);
@@ -195,7 +189,7 @@ static void pd_prot_reset_protocol(struct pd_prot *prot)
 }
 
 static int pd_prot_rcv_pkt_from_policy(struct pd_prot *prot, u8 msg_type,
-						void *buf, int len)
+				void *buf, int len, enum pd_pkt_type type)
 {
 	struct pd_packet *pkt;
 	int ret;
@@ -224,25 +218,38 @@ static int pd_prot_rcv_pkt_from_policy(struct pd_prot *prot, u8 msg_type,
 		else
 			prot->is_auto_retry_enable = true;
 	}
+	if (msg_type == PD_DATA_MSG_SRC_CAP
+		&& prot->is_auto_retry_enable) {
+		ret = typec_enable_auto_retry(prot->phy, false);
+		if (ret)
+			dev_warn(prot->phy->dev,
+			"%s: failed to disable msg auto retry, ret=%d\n",
+			__func__, ret);
+		else
+			prot->is_auto_retry_enable = false;
+	}
 
 	pkt = &prot->tx_buf;
 	memset(pkt, 0, sizeof(struct pd_packet));
 	pkt->header.msg_type = msg_type;
-	pkt->header.data_role = prot->data_role;
 	if (prot->pd_version == 2)
 		pkt->header.rev_id = 1;
 	else
 		pkt->header.rev_id = 0;
 
-	if ((prot->pwr_role == PD_POWER_ROLE_PROVIDER)
-		|| (prot->pwr_role == PD_POWER_ROLE_CONSUMER_PROVIDER))
-		pkt->header.pwr_role = PD_PWR_ROLE_SRC;
+	if (type == PKT_TYPE_SOP) {
+		pkt->header.data_role = prot->data_role;
+		if (prot->pwr_role == PD_POWER_ROLE_PROVIDER
+			|| prot->pwr_role == PD_POWER_ROLE_CONSUMER_PROVIDER)
+			pkt->header.pwr_role = PD_PWR_ROLE_SRC;
+	}
 
 	pkt->header.msg_id = prot->tx_msg_id;
 	pkt->header.num_data_obj = len / 4;
 	memcpy((u8 *)pkt + sizeof(struct pd_pkt_header), buf, len);
 
-	pd_prot_tx_work(prot);
+	pd_prot_send_phy_packet(prot, &prot->tx_buf,
+		len + PD_MSG_HEADER_SIZE, type);
 
 	return 0;
 }
@@ -251,7 +258,8 @@ int prot_rx_send_goodcrc(struct pd_prot *pd, u8 msg_id)
 {
 	mutex_lock(&pd->tx_data_lock);
 	pd_ctrl_msg(pd, PD_CTRL_MSG_GOODCRC, msg_id);
-	pd_prot_send_phy_packet(pd, &pd->tx_buf, PD_MSG_HEADER_SIZE);
+	pd_prot_send_phy_packet(pd, &pd->tx_buf, PD_MSG_HEADER_SIZE,
+			PKT_TYPE_SOP);
 	mutex_unlock(&pd->tx_data_lock);
 	return 0;
 }
@@ -307,7 +315,7 @@ static int prot_fwd_ctrlmsg_to_pe(struct pd_prot *pd, struct prot_msg *msg)
 
 	if (event != PE_EVT_RCVD_NONE) {
 		/* Forward the msg to policy engine. */
-		pe_process_ctrl_msg(pd->p, event, &msg->pkt);
+		pe_process_ctrl_msg(pd->p, event, &msg->pkt, msg->sop_type);
 		return 0;
 	}
 	return -EINVAL;
@@ -340,7 +348,7 @@ static int prot_fwd_datamsg_to_pe(struct pd_prot *pd, struct prot_msg *msg)
 
 	if (event != PE_EVT_RCVD_NONE) {
 		/* Forward the msg to policy engine */
-		pe_process_data_msg(pd->p, event, &msg->pkt);
+		pe_process_data_msg(pd->p, event, &msg->pkt, msg->sop_type);
 		return 0;
 	}
 	return -EINVAL;
@@ -392,7 +400,7 @@ static void prot_process_rx_work(struct work_struct *work)
 }
 
 static int pd_prot_add_msg_rx_list(struct pd_prot *pd,
-				struct pd_packet *pkt, int len)
+			struct pd_packet *pkt, int len, enum pd_pkt_type type)
 {
 	struct prot_msg *msg;
 
@@ -403,6 +411,7 @@ static int pd_prot_add_msg_rx_list(struct pd_prot *pd,
 		return -ENOMEM;
 	}
 	memcpy(&msg->pkt, pkt, len);
+	msg->sop_type = type;
 	mutex_lock(&pd->rx_list_lock);
 
 	/* Add the message to the rx list */
@@ -455,12 +464,16 @@ static void pd_prot_phy_rcv(struct pd_prot *pd)
 {
 	struct pd_packet rcv_buf;
 	int len, send_good_crc, msg_type, msg_id;
+	enum pd_pkt_type type = 0;
 
 	mutex_lock(&pd->rx_data_lock);
 
 	memset(&rcv_buf, 0, sizeof(struct pd_packet));
-	len = pd_prot_recv_phy_packet(pd, &rcv_buf);
+	len = pd_prot_recv_phy_packet(pd, &rcv_buf, &type);
 	if (len == 0)
+		goto phy_rcv_end;
+	if (type != PKT_TYPE_SOP
+		&& pd->pwr_role == PD_POWER_ROLE_CONSUMER)
 		goto phy_rcv_end;
 
 	msg_type = PD_MSG_TYPE(&rcv_buf.header);
@@ -486,7 +499,8 @@ static void pd_prot_phy_rcv(struct pd_prot *pd)
 			send_good_crc = 0;
 			if (msg_id == pd->tx_msg_id) {
 				pd->tx_msg_id = (msg_id + 1) & PD_MAX_MSG_ID;
-				pd_prot_add_msg_rx_list(pd, &rcv_buf, len);
+				pd_prot_add_msg_rx_list(pd,
+						&rcv_buf, len, type);
 			} else
 				dev_warn(pd->phy->dev, "GCRC msg id not matching\n");
 			complete(&pd->tx_complete);
@@ -506,7 +520,7 @@ static void pd_prot_phy_rcv(struct pd_prot *pd)
 		 */
 		if (pd->rx_msg_id != msg_id) {
 			pd->rx_msg_id = msg_id;
-			pd_prot_add_msg_rx_list(pd, &rcv_buf, len);
+			pd_prot_add_msg_rx_list(pd, &rcv_buf, len, type);
 		} else {
 			dev_warn(pd->phy->dev,
 				"%s:This msg is already received\n",
@@ -685,6 +699,7 @@ int protocol_bind_dpm(struct typec_phy *phy)
 	INIT_LIST_HEAD(&prot->rx_list);
 	INIT_WORK(&prot->proc_rx_msg, prot_process_rx_work);
 	mutex_init(&prot->rx_list_lock);
+	pd_protocol_enable_pd(prot, false);
 
 	return 0;
 }
