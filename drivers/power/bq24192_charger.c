@@ -238,7 +238,7 @@
 #define BQ_GPIO_MUX_SEL_PMIC	0
 #define BQ_GPIO_MUX_SEL_SOC	1
 #define FPO0_USB_COMP_OFFSET	0x01
-#define BQ24192_MIN_INLMT	100
+#define BQ24192_MIN_INLMT	0
 #define BQ24192_MAX_INLMT	3000
 #define BQ24192_MAX_ITERM	2048
 static struct power_supply *fg_psy;
