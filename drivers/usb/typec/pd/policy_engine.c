@@ -891,6 +891,7 @@ static void pe_handle_dpm_event(struct policy_engine *pe,
 		break;
 	case DEVMGR_EVENT_DFP_CONNECTED:
 		log_dbg(" DFP - Connected ");
+		devpolicy_set_vconn_state(pe->p.dpm, VCONN_SOURCE);
 		pe_set_data_role(pe, DATA_ROLE_DFP);
 		pe_set_power_role(pe, POWER_ROLE_SOURCE);
 		if (pe->cur_state == PE_STATE_NONE) {

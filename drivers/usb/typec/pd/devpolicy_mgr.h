@@ -274,6 +274,7 @@ struct dpm_interface {
 
 #ifdef CONFIG_INTEL_WCOVE_GPIO
 extern int wcgpio_set_vbus_state(bool state);
+extern int wcgpio_set_vconn_state(bool state);
 static inline int devpolicy_set_vbus_state(struct devpolicy_mgr *dpm,
 						bool state)
 {
@@ -281,11 +282,32 @@ static inline int devpolicy_set_vbus_state(struct devpolicy_mgr *dpm,
 		return -ENODEV;
 	return wcgpio_set_vbus_state(state);
 }
+
+static inline int devpolicy_set_vconn_state(struct devpolicy_mgr *dpm,
+						enum vconn_state vcstate)
+{
+	int ret = -EINVAL;
+
+	if (dpm && dpm->interface && dpm->interface->set_vconn_state) {
+		ret = wcgpio_set_vconn_state(vcstate == VCONN_SOURCE);
+		if (!ret)
+			ret = dpm->interface->set_vconn_state(dpm, vcstate);
+	}
+	return ret;
+}
 #else /* CONFIG_INTEL_WCOVE_GPIO */
 static inline int devpolicy_set_vbus_state(struct devpolicy_mgr *dpm,
 						bool state)
 {
 	return -ENODEV;
+}
+
+static inline int devpolicy_set_vconn_state(struct devpolicy_mgr *dpm,
+						enum vconn_state vcstate)
+{
+	if (dpm && dpm->interface && dpm->interface->set_vconn_state
+		return dpm->interface->set_vconn_state(dpm, vcstate);
+	return -EINVAL;
 }
 #endif /* CONFIG_INTEL_WCOVE_GPIO */
 
@@ -343,15 +365,6 @@ static inline bool devpolicy_get_vconn_state(struct devpolicy_mgr *dpm)
 		return dpm->interface->get_vconn_state(dpm);
 
 	return false;
-}
-
-static inline int devpolicy_set_vconn_state(struct devpolicy_mgr *dpm,
-						enum vconn_state vcstate)
-{
-	if (dpm && dpm->interface && dpm->interface->set_vconn_state)
-		return dpm->interface->set_vconn_state(dpm, vcstate);
-
-	return -EINVAL;
 }
 
 static inline void devpolicy_update_data_role(struct devpolicy_mgr *dpm,
