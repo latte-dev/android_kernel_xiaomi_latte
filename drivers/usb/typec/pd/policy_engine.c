@@ -365,9 +365,6 @@ static void pe_handle_gcrc_received(struct policy_engine *pe)
 	case PE_PRS_SNK_SRC_SEND_PR_SWAP:
 	case PE_SNK_SEND_SOFT_RESET:
 	case PE_SRC_SEND_SOFT_RESET:
-		/* Start sender response timer */
-		pe_start_timer(pe, SENDER_RESPONSE_TIMER,
-					PE_TIME_SENDER_RESPONSE);
 		break;
 
 	case PE_SNK_GIVE_SINK_CAP:
@@ -1608,8 +1605,10 @@ static void pe_timer_expire_worker(struct work_struct *work)
 		break;
 
 	case CRC_RECEIVE_TIMER:
-		if (pe->cur_state == PE_SRC_SEND_CAPABILITIES) {
+		if (pe_is_timer_pending(pe, SENDER_RESPONSE_TIMER))
 			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
+
+		if (pe->cur_state == PE_SRC_SEND_CAPABILITIES) {
 			pe_change_state(pe, PE_SRC_DISCOVERY);
 			break;
 		} else if (pe->cur_state == PE_PRS_SRC_SNK_WAIT_SOURCE_ON) {
@@ -1632,8 +1631,6 @@ static void pe_timer_expire_worker(struct work_struct *work)
 			pe_change_state(pe, PE_SRC_WAIT_FOR_VBUS);
 			break;
 		}
-		if (pe_is_timer_pending(pe, SENDER_RESPONSE_TIMER))
-			pe_cancel_timer(pe, SENDER_RESPONSE_TIMER);
 		log_warn("%s expired in state=%d",
 				timer_to_str(type), pe->cur_state);
 		pe_change_state_to_soft_reset(pe);
@@ -1876,6 +1873,8 @@ pe_process_state_pe_snk_select_capability(struct policy_engine *pe)
 		return;
 	}
 	log_dbg("PD_DATA_MSG_REQUEST Sent, %x\n", data);
+	pe_start_timer(pe, SENDER_RESPONSE_TIMER,
+					PE_TIME_SENDER_RESPONSE);
 }
 
 static void
@@ -2173,8 +2172,16 @@ pe_process_state_pe_src_give_source_cap(struct policy_engine *pe)
 static void
 pe_process_state_pe_src_get_sink_cap(struct policy_engine *pe)
 {
-	pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_GET_SINK_CAP,
+	int ret;
+
+	ret = pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_GET_SINK_CAP,
 				PE_EVT_SEND_GET_SINK_CAP);
+	if (ret) {
+		log_err("Failed to send sink caps, ret=%d", ret);
+		return;
+	}
+	pe_start_timer(pe, SENDER_RESPONSE_TIMER,
+					PE_TIME_SENDER_RESPONSE);
 }
 
 /******************* DR_SWAP State handlers ***********************/
@@ -2210,8 +2217,16 @@ pe_process_state_pe_drs_dfp_ufp_change_to_ufp(struct policy_engine *pe)
 static void
 pe_process_state_pe_drs_dfp_ufp_send_dr_swap(struct policy_engine *pe)
 {
-	pe_send_packet(pe, NULL, 0,
+	int ret;
+
+	ret = pe_send_packet(pe, NULL, 0,
 			PD_CTRL_MSG_DR_SWAP, PE_EVT_SEND_DR_SWAP);
+	if (ret) {
+		log_err("Failed to send dr_swap, ret=%d", ret);
+		return;
+	}
+	pe_start_timer(pe, SENDER_RESPONSE_TIMER,
+					PE_TIME_SENDER_RESPONSE);
 }
 
 static void
@@ -2246,15 +2261,31 @@ pe_process_state_pe_drs_ufp_dfp_change_to_dfp(struct policy_engine *pe)
 static void
 pe_process_state_pe_drs_ufp_dfp_send_dr_swap(struct policy_engine *pe)
 {
-	pe_send_packet(pe, NULL, 0,
-			PD_CTRL_MSG_DR_SWAP, PE_EVT_SEND_DR_SWAP);
+	int ret;
+
+	ret = pe_send_packet(pe, NULL, 0,
+		PD_CTRL_MSG_DR_SWAP, PE_EVT_SEND_DR_SWAP);
+	if (ret) {
+		log_err("Failed to send dr_swap, ret=%d", ret);
+		return;
+	}
+	pe_start_timer(pe, SENDER_RESPONSE_TIMER,
+					PE_TIME_SENDER_RESPONSE);
 }
 
 static void
 pe_process_state_pe_prs_src_snk_send_pr_swap(struct policy_engine *pe)
 {
-	pe_send_packet(pe, NULL, 0,
+	int ret;
+
+	ret = pe_send_packet(pe, NULL, 0,
 				PD_CTRL_MSG_PR_SWAP, PE_EVT_SEND_PR_SWAP);
+	if (ret) {
+		log_err("Failed to send pr_swap, ret=%d", ret);
+		return;
+	}
+	pe_start_timer(pe, SENDER_RESPONSE_TIMER,
+					PE_TIME_SENDER_RESPONSE);
 }
 
 static void
@@ -2317,8 +2348,16 @@ pe_process_state_pe_prs_src_snk_wait_source_on(struct policy_engine *pe)
 static void
 pe_process_state_pe_prs_snk_src_send_pr_swap(struct policy_engine *pe)
 {
-	pe_send_packet(pe, NULL, 0,
+	int ret;
+
+	ret = pe_send_packet(pe, NULL, 0,
 			PD_CTRL_MSG_PR_SWAP, PE_EVT_SEND_PR_SWAP);
+	if (ret) {
+		log_err("Failed to send pr_swap, ret=%d", ret);
+		return;
+	}
+	pe_start_timer(pe, SENDER_RESPONSE_TIMER,
+					PE_TIME_SENDER_RESPONSE);
 }
 
 static void
@@ -2478,8 +2517,16 @@ static void pe_process_state_pe_vcs_send_swap(struct policy_engine *pe)
 static void
 pe_process_state_pe_dr_src_get_source_cap(struct policy_engine *pe)
 {
-	pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_GET_SRC_CAP,
+	int ret;
+
+	ret = pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_GET_SRC_CAP,
 			PE_EVT_SEND_GET_SRC_CAP);
+	if (ret) {
+		log_err("Failed to send get_src_cap, ret=%d", ret);
+		return;
+	}
+	pe_start_timer(pe, SENDER_RESPONSE_TIMER,
+					PE_TIME_SENDER_RESPONSE);
 }
 
 static void
@@ -2491,8 +2538,15 @@ pe_process_state_pe_dr_src_give_sink_cap(struct policy_engine *pe)
 static void
 pe_process_state_pe_dr_snk_get_sink_cap(struct policy_engine *pe)
 {
-	pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_GET_SINK_CAP,
+	int ret;
+	ret = pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_GET_SINK_CAP,
 			PE_EVT_SEND_GET_SINK_CAP);
+	if (ret) {
+		log_err("Failed to send get_sink_caps, ret=%d", ret);
+		return;
+	}
+	pe_start_timer(pe, SENDER_RESPONSE_TIMER,
+					PE_TIME_SENDER_RESPONSE);
 }
 
 static void
@@ -2564,9 +2618,17 @@ pe_process_state_pe_dfp_vdm_modes_request(struct policy_engine *pe)
 
 static void pe_process_state_pe_send_soft_reset(struct policy_engine *pe)
 {
+	int ret;
+
 	/* Send Soft Reset */
-	pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_SOFT_RESET,
-					PE_EVT_SEND_SOFT_RESET);
+	ret = pe_send_packet(pe, NULL, 0, PD_CTRL_MSG_SOFT_RESET,
+						PE_EVT_SEND_SOFT_RESET);
+	if (ret) {
+		log_err("Failed to send soft_reset, ret=%d", ret);
+		return;
+	}
+	pe_start_timer(pe, SENDER_RESPONSE_TIMER,
+					PE_TIME_SENDER_RESPONSE);
 }
 
 static void pe_process_state_pe_accept_soft_reset(struct policy_engine *pe)
