@@ -672,6 +672,9 @@ int gmin_flisclk_ctrl(struct v4l2_subdev *subdev, int on)
 {
 	int ret = 0;
 	struct gmin_subdev *gs = find_gmin_subdev(subdev);
+
+	if (!gs)
+		return -ENODEV;
 	if (on)
 		ret = vlv2_plat_set_clock_freq(gs->clock_num, gs->clock_src);
 	if (ret)
@@ -736,6 +739,9 @@ struct camera_sensor_platform_data *gmin_camera_platform_data(
 		enum atomisp_bayer_order csi_bayer)
 {
 	struct gmin_subdev *gs = find_gmin_subdev(subdev);
+
+	if (!gs)
+		return NULL;
 	gs->csi_fmt = csi_format;
 	gs->csi_bayer = csi_bayer;
 
