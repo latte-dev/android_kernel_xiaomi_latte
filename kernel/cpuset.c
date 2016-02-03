@@ -42,6 +42,7 @@
 #include <linux/namei.h>
 #include <linux/pagemap.h>
 #include <linux/proc_fs.h>
+#include <linux/ptrace.h>
 #include <linux/rcupdate.h>
 #include <linux/sched.h>
 #include <linux/seq_file.h>
@@ -2018,6 +2019,26 @@ static void cpuset_css_free(struct cgroup_subsys_state *css)
 	kfree(cs);
 }
 
+/*
+ * Check if the current process is allowed to move a task to a cpuset
+ * cgroup by checking if the process is ptrace-able by current.
+ */
+static int cpuset_allow_attach(struct cgroup_subsys_state *css,
+			       struct cgroup_taskset *tset)
+{
+	const struct cred *tcred;
+	struct task_struct *task;
+
+	cgroup_taskset_for_each(task, css, tset) {
+		tcred = __task_cred(task);
+
+		if ((current != task) &&
+			!ptrace_may_access(task, PTRACE_MODE_ATTACH))
+			return -EACCES;
+	}
+	return 0;
+}
+
 struct cgroup_subsys cpuset_subsys = {
 	.name = "cpuset",
 	.css_alloc = cpuset_css_alloc,
@@ -2027,6 +2048,7 @@ struct cgroup_subsys cpuset_subsys = {
 	.can_attach = cpuset_can_attach,
 	.cancel_attach = cpuset_cancel_attach,
 	.attach = cpuset_attach,
+	.allow_attach = cpuset_allow_attach,
 	.subsys_id = cpuset_subsys_id,
 	.base_cftypes = files,
 	.early_init = 1,
