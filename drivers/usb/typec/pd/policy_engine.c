@@ -1045,7 +1045,7 @@ static void pe_send_self_sink_caps(struct policy_engine *pe)
 }
 
 /*
- * This function will pick one to received caps fron source
+ * This function will pick one to received caps from source
  * based on current sysntem required caps given by DPM.
  */
 static int pe_sink_set_request_cap(struct policy_engine *pe,
@@ -1056,11 +1056,14 @@ static int pe_sink_set_request_cap(struct policy_engine *pe,
 	int i;
 	int mv = 0;
 	int ma = 0;
+	int num_data_objs = rcv_pdos->num_pdos;
 	bool is_mv_match = false;
 
 	rcap->cap_mismatch = true;
+	if (num_data_objs > MAX_NUM_DATA_OBJ)
+		num_data_objs = MAX_NUM_DATA_OBJ;
 
-	for (i = 0; i < rcv_pdos->num_pdos; i++) {
+	for (i = 0; i < num_data_objs; i++) {
 		/*
 		 * FIXME: should be selected based on the power (V*I) cap.
 		 */
