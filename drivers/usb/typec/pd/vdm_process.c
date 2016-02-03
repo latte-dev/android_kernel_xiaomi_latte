@@ -44,6 +44,12 @@
 #define DISP_CONFIG_UFPU_AS_UFP_D	2
 #define DISP_CONFIG_RESERVED		3
 
+/* Port partner alt-mode capability  */
+#define ALT_MODE_CAP_RESERVED		0
+#define ALT_MODE_CAP_UFP_D		1
+#define ALT_MODE_CAP_DFP_D		2
+#define ALT_MODE_CAP_BOTH_UFP_DFP_D	3
+
 /* Display port signaling for transport */
 #define DISP_PORT_SIGNAL_UNSPEC		0
 #define DISP_PORT_SIGNAL_DP_1P3		1
@@ -462,6 +468,11 @@ static void pe_process_dp_modes(struct policy_engine *pe,
 	int index_4x = 0;
 
 	for (i = 0; i < dmode_pkt->msg_hdr.num_data_obj - 1; i++) {
+		if (dmode_pkt->mode[i].port_cap != ALT_MODE_CAP_UFP_D &&
+		dmode_pkt->mode[i].port_cap != ALT_MODE_CAP_BOTH_UFP_DFP_D) {
+			log_dbg("Mode[%d] doesn't support UFP_D", i);
+			continue;
+		}
 		if (!index_4x) {
 			if (dmode_pkt->mode[i].ufp_pin
 					& DISP_PORT_PIN_ASSIGN_E
