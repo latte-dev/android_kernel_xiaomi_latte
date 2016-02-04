@@ -4931,7 +4931,7 @@ out:
 
 	intel_runtime_pm_put(dev_priv);
 
-	if (intel_connector && status == connector_status_disconnected) {
+	if (status == connector_status_disconnected) {
 		kfree(intel_connector->edid);
 		intel_connector->edid = NULL;
 	}

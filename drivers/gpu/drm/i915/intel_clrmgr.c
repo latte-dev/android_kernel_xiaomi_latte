@@ -1464,6 +1464,11 @@ bool intel_clrmgr_register_pipe_property(struct intel_crtc *intel_crtc,
 		/* Add the property in global pipe status */
 		regd_property = kzalloc(sizeof(struct clrmgr_regd_prop),
 								GFP_KERNEL);
+		if (!regd_property) {
+			DRM_ERROR("Failed to allocate property %s\n",
+							property->name);
+			goto error;
+		}
 		regd_property->property = property;
 		regd_property->enabled = false;
 		regd_property->set_property = cp->set_property;

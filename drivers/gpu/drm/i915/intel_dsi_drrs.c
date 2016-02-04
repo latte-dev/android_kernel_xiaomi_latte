@@ -103,8 +103,12 @@ retry:
 
 		work->target_mode = drm_mode_duplicate(intel_encoder->base.dev,
 								prev_mode);
-		fallback_attempt = true;
-		goto init;
+		if (!work->target_mode)
+			DRM_ERROR("Mode duplication failed\n");
+		else {
+			fallback_attempt = true;
+			goto init;
+		}
 	} else {
 
 		/*

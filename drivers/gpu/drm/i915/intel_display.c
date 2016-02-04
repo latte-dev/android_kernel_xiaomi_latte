@@ -15196,14 +15196,20 @@ bool chv_upfront_link_train(struct drm_device *dev,
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_connector *connector = intel_dp->attached_connector;
-	struct intel_encoder *encoder = connector->encoder;
+	struct intel_encoder *encoder;
 	enum intel_display_power_domain power_domain;
 	bool found = false;
 	bool valid_crtc = false;
 	uint8_t tmp_lane_count, tmp_link_bw;
 
-	if (!connector || !encoder) {
-		DRM_DEBUG_KMS("dp connector/encoder is NULL\n");
+	if (!connector) {
+		DRM_DEBUG_KMS("dp connector is NULL\n");
+		return false;
+	}
+
+	encoder = connector->encoder;
+	if (!encoder) {
+		DRM_DEBUG_KMS("dp encoder is NULL\n");
 		return false;
 	}
 
