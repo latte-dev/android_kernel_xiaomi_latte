@@ -114,7 +114,7 @@ static int gpio_ssic_request_irq(struct gpio_ssic *ssic)
 	int ret;
 
 	if (ssic->irq_enabled)
-		return ret;
+		return -EBUSY;
 
 	ret = devm_request_threaded_irq(dev, ssic->irq_wakeup, NULL,
 			gpio_ssic_wakeup_irq,
