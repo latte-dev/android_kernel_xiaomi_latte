@@ -151,7 +151,12 @@ dw_i2c_acpi_space_handler(u32 function, acpi_physical_address address,
 	function &= ACPI_IO_MASK; 
 	if (function == ACPI_READ) {
 		buffer = kzalloc(length, GFP_KERNEL);
-	
+		if (!buffer) {
+			pr_info("%s: buffer allocation failed!\n", __func__);
+			ACPI_FREE(ares);
+			return AE_NO_MEMORY;
+		}
+
 		msgs[0].addr = target;
 		msgs[0].flags = 0;
 		msgs[0].len = 1;
