@@ -125,7 +125,7 @@ err0:
 static int soc_button_pnp_probe(struct pnp_dev *pdev,
 	const struct pnp_device_id *id)
 {
-	int i, j, r, ret;
+	int i, j, r, ret = 0;
 	int sz_tbl = sizeof(soc_button_tbl) / sizeof(soc_button_tbl[0]);
 	struct gpio_keys_button *gk;
 
