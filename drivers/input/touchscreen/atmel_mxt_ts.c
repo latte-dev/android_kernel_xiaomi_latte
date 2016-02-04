@@ -3612,13 +3612,11 @@ static ssize_t mxt_debugfs_coverage_read(struct file *file, char __user *usrbuf,
 		return -EFAULT;
 	}
 
-	size = sprintf(buf, "%s.present %d\n",
-			data->debugfs_name, data->present);
-	size += sprintf(buf + size, "%s.correct %d\n",
-			data->debugfs_name, data->correct);
-	size += sprintf(buf + size, "%s.reset %d\n",
-			data->debugfs_name, data->reset);
-	size += sprintf(buf + size, "%s.irq %d\n",
+	size = snprintf(buf, sizeof(buf), "%s.present %d\n%s.correct %d\n"
+			"%s.reset %d\n%s.irq %d\n",
+			data->debugfs_name, data->present,
+			data->debugfs_name, data->correct,
+			data->debugfs_name, data->reset,
 			data->debugfs_name, data->irqcnt);
 	if (copy_to_user(usrbuf, buf, size)) {
 		dev_err(&data->client->dev, "%s: copy_to_user failed\n",
