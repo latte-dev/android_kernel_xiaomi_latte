@@ -895,6 +895,11 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 
 	/* Get board-specific HW-settings */
 	conf = get_board_config(get_mc_link());
+	if (!conf) {
+		pr_err("%s: Failed to get board-specific HW-settings!\n",
+			__func__);
+		return -EFAULT;
+	}
 	switch (conf->idx) {
 	case RT5651_ANCHOR8:
 	case RT5651_DEFAULT:
