@@ -3458,6 +3458,7 @@ static int snd_soc_get_hw_params(struct snd_pcm_hw_params *params,
 		= config->channels_min;
 	hw_param_interval(params, SNDRV_PCM_HW_PARAM_CHANNELS)->max
 		= config->channels_max;
+	return 0;
 }
 
 static int snd_soc_dai_link_event(struct snd_soc_dapm_widget *w,
