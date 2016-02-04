@@ -615,9 +615,10 @@ static int sst_dma_firmware(struct sst_dma *dma, struct sst_sg_list *sg_list)
 		for_each_sg(sg_src_list, sg, length, i) {
 			pr_debug("dma desc %d, length %d\n", i, sg->length);
 			src_addr = sg_phys(sg);
+			if (!sg_dst_list)
+				return -EFAULT;
 			dstn_addr = sg_phys(sg_dst_list);
-			if (sg_dst_list)
-				sg_dst_list = sg_next(sg_dst_list);
+			sg_dst_list = sg_next(sg_dst_list);
 			sst_drv_ctx->desc = dma->ch->device->device_prep_dma_memcpy(
 					dma->ch, dstn_addr, src_addr, sg->length, flag);
 			if (!sst_drv_ctx->desc)
