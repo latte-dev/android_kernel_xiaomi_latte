@@ -641,7 +641,6 @@ static int i2c_dw_handle_tx_abort(struct dw_i2c_dev *dev)
 	unsigned long abort_source = dev->abort_source;
 	int i;
 
-	dev_err(dev->dev, "abort_source = 0x%08lx\n", abort_source);
 	if (abort_source & DW_IC_TX_ABRT_NOACK) {
 		for_each_set_bit(i, &abort_source, ARRAY_SIZE(abort_sources))
 			dev_dbg(dev->dev,
@@ -649,6 +648,7 @@ static int i2c_dw_handle_tx_abort(struct dw_i2c_dev *dev)
 		return -EREMOTEIO;
 	}
 
+	dev_err(dev->dev, "abort_source = 0x%08lx\n", abort_source);
 	for_each_set_bit(i, &abort_source, ARRAY_SIZE(abort_sources))
 		dev_err(dev->dev, "%s: %s\n", __func__, abort_sources[i]);
 
