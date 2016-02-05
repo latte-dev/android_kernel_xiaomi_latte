@@ -1042,7 +1042,15 @@ static int alloc_ion_pages(struct hmm_buffer_object *bo,
 
 	sl = sg_tbl->sgl;
 	for_each_sg(sg_tbl->sgl, sl, sg_tbl->nents, i) {
-		struct page *page = sg_page(sl);
+		struct page *page;
+
+		if (!sl) {
+			dev_err(atomisp_dev, "sg is NULL.\n");
+			ret = -EINVAL;
+			goto error;
+		}
+
+		page = sg_page(sl);		
 		for (j = 0; j < sl->length / PAGE_SIZE; j++) {
 			bo->page_obj[page_nr++].page = page++;
 			/*

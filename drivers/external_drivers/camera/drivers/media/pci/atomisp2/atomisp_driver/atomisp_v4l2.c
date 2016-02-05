@@ -1300,6 +1300,11 @@ static int atomisp_pci_probe(struct pci_dev *dev,
 	}
 
 	base = pcim_iomap_table(dev)[ATOM_ISP_PCI_BAR];
+	if (!base) {
+		dev_err(&dev->dev, "atomisp: error iomap table ptr\n");
+		return -EINVAL;
+	}
+
 	dev_dbg(&dev->dev, "base: %p\n", base);
 
 	atomisp_io_base = base;
