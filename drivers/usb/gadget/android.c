@@ -1142,8 +1142,9 @@ static int midi_function_init(struct android_usb_function *f,
 
 	config->f_midi_inst = usb_get_function_instance("midi");
 	if (IS_ERR(config->f_midi_inst)) {
+		int ret = PTR_ERR(config->f_midi_inst);
 		kfree(config);
-		return PTR_ERR(config->f_midi_inst);
+		return ret;
 	}
 
 	midi_opts = container_of(config->f_midi_inst, struct f_midi_opts,
