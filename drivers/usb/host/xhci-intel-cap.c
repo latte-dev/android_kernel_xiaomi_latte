@@ -65,8 +65,8 @@ int xhci_intel_need_disable_stall(struct xhci_hcd *xhci)
 
 	/* Get ACPI device */
 	acpi_dev = ACPI_COMPANION(&pdev->dev);
-	if (!acpi_dev) {
-		dev_dbg(&pdev->dev, "No ACPI device!\n");
+	if (!acpi_dev || !acpi_dev->handle) {
+		dev_err(&pdev->dev, "No ACPI device!\n");
 		return 0;
 	}
 
@@ -74,7 +74,7 @@ int xhci_intel_need_disable_stall(struct xhci_hcd *xhci)
 	modem_status = acpi_evaluate_object(acpi_dev->handle, "MINF",
 			NULL, &buffer);
 	if (ACPI_FAILURE(modem_status)) {
-		dev_dbg(&pdev->dev, "No MINF method!\n");
+		dev_err(&pdev->dev, "No MINF method!\n");
 		return 0;
 	}
 
