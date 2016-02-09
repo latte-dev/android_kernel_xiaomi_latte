@@ -1000,8 +1000,9 @@ static int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep, u16 cmd_param,
 		params.param0 = upper_32_bits(req->trb_dma);
 		params.param1 = lower_32_bits(req->trb_dma);
 		cmd = DWC3_DEPCMD_STARTTRANSFER;
-		if ((dwc3_readl(dwc->regs, DWC3_DSTS)
-			& DWC3_DSTS_USBLNKST_MASK) != 0) {
+		if (dwc->gadget.speed != USB_SPEED_SUPER &&
+		  (dwc3_readl(dwc->regs, DWC3_DSTS)
+		  & DWC3_DSTS_USBLNKST_MASK) != 0) {
 			reg = dwc3_readl(dwc->regs, DWC3_DCTL);
 			reg &= ~(DWC3_DCTL_ULSTCHNGREQ_MASK);
 			dwc3_writel(dwc->regs, DWC3_DCTL, reg);
