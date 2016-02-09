@@ -158,10 +158,17 @@ static ssize_t ishdbg_write(struct file *file, const char __user *ubuf,
 	if (rv)
 		return  -EINVAL;
 	if (sscanf(dbg_req_buf, "%s ", cmd) != 1) {
-		dev_err(&heci_pci_device->dev, "[ish-dbg]) sscanf failed\n");
+		dev_err(&heci_pci_device->dev, "[ish-dbg] sscanf failed\n");
 		return  -EINVAL;
 	}
 	sscanf_match = sscanf(dbg_req_buf + 2, "%x %u", &addr, &count);
+
+	if (addr >= IPC_REG_MAX) {
+		dev_err(&heci_pci_device->dev, "[ish-dbg] address %08X "
+			"out of range\n", addr);
+		return	-EINVAL;
+	}
+
 	if (!strcmp(cmd, "d")) {
 		/* Dump values: d <addr> [count] */
 		if (sscanf_match == 1)

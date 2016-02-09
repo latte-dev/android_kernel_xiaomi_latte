@@ -17,7 +17,7 @@
 #define PLATFORM_CONFIG__H
 
 /* Build ID string */
-#define BUILD_ID	"243-reset-flow-release-fix"
+#define BUILD_ID	"245-reset-flow-release-hidcl-init-ishdbg-fixes"
 
 #define	ISH_DEBUG	0
 #if ISH_DEBUG

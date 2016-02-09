@@ -41,6 +41,7 @@
 /* REMAP2 to enable DMA (D3 RCR) */
 #define	IPC_REG_ISH_RMP2	 (IPC_REG_BASE + 0x368)
 
+#define	IPC_REG_MAX		(IPC_REG_BASE + 0x400)
 /* register bits - HISR */
 
 /* bit corresponds HOST2ISH interrupt in PISR and PIMR registers */
