@@ -163,8 +163,10 @@ int xhci_intel_phy_mux_switch(struct xhci_hcd *xhci, int is_device_on)
 	unsigned long	timeout;
 	u32		data;
 
-	if (!xhci || !xhci->phy_mux_regs)
+	if (!xhci || !xhci->phy_mux_regs) {
 		pr_err("No XHCI or Not support phy mux capability\n");
+		return -EINVAL;
+	}
 
 	xhci_dbg(xhci, "XHCI phy mux switch to %s path\n",
 				is_device_on ? "dev" : "Host");
