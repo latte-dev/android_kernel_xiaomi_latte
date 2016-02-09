@@ -786,16 +786,11 @@ static int __init ish_init(void)
 
 	init_waitqueue_head(&init_wait);
 	init_waitqueue_head(&heci_hid_wait);
+	INIT_WORK(&my_work, workqueue_init_function);
+
 	/* Register HECI client device driver - ISS */
 	rv = heci_cl_driver_register(&hid_heci_cl_driver);
 
-	/*
-	 * 7/7/2014: in order to not stick Android boot, from here & below
-	 * needs to run in work queue and here we should return rv
-	 */
-	/****************************************************************/
-	INIT_WORK(&my_work, workqueue_init_function);
-	/***************************************************************/
 	return rv;
 
 }
