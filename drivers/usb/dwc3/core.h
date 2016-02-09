@@ -214,6 +214,7 @@
 #define DWC3_DCTL_RUN_STOP	(1 << 31)
 #define DWC3_DCTL_CSFTRST	(1 << 30)
 #define DWC3_DCTL_LSFTRST	(1 << 29)
+#define DWC3_DCTL_L1_NYET_TRESH	(0xF << 20)
 
 #define DWC3_DCTL_HIRD_THRES_MASK	(0x1f << 24)
 #define DWC3_DCTL_HIRD_THRES(n)	((n) << 24)

@@ -2523,6 +2523,14 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 		 */
 		reg |= DWC3_DCTL_HIRD_THRES(12);
 
+		/*
+		* WORKARROUND: When LPM Errata is enabled LPM_NYET_treshold
+		* is set to 0 to improve performance on USB2
+		* when LPM Errata is enabled
+		*/
+		if ((reg & DWC3_DCTL_L1_NYET_TRESH) == DWC3_DCTL_L1_NYET_TRESH)
+			reg &= ~DWC3_DCTL_L1_NYET_TRESH;
+
 		dwc3_writel(dwc->regs, DWC3_DCTL, reg);
 	}
 
