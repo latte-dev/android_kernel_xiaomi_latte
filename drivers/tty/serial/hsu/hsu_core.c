@@ -1109,6 +1109,8 @@ serial_hsu_do_set_termios(struct uart_port *port, struct ktermios *termios,
 		cval |= UART_LCR_EPAR;
 
 	baud = uart_get_baud_rate(port, termios, old, 0, 4000000);
+	if (!baud)
+		return;
 
 	if (up->hw_type == hsu_intel) {
 		/*
