@@ -78,6 +78,8 @@ void dwc3_set_mode(struct dwc3 *dwc, u32 mode)
 #define GUSB2PHYACC0_REGDATA(v)  (v & 0xFF)
 #define GUSB2PHYACC0_REGDATA_MASK  0xFF
 
+static void dwc3_suspend_usb2_phy(struct dwc3 *dwc, bool suspend);
+
 static int ulpi_read(struct dwc3 *dwc, u32 reg)
 {
 	u32 val32 = 0, count = 200;
@@ -550,6 +552,8 @@ static int dwc3_core_init(struct dwc3 *dwc)
 	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
 
 	dwc3_suspend_usb3_phy(dwc, true);
+
+	dwc3_suspend_usb2_phy(dwc, true);
 
 	return 0;
 
