@@ -543,6 +543,13 @@ int     hid_heci_cl_remove(struct heci_cl_device *dev)
 	ISH_DBG_PRINT(KERN_ALERT "%s(): +++\n", __func__);
 	heci_hid_remove();
 	hid_heci_client_found = 0;
+
+	heci_cl_unlink(hid_heci_cl);
+	heci_cl_flush_queues(hid_heci_cl);
+
+	heci_cl_free(hid_heci_cl);
+
+	/* disband and free all Tx and Rx client-level rings */
 	hid_heci_cl = NULL;
 
 	for (i = 0; i < num_hid_devices ; ++i) {
