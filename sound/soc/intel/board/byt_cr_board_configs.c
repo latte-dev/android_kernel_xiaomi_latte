@@ -80,6 +80,8 @@ const struct board_config *get_board_config(
 {
 	const struct dmi_system_id *dmi;
 
+	if (!mc_link)
+		return NULL;
 	dmi = dmi_first_match(mc_link->dmi_system_ids);
 	if (!dmi) {
 		pr_info("Board is a default %s.\n", mc_link->mach_dev->name);
