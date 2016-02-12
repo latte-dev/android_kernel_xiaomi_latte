@@ -21,7 +21,12 @@
  * Author: Jenny TC <jenny.tc@intel.com>
  */
 
+#ifndef __PMIC_CCSM_H__
+#define __PMIC_CCSM_H__
+
 #include <linux/power/intel_pmic_ccsm.h>
+#include <linux/wakelock.h>
+#include <linux/miscdevice.h>
 /*********************************************************************
  *		Generic defines
  *********************************************************************/
@@ -319,59 +324,6 @@ enum pmic_charger_cable_type {
 	PMIC_CHARGER_TYPE_DCP_EXTPHY,
 };
 
-
-char *pmic_regs_name[] = {
-	"pmic_id",
-	"pmic_irqlvl1",
-	"pmic_mirqlvl1",
-	"pmic_chgrirq0",
-	"pmic_schgrirq0",
-	"pmic_mchgrirq0",
-	"pmic_chgrirq1",
-	"pmic_schgrirq1",
-	"pmic_mchgrirq1",
-	"pmic_chgrctrl0",
-	"pmic_chgrctrl1",
-	"pmic_chgdisctrl",
-	"pmic_lowbattdet0",
-	"pmic_lowbattdet1",
-	"pmic_battdetctrl",
-	"pmic_vbusdetctrl",
-	"pmic_vdcindetctrl",
-	"pmic_chgrstatus",
-	"pmic_usbidctrl",
-	"pmic_usbidstat",
-	"pmic_wakesrc",
-	"pmic_usbphyctrl",
-	"pmic_dbg_usbbc1",
-	"pmic_dbg_usbbc2",
-	"pmic_dbg_usbbcstat",
-	"pmic_usbpath",
-	"pmic_usbsrcdetstat",
-	"pmic_chrttaddr",
-	"pmic_chrttdata",
-	"pmic_thrmbatzone",
-	"pmic_thrmzn0h",
-	"pmic_thrmzn0l",
-	"pmic_thrmzn1h",
-	"pmic_thrmzn1l",
-	"pmic_thrmzn2h",
-	"pmic_thrmzn2l",
-	"pmic_thrmzn3h",
-	"pmic_thrmzn3l",
-	"pmic_thrmzn4h",
-	"pmic_thrmzn4l",
-	"pmic_thrmirq0",
-	"pmic_mthrmirq0",
-	"pmic_sthrmirq0",
-	"pmic_thrmirq1",
-	"pmic_mthrmirq1",
-	"pmic_sthrmirq1",
-	"pmic_thrmirq2",
-	"pmic_mthrmirq2",
-	"pmic_sthrmirq2",
-};
-
 struct pmic_event {
 	struct list_head node;
 	u16 pwrsrc_int;
@@ -440,13 +392,7 @@ struct pmic_chrgr_drv_context {
 	struct list_head evt_queue;
 	struct delayed_work evt_work;
 	struct extcon_dev *edev;
-	struct extcon_specific_cable_nb host_cable;
-	struct extcon_specific_cable_nb device_cable;
-	struct extcon_specific_cable_nb src_cable;
-	struct extcon_specific_cable_nb snk_cable;
-	struct notifier_block cable_nb;
-	struct work_struct extcon_work;
-	struct list_head cable_evt_list;
 	struct miscdevice misc_dev;
-	spinlock_t cable_event_queue_lock;
 };
+extern void pmic_set_cable_state(enum cable_type cbl_type, bool cable_state);
+#endif /* __PMIC_CCSM_H__ */

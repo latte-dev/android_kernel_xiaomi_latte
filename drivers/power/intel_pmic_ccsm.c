@@ -89,6 +89,8 @@
 /* Type definitions */
 static void pmic_bat_zone_changed(void);
 static int intel_pmic_handle_otgmode(bool enable);
+static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
+						bool cable_state);
 
 /* Extern definitions */
 
@@ -104,6 +106,58 @@ u16 pmic_inlmt[][2] = {
 	{ 1500, CHGRCTRL1_FUSB_INLMT_1500},
 	{ 2000, CHGRCTRL1_FUSB_INLMT_1500},
 	{ 2500, CHGRCTRL1_FUSB_INLMT_1500},
+};
+
+static const char *const pmic_regs_name[] = {
+	"pmic_id",
+	"pmic_irqlvl1",
+	"pmic_mirqlvl1",
+	"pmic_chgrirq0",
+	"pmic_schgrirq0",
+	"pmic_mchgrirq0",
+	"pmic_chgrirq1",
+	"pmic_schgrirq1",
+	"pmic_mchgrirq1",
+	"pmic_chgrctrl0",
+	"pmic_chgrctrl1",
+	"pmic_chgdisctrl",
+	"pmic_lowbattdet0",
+	"pmic_lowbattdet1",
+	"pmic_battdetctrl",
+	"pmic_vbusdetctrl",
+	"pmic_vdcindetctrl",
+	"pmic_chgrstatus",
+	"pmic_usbidctrl",
+	"pmic_usbidstat",
+	"pmic_wakesrc",
+	"pmic_usbphyctrl",
+	"pmic_dbg_usbbc1",
+	"pmic_dbg_usbbc2",
+	"pmic_dbg_usbbcstat",
+	"pmic_usbpath",
+	"pmic_usbsrcdetstat",
+	"pmic_chrttaddr",
+	"pmic_chrttdata",
+	"pmic_thrmbatzone",
+	"pmic_thrmzn0h",
+	"pmic_thrmzn0l",
+	"pmic_thrmzn1h",
+	"pmic_thrmzn1l",
+	"pmic_thrmzn2h",
+	"pmic_thrmzn2l",
+	"pmic_thrmzn3h",
+	"pmic_thrmzn3l",
+	"pmic_thrmzn4h",
+	"pmic_thrmzn4l",
+	"pmic_thrmirq0",
+	"pmic_mthrmirq0",
+	"pmic_sthrmirq0",
+	"pmic_thrmirq1",
+	"pmic_mthrmirq1",
+	"pmic_sthrmirq1",
+	"pmic_thrmirq2",
+	"pmic_mthrmirq2",
+	"pmic_sthrmirq2",
 };
 
 enum pmic_vbus_states {
@@ -1563,174 +1617,17 @@ static inline void pmicint_mask_for_typec_handling(void)
 				chc.reg_map->pmic_mchgrirq1);
 }
 
-static int pmic_ccsm_add_event(struct pmic_chrgr_drv_context *chc,
-					enum cable_type type, bool state)
+void pmic_set_cable_state(enum cable_type type, bool state)
 {
-	struct pmic_cable_event *evt;
-
-	evt = kzalloc(sizeof(*evt), GFP_ATOMIC);
-	if (!evt) {
-		dev_err(chc->dev, "failed to allocate memory for %d event\n",
-				type);
-		return -ENOMEM;
+	/* check whether pmic_chrgr_drv_context struct is initialized or not */
+	if (unlikely(chc.dev == NULL)) {
+		pr_warn("pmic not initialized, not processing cbl: %d st: %d\n",
+				type, state);
+		return;
 	}
-
-	evt->ctype = type;
-	evt->cbl_state = state;
-	spin_lock(&chc->cable_event_queue_lock);
-	list_add_tail(&evt->node, &chc->cable_evt_list);
-	spin_unlock(&chc->cable_event_queue_lock);
-
-	return 0;
+	pmic_ccsm_process_cable_events(type, state);
 }
-
-static int pmic_ccsm_handle_cables_disconnect(struct pmic_chrgr_drv_context *chc)
-{
-	int ret = 0;
-
-	/* diconnect the previously connected cables */
-	if (chc->snk_cable_state) {
-		chc->snk_cable_state = false;
-		ret |= pmic_ccsm_add_event(chc, CABLE_TYPE_SINK,
-						chc->snk_cable_state);
-	}
-
-	if (chc->src_cable_state) {
-		chc->src_cable_state = false;
-		ret |= pmic_ccsm_add_event(chc, CABLE_TYPE_SOURCE,
-						chc->src_cable_state);
-	}
-
-	if (chc->device_cable_state) {
-		chc->device_cable_state = false;
-		ret |= pmic_ccsm_add_event(chc, CABLE_TYPE_USB,
-						chc->device_cable_state);
-	}
-
-	if (chc->host_cable_state) {
-		chc->host_cable_state = false;
-		ret |= pmic_ccsm_add_event(chc, CABLE_TYPE_HOST,
-						chc->host_cable_state);
-	}
-
-	return ret;
-}
-
-static int pmic_ccsm_check_extcon_events(struct extcon_dev *edev)
-{
-	struct pmic_cable_event *evt, *tmp;
-	struct list_head new_list;
-	bool host_cable_state;
-	bool device_cable_state;
-	bool sink_cable_state;
-	bool src_cable_state;
-	unsigned long flags;
-	int ret;
-
-	host_cable_state = extcon_get_cable_state(edev, "USB-Host");
-	device_cable_state = extcon_get_cable_state(edev, "USB");
-	sink_cable_state = extcon_get_cable_state(edev, "USB_TYPEC_SNK");
-	src_cable_state = extcon_get_cable_state(edev, "USB_TYPEC_SRC");
-
-	/* check for all cables disconnect only */
-	if (!host_cable_state && !device_cable_state &&
-		 !sink_cable_state && !src_cable_state) {
-
-		spin_lock_irqsave(&chc.cable_event_queue_lock, flags);
-		list_replace_init(&chc.cable_evt_list, &new_list);
-
-		if (!list_empty(&new_list)) {
-			evt = list_last_entry(&new_list,
-					struct pmic_cable_event, node);
-			if (!evt->cbl_state) {
-				list_del(&evt->node);
-				list_add_tail(&evt->node, &chc.cable_evt_list);
-			}
-		}
-		spin_unlock_irqrestore(&chc.cable_event_queue_lock, flags);
-
-		if(pmic_ccsm_handle_cables_disconnect(&chc))
-			dev_warn(chc.dev, "Unable to handle cable events\n");
-
-		/* schedule work to process the previouly connected events */
-		schedule_work(&chc.extcon_work);
-
-		/* Free all the previous events*/
-		if (!list_empty(&new_list)) {
-			list_for_each_entry_safe(evt, tmp, &new_list, node) {
-				/* Free the event*/
-				kfree(evt);
-			}
-		}
-
-		return 0;
-	}
-
-	if (sink_cable_state != chc.snk_cable_state) {
-		chc.snk_cable_state = sink_cable_state;
-		ret = pmic_ccsm_add_event(&chc, CABLE_TYPE_SINK,
-						sink_cable_state);
-		if (ret < 0)
-			dev_err(chc.dev, "%s error(%d) in adding sink event\n",
-				__func__, ret);
-		goto end;
-	}
-
-	if (src_cable_state != chc.src_cable_state) {
-		chc.src_cable_state = src_cable_state;
-		ret = pmic_ccsm_add_event(&chc, CABLE_TYPE_SOURCE,
-						src_cable_state);
-		if (ret < 0)
-			dev_err(chc.dev, "%s error(%d) in adding src event\n",
-				__func__, ret);
-		goto end;
-	}
-
-	if (host_cable_state != chc.host_cable_state) {
-		chc.host_cable_state = host_cable_state;
-		ret = pmic_ccsm_add_event(&chc, CABLE_TYPE_HOST,
-						host_cable_state);
-		if (ret < 0)
-			dev_err(chc.dev, "%s error(%d) in adding host event\n",
-				__func__, ret);
-		goto end;
-	}
-
-	if (device_cable_state != chc.device_cable_state) {
-		chc.device_cable_state = device_cable_state;
-		ret = pmic_ccsm_add_event(&chc, CABLE_TYPE_USB,
-						device_cable_state);
-		if (ret < 0)
-			dev_err(chc.dev,
-				"%s error(%d) in adding device event\n",
-				__func__, ret);
-		goto end;
-	}
-
-	dev_warn(chc.dev, "no actual cable event found\n");
-	return -EINVAL;
-
-end:
-	schedule_work(&chc.extcon_work);
-	return ret;
-}
-
-static int pmic_ccsm_ext_cable_event(struct notifier_block *nb,
-		unsigned long event, void *data)
-{
-	struct extcon_dev *edev = (struct extcon_dev *)data;
-	int ret;
-
-	if (!edev)
-		return NOTIFY_DONE;
-
-	/* check the events and process */
-	ret = pmic_ccsm_check_extcon_events(edev);
-	if (ret < 0)
-		return NOTIFY_DONE;
-
-	return NOTIFY_OK;
-}
+EXPORT_SYMBOL_GPL(pmic_set_cable_state);
 
 static int pmic_check_initial_events(void)
 {
@@ -1783,21 +1680,21 @@ static int pmic_check_initial_events(void)
 		chc.is_usb_typec = true;
 		/* when boot with cable if multiple event occurs add one by
 		 * one in the list to process */
-		cable_state = extcon_get_cable_state(chc.edev, "USB-Host");
-		if (cable_state)
-			pmic_ccsm_check_extcon_events(chc.edev);
-
-		cable_state = extcon_get_cable_state(chc.edev, "USB");
-		if (cable_state)
-			pmic_ccsm_check_extcon_events(chc.edev);
-
 		cable_state = extcon_get_cable_state(chc.edev, "USB_TYPEC_SRC");
 		if (cable_state)
-			pmic_ccsm_check_extcon_events(chc.edev);
+			pmic_ccsm_process_cable_events(CABLE_TYPE_SOURCE, true);
 
 		cable_state = extcon_get_cable_state(chc.edev, "USB_TYPEC_SNK");
 		if (cable_state)
-			pmic_ccsm_check_extcon_events(chc.edev);
+			pmic_ccsm_process_cable_events(CABLE_TYPE_SINK, true);
+
+		cable_state = extcon_get_cable_state(chc.edev, "USB-Host");
+		if (cable_state)
+			pmic_ccsm_process_cable_events(CABLE_TYPE_HOST, true);
+
+		cable_state = extcon_get_cable_state(chc.edev, "USB");
+		if (cable_state)
+			pmic_ccsm_process_cable_events(CABLE_TYPE_USB, true);
 	}
 
 	schedule_delayed_work(&chc.evt_work, 0);
@@ -1986,27 +1883,39 @@ static inline int register_cooling_device(struct pmic_chrgr_drv_context *chc)
 static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 						bool cable_state)
 {
-	u8 val = 0;
 	int otg_evt;
-	int ret;
 	bool notify_otg = false;
 
+	dev_info(chc.dev, "%s: cable type %d %s\n", __func__,
+				cbl_type,
+				cable_state ? "Connected" : "Disconnected");
+
+	mutex_lock(&pmic_lock);
 	/* Prevent system for entering to suspend when event processing */
 	if (!wake_lock_active(&chc.wakelock))
 		wake_lock(&chc.wakelock);
 
 	switch (cbl_type) {
 	case CABLE_TYPE_SINK:
+		if (chc.snk_cable_state != cable_state)
+			chc.snk_cable_state = cable_state;
+
 		/* Do charger detection and send notification
 		 * to power sypply framework.
 		 */
 		handle_internal_usbphy_notifications(cable_state);
 		break;
 	case CABLE_TYPE_SOURCE:
+		if (chc.src_cable_state != cable_state)
+			chc.src_cable_state = cable_state;
+
 		/* Enable/Disable self charging from reverse boost in pmic */
 		intel_pmic_handle_otgmode(cable_state);
 		break;
         case CABLE_TYPE_USB:
+		if (chc.device_cable_state != cable_state)
+			chc.device_cable_state = cable_state;
+
 		/* Send VBUS notification to USB subsystem so that system will
 		 * switch device mode of operation.
                  */
@@ -2022,6 +1931,9 @@ static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 		}
 		break;
 	case CABLE_TYPE_HOST:
+		if (chc.host_cable_state != cable_state)
+			chc.host_cable_state = cable_state;
+
                 /* Send ID notification to USB subsystem so that system will
 		 * switch host mode of operation.
                  */
@@ -2036,7 +1948,7 @@ static void pmic_ccsm_process_cable_events(enum cable_type cbl_type,
 
 	/* notify otg driver with event */
 	if (notify_otg) {
-		dev_dbg(chc.dev, "%s notified %d to otg\n", __func__, otg_evt);
+		dev_info(chc.dev, "%s notified %d to otg\n", __func__, otg_evt);
 		atomic_notifier_call_chain(&chc.otg->notifier, otg_evt, NULL);
 		if (IS_ALL_CABLE_DISCONNECTED(&chc))
 			pmic_write_reg(chc.reg_map->pmic_usbphyctrl,
@@ -2050,32 +1962,7 @@ vbus_fail:
 	/* Release the wake lock */
 	if (wake_lock_active(&chc.wakelock))
 		wake_unlock(&chc.wakelock);
-
-}
-
-static void pmic_ccsm_extcon_cable_worker(struct work_struct *work)
-{
-	struct pmic_cable_event *evt;
-	unsigned long flags;
-
-	spin_lock_irqsave(&chc.cable_event_queue_lock, flags);
-	while (!list_empty(&chc.cable_evt_list)) {
-		evt = list_first_entry(&chc.cable_evt_list,
-				struct pmic_cable_event, node);
-		list_del(&evt->node);
-		spin_unlock_irqrestore(&chc.cable_event_queue_lock, flags);
-		/* Handle the event */
-		dev_info(chc.dev, "%s: cable type %d %s\n", __func__,
-				evt->ctype,
-				evt->cbl_state ? "Connected" : "Disconnected");
-		mutex_lock(&pmic_lock);
-		pmic_ccsm_process_cable_events(evt->ctype, evt->cbl_state);
-		mutex_unlock(&pmic_lock);
-		kfree(evt);
-
-		spin_lock_irqsave(&chc.cable_event_queue_lock, flags);
-	}
-	spin_unlock_irqrestore(&chc.cable_event_queue_lock, flags);
+	mutex_unlock(&pmic_lock);
 }
 
 /**
@@ -2190,57 +2077,15 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 		goto otg_req_fail;
 	}
 
-	INIT_WORK(&chc.extcon_work, pmic_ccsm_extcon_cable_worker);
 	INIT_DELAYED_WORK(&chc.evt_work, pmic_event_worker);
 	INIT_LIST_HEAD(&chc.evt_queue);
 
-	INIT_LIST_HEAD(&chc.cable_evt_list);
-	spin_lock_init(&chc.cable_event_queue_lock);
         /* Initialize the wakelock */
         wake_lock_init(&chc.wakelock, WAKE_LOCK_SUSPEND,
                                                 "pmic_ccsm_wakelock");
 	ret = pmic_check_initial_events();
 	if (ret)
 		goto otg_req_fail;
-
-	if (chc.edev) {
-		/* Register intrerest for typec cable events and
-		 * initialize the cable worker
-		 */
-		chc.cable_nb.notifier_call = pmic_ccsm_ext_cable_event;
-
-		ret = extcon_register_interest(&chc.host_cable,	"usb-typec",
-						"USB-Host", &chc.cable_nb);
-		if (ret < 0) {
-			dev_err(&pdev->dev,
-				"Unable to register for USB-Host event\n");
-			goto extcon_hc_reg_fail;
-		}
-
-		ret = extcon_register_interest(&chc.device_cable, "usb-typec",
-						"USB", &chc.cable_nb);
-		if (ret < 0) {
-			dev_err(&pdev->dev,
-				"Unable to register for USB event\n");
-			goto extcon_dc_reg_fail;
-		}
-
-		ret = extcon_register_interest(&chc.src_cable, "usb-typec",
-						"USB_TYPEC_SRC", &chc.cable_nb);
-		if (ret < 0) {
-			dev_err(&pdev->dev,
-				"Unable to register for USB_TYPEC_SRC event\n");
-			goto extcon_src_reg_fail;
-		}
-
-		ret = extcon_register_interest(&chc.snk_cable, "usb-typec",
-						"USB_TYPEC_SNK", &chc.cable_nb);
-		if (ret < 0) {
-			dev_err(&pdev->dev,
-				"Unable to register for USB_TYPEC_SNK event\n");
-			goto extcon_snk_reg_fail;
-		}
-	}
 
 	/* register interrupt */
 	for (i = 0; i < chc.irq_cnt; ++i) {
@@ -2294,16 +2139,6 @@ irq_reg_fail:
 	/* Free the IRQs registered*/
 	while (i)
 		free_irq(chc.irq[--i], &chc);
-extcon_snk_reg_fail:
-	if (chc.edev)
-		extcon_unregister_interest(&chc.src_cable);
-extcon_src_reg_fail:
-	if (chc.edev)
-		extcon_unregister_interest(&chc.device_cable);
-extcon_dc_reg_fail:
-	if (chc.edev)
-		extcon_unregister_interest(&chc.host_cable);
-extcon_hc_reg_fail:
 otg_req_fail:
 kzalloc_fail:
 	kfree(chc.bcprof);
@@ -2350,12 +2185,6 @@ static int pmic_chrgr_remove(struct platform_device *pdev)
 		for (i = 0; i < chc->irq_cnt; ++i)
 			free_irq(chc->irq[i], &chc);
 
-		if (chc->edev) {
-			extcon_unregister_interest(&chc->snk_cable);
-			extcon_unregister_interest(&chc->src_cable);
-			extcon_unregister_interest(&chc->device_cable);
-			extcon_unregister_interest(&chc->host_cable);
-		}
 		wake_lock_destroy(&chc->wakelock);
 		kfree(chc->bcprof);
 		kfree(chc->actual_bcprof);
