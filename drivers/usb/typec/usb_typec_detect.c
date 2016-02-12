@@ -38,6 +38,7 @@
 #include <linux/mfd/intel_soc_pmic.h>
 #include <linux/usb_typec_phy.h>
 #include "usb_typec_detect.h"
+#include "../../power/intel_pmic_ccsm.h"
 
 #define CC_OPEN(x)		(x == USB_TYPEC_CC_VRD_UNKNOWN)
 #define CC_RD(x)		(x > USB_TYPEC_CC_VRA)
@@ -71,7 +72,6 @@ static int detect_check_valid_ufp(struct typec_detect *detect);
 static void detect_update_ufp_state(struct typec_detect *detect);
 static int detect_measure_cc(struct typec_detect *detect,
 				enum typec_cc_pin pin_id);
-
 
 static const char *pd_extcon_cable[] = {
 	TYPEC_CABLE_USB,
@@ -200,6 +200,7 @@ static void typec_detect_notify_extcon(struct typec_detect *detect,
 						char *type, bool state)
 {
 	enum typec_cable_type cbl_type;
+	enum cable_type pmic_ctype;
 
 	dev_dbg(detect->phy->dev, "%s: type = %s state = %d\n",
 				 __func__, type, state);
@@ -208,6 +209,7 @@ static void typec_detect_notify_extcon(struct typec_detect *detect,
 
 	switch (cbl_type) {
 	case E_TYPEC_CABLE_USB_SNK:
+		pmic_ctype = CABLE_TYPE_SINK;
 		if (detect->snk_state == state)
 			break;
 		detect->snk_state = state;
@@ -220,6 +222,7 @@ static void typec_detect_notify_extcon(struct typec_detect *detect,
 		break;
 
 	case E_TYPEC_CABLE_USB_SRC:
+		pmic_ctype = CABLE_TYPE_SOURCE;
 		if (detect->src_state == state)
 			break;
 
@@ -231,6 +234,7 @@ static void typec_detect_notify_extcon(struct typec_detect *detect,
 		break;
 
 	case E_TYPEC_CABLE_USB_HOST:
+		pmic_ctype = CABLE_TYPE_HOST;
 		if (detect->usb_host_state == state)
 			break;
 
@@ -238,6 +242,7 @@ static void typec_detect_notify_extcon(struct typec_detect *detect,
 		break;
 
 	case E_TYPEC_CABLE_USB:
+		pmic_ctype = CABLE_TYPE_USB;
 		if (detect->usb_state == state)
 			break;
 
@@ -251,6 +256,11 @@ static void typec_detect_notify_extcon(struct typec_detect *detect,
 		goto notify_ext_err;
 	}
 
+	if (cbl_type != E_TYPEC_CABLE_DP_SRC) {
+		dev_dbg(detect->phy->dev,
+			"%s: cable status change notify to pmic\n", __func__);
+		pmic_set_cable_state(pmic_ctype, state);
+	}
 	extcon_set_cable_state(detect->edev, type, state);
 
 notify_ext_err:
