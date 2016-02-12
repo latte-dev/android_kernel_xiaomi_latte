@@ -98,7 +98,7 @@ retry:
 
 		if (work->target_rr_type == DRRS_HIGH_RR)
 			prev_mode = drrs->connector->panel.fixed_mode;
-		else if (work->target_rr_type == DRRS_LOW_RR)
+		else
 			prev_mode = drrs->connector->panel.downclock_mode;
 
 		work->target_mode = drm_mode_duplicate(intel_encoder->base.dev,
