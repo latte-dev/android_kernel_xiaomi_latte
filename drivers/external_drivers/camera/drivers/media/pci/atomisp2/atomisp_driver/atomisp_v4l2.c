@@ -1264,6 +1264,7 @@ static int atomisp_pci_probe(struct pci_dev *dev,
 	const struct atomisp_platform_data *pdata;
 	struct atomisp_device *isp;
 	unsigned int start;
+	void __iomem * const *table;
 	void __iomem *base;
 	int err, val;
 	u32 irq;
@@ -1299,11 +1300,12 @@ static int atomisp_pci_probe(struct pci_dev *dev,
 		return err;
 	}
 
-	base = pcim_iomap_table(dev)[ATOM_ISP_PCI_BAR];
-	if (!base) {
+	table = pcim_iomap_table(dev);
+	if (!table) {
 		dev_err(&dev->dev, "atomisp: error iomap table ptr\n");
 		return -EINVAL;
 	}
+	base = table[ATOM_ISP_PCI_BAR];
 
 	dev_dbg(&dev->dev, "base: %p\n", base);
 
