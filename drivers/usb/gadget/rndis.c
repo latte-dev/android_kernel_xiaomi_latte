@@ -1113,7 +1113,7 @@ int rndis_rm_hdr(struct gether *port,
 	if (num_pkts > rndis_ul_max_pkt_per_xfer_rcvd)
 		rndis_ul_max_pkt_per_xfer_rcvd = num_pkts;
 
-	skb_queue_tail(list, skb);
+	dev_kfree_skb_any(skb);
 	return 0;
 }
 EXPORT_SYMBOL(rndis_rm_hdr);
