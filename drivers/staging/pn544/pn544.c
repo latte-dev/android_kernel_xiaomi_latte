@@ -222,6 +222,9 @@ static unsigned int pn544_dev_poll(struct file *file, poll_table *wait)
 	struct device *i2c_dev = &pn544_dev->client->dev;
 	struct irq_desc *desc = irq_to_desc((pn544_dev->client->irq));
 
+	if (desc == NULL)
+		return POLLERR;
+
 	if (!gpiod_get_value(pn544_dev->irq_gpio)) {
 		dev_dbg(i2c_dev, "%s : Waiting on available input data.\n",
 				__func__);
