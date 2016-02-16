@@ -36,6 +36,7 @@
 #include <linux/acpi.h>
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
+#include <linux/pm_qos.h>
 #include <linux/delay.h>
 
 #include <linux/mmc/host.h>
@@ -118,6 +119,13 @@ static const struct sdhci_acpi_chip sdhci_acpi_chip_int = {
 };
 
 /*
+ * This probe slot routine is being added to address an issue on the host
+ * controller's IP where hangs will occur of the platform enters a C state
+ * below C2 while there is an outstanding write transaction. This is observed
+ * on Baytrail based platforms, and should only be enabled on platforms with
+ * host controller IP blocks that exhibit this.  We're calling based on the
+ * ACPI-ID of the IP block.
+ *
  * Intel SDHCI host controller can support up to 4Mbytes request size in ADMA
  * mode, which is much larger than the default 512KBytes. Change to 4Mbytes
  * per the performance requirements
@@ -131,6 +139,9 @@ static int sdhci_acpi_probe_slot(struct platform_device *pdev)
 		return 0;
 
 	host = c->host;
+	host->mmc->qos = kzalloc(sizeof(struct pm_qos_request), GFP_KERNEL);
+	pm_qos_add_request(host->mmc->qos, PM_QOS_CPU_DMA_LATENCY,
+					PM_QOS_DEFAULT_VALUE);
 
 	/* change to 4Mbytes */
 	host->mmc->max_req_size = 4 * 1024 * 1024;
@@ -141,6 +152,7 @@ static int sdhci_acpi_probe_slot(struct platform_device *pdev)
 static int sdhci_acpi_sdio_probe_slot(struct platform_device *pdev)
 {
 	struct sdhci_acpi_host *c = platform_get_drvdata(pdev);
+	struct sdhci_host *host;
 
 	if (!c || !c->host)
 		return 0;
@@ -165,6 +177,22 @@ static int sdhci_acpi_sd_probe_slot(struct platform_device *pdev)
 	return sdhci_acpi_probe_slot(pdev);
 }
 
+static int sdhci_acpi_remove_slot(struct platform_device *pdev)
+{
+	struct sdhci_acpi_host *c = platform_get_drvdata(pdev);
+	struct sdhci_host *host;
+
+	if (!c || !c->host)
+		return 0;
+
+	host = c->host;
+
+	if (host->mmc && host->mmc->qos)
+		kfree(host->mmc->qos);
+
+	return 0;
+}
+
 static const struct sdhci_acpi_slot sdhci_acpi_slot_int_emmc = {
 	.chip    = &sdhci_acpi_chip_int,
 	.caps    = MMC_CAP_8_BIT_DATA | MMC_CAP_NONREMOVABLE | MMC_CAP_HW_RESET
@@ -176,6 +204,7 @@ static const struct sdhci_acpi_slot sdhci_acpi_slot_int_emmc = {
 	.quirks2 = SDHCI_QUIRK2_TUNING_POLL | SDHCI_QUIRK2_PRESET_VALUE_BROKEN,
 	.pm_caps = MMC_PM_TUNING_AFTER_RTRESUME,
 	.probe_slot = sdhci_acpi_probe_slot,
+	.remove_slot = sdhci_acpi_remove_slot,
 };
 
 static const struct sdhci_acpi_slot sdhci_acpi_slot_int_sdio = {
@@ -186,6 +215,7 @@ static const struct sdhci_acpi_slot sdhci_acpi_slot_int_sdio = {
 	.flags   = SDHCI_ACPI_RUNTIME_PM,
 	.pm_caps = MMC_PM_KEEP_POWER,
 	.probe_slot = sdhci_acpi_sdio_probe_slot,
+	.remove_slot = sdhci_acpi_remove_slot,
 };
 
 static const struct sdhci_acpi_slot sdhci_acpi_slot_int_sd = {
@@ -193,6 +223,7 @@ static const struct sdhci_acpi_slot sdhci_acpi_slot_int_sd = {
 	.flags   = SDHCI_ACPI_SD_CD | SDHCI_ACPI_RUNTIME_PM,
 	.quirks2 = SDHCI_QUIRK2_PRESET_VALUE_BROKEN,
 	.probe_slot = sdhci_acpi_sd_probe_slot,
+	.remove_slot = sdhci_acpi_remove_slot,
 };
 
 struct sdhci_acpi_uid_slot {
