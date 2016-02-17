@@ -23,6 +23,7 @@
 #define __OV8858_H__
 #include <linux/atomisp_platform.h>
 #include <media/v4l2-ctrls.h>
+#include <linux/dmi.h>
 
 #define I2C_MSG_LENGTH		0x2
 
@@ -37,6 +38,7 @@
  */
 #define OV8858_ID_DEFAULT	0
 #define OV8858_SUNNY		1
+#define OV8858_MRD			2
 
 #define OV8858_OTP_START_ADDR	0x7010
 #define OV8858_OTP_END_ADDR	0x7186
@@ -125,6 +127,8 @@
 #define OV8858_FORMAT1				0x3820
 #define OV8858_FORMAT2				0x3821
 
+#define OV8858_ANCHOR_RIGHT_START	0x4024
+
 #define OV8858_FLIP_ENABLE			0x06
 
 #define OV8858_MWB_RED_GAIN_H			0x5032
@@ -159,6 +163,8 @@
 #define OV8858_MAX_FOCUS_POS			1023
 
 #define OV8858_TEST_PATTERN_REG			0x5E00
+
+char *CHT_HR_DEV_NAME  = "Cherry Trail FFD";
 
 struct ov8858_vcm {
 	int (*power_up)(struct v4l2_subdev *sd);
@@ -320,6 +326,18 @@ extern int dw9718_q_focus_abs(struct v4l2_subdev *sd, s32 *value);
 extern int dw9718_t_vcm_slew(struct v4l2_subdev *sd, s32 value);
 extern int dw9718_t_vcm_timing(struct v4l2_subdev *sd, s32 value);
 
+extern int dw9714_vcm_power_up(struct v4l2_subdev *sd);
+extern int dw9714_vcm_power_down(struct v4l2_subdev *sd);
+extern int dw9714_vcm_init(struct v4l2_subdev *sd);
+extern int dw9714_t_focus_vcm(struct v4l2_subdev *sd, u16 val);
+extern int dw9714_t_focus_abs(struct v4l2_subdev *sd, s32 value);
+extern int dw9714_t_focus_rel(struct v4l2_subdev *sd, s32 value);
+extern int dw9714_q_focus_status(struct v4l2_subdev *sd, s32 *value);
+extern int dw9714_q_focus_abs(struct v4l2_subdev *sd, s32 *value);
+extern int dw9714_t_vcm_slew(struct v4l2_subdev *sd, s32 value);
+extern int dw9714_t_vcm_timing(struct v4l2_subdev *sd, s32 value);
+
+
 extern int vcm_power_up(struct v4l2_subdev *sd);
 extern int vcm_power_down(struct v4l2_subdev *sd);
 
@@ -339,6 +357,18 @@ static struct ov8858_vcm ov8858_vcms[] = {
 	[OV8858_ID_DEFAULT] = {
 		.power_up = NULL,
 		.power_down = NULL,
+	},
+	[OV8858_MRD] = {
+		.power_up = dw9714_vcm_power_up,
+		.power_down = dw9714_vcm_power_down,
+		.init = dw9714_vcm_init,
+		.t_focus_vcm = dw9714_t_focus_vcm,
+		.t_focus_abs = dw9714_t_focus_abs,
+		.t_focus_rel = dw9714_t_focus_rel,
+		.q_focus_status = dw9714_q_focus_status,
+		.q_focus_abs = dw9714_q_focus_abs,
+		.t_vcm_slew = dw9714_t_vcm_slew,
+		.t_vcm_timing = dw9714_t_vcm_timing,
 	},
 };
 
@@ -1222,6 +1252,12 @@ static const struct ov8858_reg ov8858_1640x926[] = {
 	{OV8858_TOK_TERM, 0, 0}
 };
 
+static const struct ov8858_reg ov8858_BLC_MRD[] = {
+	{OV8858_8BIT, 0x402E, 0x04}, /* Bottom black line start = 12 */
+	{OV8858_8BIT, 0x402F, 0x08}, /* Bottom black line number = 2 */
+	{OV8858_TOK_TERM, 0, 0}
+};
+
 static struct ov8858_resolution ov8858_res_preview[] = {
 	{
 		.desc = "ov8858_1640x926_PREVIEW",
@@ -1229,8 +1265,8 @@ static struct ov8858_resolution ov8858_res_preview[] = {
 		.height = 926,
 		.used = 0,
 		.regs = ov8858_1640x926,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
+		.bin_factor_x = 1,
+		.bin_factor_y = 1,
 		.skip_frames = 0,
 		.fps_options = {
 			{
@@ -1248,8 +1284,8 @@ static struct ov8858_resolution ov8858_res_preview[] = {
 		.height = 1232,
 		.used = 0,
 		.regs = ov8858_1640x1232,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
+		.bin_factor_x = 1,
+		.bin_factor_y = 1,
 		.skip_frames = 0,
 		.fps_options = {
 			{
@@ -1308,8 +1344,8 @@ static struct ov8858_resolution ov8858_res_still[] = {
 		.height = 1232,
 		.used = 0,
 		.regs = ov8858_1640x1232,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
+		.bin_factor_x = 1,
+		.bin_factor_y = 1,
 		.skip_frames = 0,
 		.fps_options = {
 			{
@@ -1327,8 +1363,8 @@ static struct ov8858_resolution ov8858_res_still[] = {
 		.height = 926,
 		.used = 0,
 		.regs = ov8858_1640x926,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
+		.bin_factor_x = 1,
+		.bin_factor_y = 1,
 		.skip_frames = 1,
 		.fps_options = {
 			{
@@ -1388,8 +1424,8 @@ static struct ov8858_resolution ov8858_res_video[] = {
 		.height = 926,
 		.used = 0,
 		.regs = ov8858_1640x926,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
+		.bin_factor_x = 1,
+		.bin_factor_y = 1,
 		.skip_frames = 1,
 		.fps_options = {
 			{
@@ -1407,8 +1443,8 @@ static struct ov8858_resolution ov8858_res_video[] = {
 		.height = 1232,
 		.used = 0,
 		.regs = ov8858_1640x1232,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
+		.bin_factor_x = 1,
+		.bin_factor_y = 1,
 		.skip_frames = 1,
 		.fps_options = {
 			{
@@ -1426,8 +1462,8 @@ static struct ov8858_resolution ov8858_res_video[] = {
 		.height = 1096,
 		.used = 0,
 		.regs = ov8858_1640x1096,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
+		.bin_factor_x = 1,
+		.bin_factor_y = 1,
 		.skip_frames = 1,
 		.fps_options = {
 			{
