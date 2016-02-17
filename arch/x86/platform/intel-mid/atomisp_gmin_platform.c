@@ -50,6 +50,12 @@ EXPORT_SYMBOL(spid);
 #define ELDO2_SEL_REG	0x1a
 #define ELDO2_1P8V	0x16
 #define ELDO2_CTRL_SHIFT 0x01
+#define ELDO1_1P6V      0x12
+
+#define FLDO2_SEL_REG   0x1d
+#define FLDO2_CTRL3_REG 0x13
+#define FLDO2_1P2V      0x0a
+#define FLDO2_CTRL3_SHIFT 0x03
 
 /* TI SND9039 PMIC register hackery */
 #define LDO9_REG	0x49
@@ -532,6 +538,17 @@ static int axp_v2p8_off(void)
 	return axp_regulator_set(ALDO1_SEL_REG, ALDO1_2P8V, ALDO1_CTRL3_REG,
 				 ALDO1_CTRL3_SHIFT, false);
 }
+static int axp_v1p2_on(void)
+{
+	return axp_regulator_set(FLDO2_SEL_REG, FLDO2_1P2V, FLDO2_CTRL3_REG,
+				 FLDO2_CTRL3_SHIFT, true);
+}
+
+static int axp_v1p2_off(void)
+{
+	return axp_regulator_set(FLDO2_SEL_REG, FLDO2_1P2V, FLDO2_CTRL3_REG,
+				 FLDO2_CTRL3_SHIFT, false);
+}
 
 int gmin_v1p2_ctrl(struct v4l2_subdev *subdev, int on)
 {
@@ -540,6 +557,13 @@ int gmin_v1p2_ctrl(struct v4l2_subdev *subdev, int on)
 	if (gs && gs->v1p2_on == on)
 		return 0;
 	gs->v1p2_on = on;
+
+	if (pmic_id == PMIC_AXP) {
+		if (on)
+			return axp_v1p2_on();
+		else
+			return axp_v1p2_off();
+	}
 
 	if (gs->v1p2_reg) {
 		if (on)
@@ -552,6 +576,32 @@ int gmin_v1p2_ctrl(struct v4l2_subdev *subdev, int on)
 
 	return -EINVAL;
 }
+
+static int axp_v1p5_on(void)
+{
+	return axp_regulator_set(ELDO1_SEL_REG, ELDO1_1P6V, ELDO_CTRL_REG,
+				 ELDO1_CTRL_SHIFT, true);
+}
+
+static int axp_v1p5_off(void)
+{
+	return axp_regulator_set(ELDO1_SEL_REG, ELDO1_1P6V, ELDO_CTRL_REG,
+				 ELDO1_CTRL_SHIFT, false);
+}
+
+static int gmin_v1p5_ctrl(struct v4l2_subdev *subdev, int on)
+{
+	if (pmic_id == PMIC_AXP) {
+		if (on)
+			return axp_v1p5_on();
+		else
+			return axp_v1p5_off();
+	}
+
+	return -EINVAL;
+}
+
+
 
 int gmin_v1p8_ctrl(struct v4l2_subdev *subdev, int on)
 {
@@ -726,6 +776,7 @@ static struct camera_sensor_platform_data gmin_plat = {
 	.v1p8_ctrl = gmin_v1p8_ctrl,
 	.v2p8_ctrl = gmin_v2p8_ctrl,
 	.v1p2_ctrl = gmin_v1p2_ctrl,
+	.v1p5_ctrl = gmin_v1p5_ctrl,
 	.flisclk_ctrl = gmin_flisclk_ctrl,
 	.platform_init = gmin_platform_init,
 	.platform_deinit = gmin_platform_deinit,
