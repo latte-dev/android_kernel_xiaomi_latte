@@ -594,8 +594,7 @@ int rt5645_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 	int jack_type, val;
 
 	if (jack_insert) {
-		snd_soc_dapm_force_enable_pin(&codec->dapm, "micbias1");
-		snd_soc_dapm_force_enable_pin(&codec->dapm, "micbias2");
+		snd_soc_write(codec, RT5645_CHARGE_PUMP, 0x0006);
 		snd_soc_dapm_force_enable_pin(&codec->dapm, "LDO2");
 		snd_soc_dapm_force_enable_pin(&codec->dapm, "Mic Det Power");
 		snd_soc_dapm_sync(&codec->dapm);
@@ -604,6 +603,8 @@ int rt5645_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 		snd_soc_write(codec, RT5645_JD_CTRL3, 0x00b0);
 		snd_soc_update_bits(codec, RT5645_CJ_CTRL2,
 			RT5645_CBJ_MN_JD, 0);
+		snd_soc_update_bits(codec, RT5645_CJ_CTRL1, RT5645_CBJ_BST1_EN,
+			RT5645_CBJ_BST1_EN);
 		snd_soc_update_bits(codec, RT5645_CJ_CTRL2,
 			RT5645_CBJ_MN_JD, RT5645_CBJ_MN_JD);
 		msleep(400);
@@ -622,9 +623,6 @@ int rt5645_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 			jack_type = SND_JACK_HEADSET;
 			break;
 		default:
-			snd_soc_dapm_disable_pin(&codec->dapm, "micbias1");
-			snd_soc_dapm_disable_pin(&codec->dapm, "micbias2");
-			snd_soc_dapm_disable_pin(&codec->dapm, "LDO2");
 			snd_soc_dapm_disable_pin(&codec->dapm, "Mic Det Power");
 			snd_soc_dapm_sync(&codec->dapm);
 			snd_soc_update_bits(codec, RT5645_INT_IRQ_ST, 0x8, 0x0);
@@ -632,11 +630,11 @@ int rt5645_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 			break;
 		}
 	} else {
-		snd_soc_dapm_disable_pin(&codec->dapm, "micbias1");
-		snd_soc_dapm_disable_pin(&codec->dapm, "micbias2");
-		snd_soc_dapm_disable_pin(&codec->dapm, "LDO2");
+		snd_soc_update_bits(codec, RT5645_CJ_CTRL1,
+			RT5645_CBJ_BST1_EN, 0);
 		snd_soc_dapm_disable_pin(&codec->dapm, "Mic Det Power");
 		snd_soc_dapm_sync(&codec->dapm);
+		snd_soc_write(codec, RT5645_INT_IRQ_ST, 0x1100);
 		jack_type = 0;
 	}
 
