@@ -55,6 +55,7 @@ static struct rt5645_init_reg init_list[] = {
 	{ RT5645_DIG_MISC	, 0x0129 },
 	{ RT5645_ADDA_CLK1	, 0x0005 },
 	{ RT5645_IL_CMD2	, 0x0010 }, /* set Inline Command Window */
+	{ RT5645_IL_CMD3	, 0x0009 },
 	{ RT5645_PRIV_INDEX	, 0x003d },
 	{ RT5645_PRIV_DATA	, 0x3600 },
 	{ RT5645_A_JD_CTRL1	, 0x0202 },/* for combo jack 1.8v */
@@ -385,6 +386,7 @@ static int rt5645_volatile_register(
 	case RT5645_IRQ_CTRL3:
 	case RT5645_INT_IRQ_ST:
 	case RT5645_IL_CMD:
+	case RT5645_JD_CTRL3:
 	case RT5645_VENDOR_ID:
 	case RT5645_VENDOR_ID1:
 	case RT5645_VENDOR_ID2:
@@ -597,7 +599,7 @@ int rt5645_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 		snd_soc_dapm_force_enable_pin(&codec->dapm, "LDO2");
 		snd_soc_dapm_force_enable_pin(&codec->dapm, "Mic Det Power");
 		snd_soc_dapm_sync(&codec->dapm);
-		snd_soc_write(codec, RT5645_CJ_CTRL1, 0x4006);
+		snd_soc_write(codec, RT5645_CJ_CTRL1, 0x0006);
 
 		snd_soc_write(codec, RT5645_JD_CTRL3, 0x00b0);
 		snd_soc_update_bits(codec, RT5645_CJ_CTRL2,
@@ -612,11 +614,11 @@ int rt5645_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 		case 0x1: /* Nokia type*/
 		case 0x2: /* iPhone type*/
 			/* for push button */
-			/*snd_soc_update_bits(codec, RT5645_INT_IRQ_ST,
-								0x8, 0x8);*/
-			/*snd_soc_update_bits(codec, RT5645_IL_CMD,
-								0x40, 0x40);*/
-			/*snd_soc_read(codec, RT5645_IL_CMD);*/
+			snd_soc_update_bits(codec, RT5645_INT_IRQ_ST,
+								0x8, 0x8);
+			snd_soc_update_bits(codec, RT5645_IL_CMD,
+								0x20, 0x20);
+			snd_soc_read(codec, RT5645_IL_CMD);
 			jack_type = SND_JACK_HEADSET;
 			break;
 		default:
