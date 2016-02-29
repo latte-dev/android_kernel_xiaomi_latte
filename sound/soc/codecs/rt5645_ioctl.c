@@ -132,6 +132,8 @@ int rt5645_ioctl_common(struct snd_hwdep *hw, struct file *file,
 	case RT_SET_CODEC_HWEQ_IOCTL:
 		if (eq_mode[0] == *buf)
 			break;
+		if (*buf < 0 || *buf >= EQ_CH_NUM)
+			goto err;
 		eq_mode[*buf] = *(buf + 1);
 		rt5645_update_eqmode(codec, eq_mode[*buf], *buf);
 		break;
