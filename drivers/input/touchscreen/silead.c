@@ -47,6 +47,8 @@
 #define SILEAD_TS_DATA_LEN	44
 
 #define SILEAD_CLOCK		0x04
+#define SILEAD_CLOCK_OFF	0xB5
+
 #define SILEAD_TOUCH_NR		0x03
 
 #define SILEAD_CMD_RESET	0x88
@@ -162,9 +164,24 @@ static void silead_ts_report_touch(struct silead_ts_data *data, u16 x, u16 y,
 static void silead_ts_set_power(struct i2c_client *client,
 				enum silead_ts_power state)
 {
+	int ret;
+	struct device *dev = &client->dev;
 	struct silead_ts_data *data = i2c_get_clientdata(client);
 
-	gpiod_set_value_cansleep(data->gpio_power, state);
+	if (data->gpio_power)
+		gpiod_set_value_cansleep(data->gpio_power, state);
+	else {
+		if(state == SILEAD_POWER_ON) {
+			ret = i2c_smbus_write_byte_data(client, SILEAD_REG_CLOCK,
+					SILEAD_CLOCK);
+		}
+		else {
+			ret = i2c_smbus_write_byte_data(client, SILEAD_REG_CLOCK,
+					SILEAD_CLOCK_OFF);
+		}
+		if (ret < 0)
+			dev_err(dev, "Data read error %d\n", ret);
+	}
 }
 
 static void silead_ts_read_data(struct i2c_client *client)
@@ -660,15 +677,17 @@ static int silead_ts_probe(struct i2c_client *client,
 							SILEAD_PWR_GPIO_NAME,
 							1);
 		if (IS_ERR(data->gpio_power)) {
-			dev_err(dev, ">>>>> POWER GPIO request failed\n");
-			return -ENODEV;
+			dev_err(dev, ">>>>> POWER GPIO may not be connected\n");
+			data->gpio_power = NULL;
 		}
 	}
 
-	ret = gpiod_direction_output(data->gpio_power, 0);
-	if (ret) {
-		dev_err(dev, "Shutdown GPIO direction set failed\n");
-		return ret;
+	if(data->gpio_power) {
+		ret = gpiod_direction_output(data->gpio_power, 0);
+		if (ret) {
+			dev_err(dev, "Shutdown GPIO direction set failed\n");
+			return ret;
+		}
 	}
 
 	ret = silead_ts_setup(client);
