@@ -2701,7 +2701,7 @@ static int rt5645_pll_calc(const unsigned int freq_in,
 	const unsigned int freq_out, struct rt5645_pll_code *pll_code)
 {
 	int max_n = RT5645_PLL_N_MAX, max_m = RT5645_PLL_M_MAX;
-	int k, red, n_t, m_t, pll_out, in_t, out_t;
+	int k, red, n_t, m_t = 0, pll_out, in_t, out_t;
 	int red_t = abs(freq_out - freq_in);
 	bool bypass = false;
 	int n = 0, m = 0;
