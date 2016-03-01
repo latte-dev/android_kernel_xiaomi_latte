@@ -676,7 +676,7 @@ int sst_request_firmware_async(struct intel_sst_drv *ctx)
 				"fw_sst_%04x.bin", ctx->pci_id);
 
 		board_name = dmi_get_system_info(DMI_BOARD_NAME);
-		if (strcmp(board_name, "Cherry Trail MRD") == 0) {
+		if (strcmp(board_name, "T3 MRD") == 0) {
 			pr_info("Registering machine device %s\n",
 						cht_cr_mrd_mach_dev.name);
 			ret = platform_device_register(
