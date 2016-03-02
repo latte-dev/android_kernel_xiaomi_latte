@@ -1253,6 +1253,10 @@ static const struct ov8858_reg ov8858_1640x926[] = {
 };
 
 static const struct ov8858_reg ov8858_BLC_MRD[] = {
+	{OV8858_8BIT, 0x4022, 0x0C}, /* Anchor left end */
+	{OV8858_8BIT, 0x4023, 0x60}, /* Anchor left end */
+	{OV8858_8BIT, 0x4024, 0x0F}, /* Anchor right start */
+	{OV8858_8BIT, 0x4026, 0x0F}, /* Anchor right end */
 	{OV8858_8BIT, 0x402E, 0x04}, /* Bottom black line start = 12 */
 	{OV8858_8BIT, 0x402F, 0x08}, /* Bottom black line number = 2 */
 	{OV8858_TOK_TERM, 0, 0}
