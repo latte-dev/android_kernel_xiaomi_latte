@@ -1352,7 +1352,7 @@ static struct regmap_config ltr501_regmap_config = {
 	.reg_bits = 8,
 	.val_bits = 8,
 	.max_register = LTR501_MAX_REG,
-	.cache_type = REGCACHE_RBTREE,
+	.cache_type = REGCACHE_NONE,
 	.volatile_reg = ltr501_is_volatile_reg,
 };
 
@@ -1547,6 +1547,7 @@ static const struct acpi_device_id ltr_acpi_match[] = {
 	{"LTER0501", ltr501},
 	{"LTER0559", ltr559},
 	{"LTER0301", ltr301},
+	{"LTER0303", ltr303},
 	{"LTR303", ltr303},
 	{ },
 };
