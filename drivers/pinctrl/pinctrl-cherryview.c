@@ -722,6 +722,7 @@ struct chv_gpio {
 	struct irq_domain	*domain;
 	int			intr_lines[MAX_INTR_LINE_NUM];
 	char			*community_name;
+	int			print_wakeup;
 };
 
 static DEFINE_SPINLOCK(chv_reg_access_lock);
@@ -1294,6 +1295,12 @@ static void chv_gpio_irq_dispatch(struct chv_gpio *cg)
 			continue;
 		} else {
 			irq = irq_find_mapping(cg->domain, offset);
+			if (cg->print_wakeup) {
+				pr_info("chv_gpio: irq[%d]"
+					" might wake up system!\n",
+					irq);
+			}
+
 			generic_handle_irq(irq);
 		}
 	}
@@ -1373,6 +1380,21 @@ chv_gpio_mmio_access_handler(u32 function, acpi_physical_address address,
 	return AE_OK;
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int chv_gpio_suspend_noirq(struct device *dev)
+{
+	struct chv_gpio *cg = dev_get_drvdata(dev);
+	cg->print_wakeup = 1;
+	return 0;
+}
+
+static int chv_gpio_resume_early(struct device *dev)
+{
+	struct chv_gpio *cg = dev_get_drvdata(dev);
+	cg->print_wakeup = 0;
+	return 0;
+}
+#endif
 
 static int chv_gpio_acpi_request_mmio_access(struct chv_gpio *cg, int id)
 {
@@ -1509,6 +1531,7 @@ chv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 
 	dev_info(dev, "Cherryview GPIO %s probed\n", pdev->name);
 
+	dev_set_drvdata(&pdev->dev, cg);
 	return 0;
 err:
 	devm_kfree(dev, cg);
@@ -1522,10 +1545,23 @@ static const struct pnp_device_id chv_gpio_pnp_match[] = {
 };
 MODULE_DEVICE_TABLE(pnp, chv_gpio_pnp_match);
 
+#ifdef CONFIG_PM_SLEEP
+static const struct dev_pm_ops chv_gpio_pm = {
+	.suspend_noirq = chv_gpio_suspend_noirq,
+	.resume_early = chv_gpio_resume_early,
+};
+#else
+static const struct dev_pm_ops chv_gpio_pm;
+#endif
+
 static struct pnp_driver chv_gpio_pnp_driver = {
 	.name		= "chv_gpio",
 	.id_table	= chv_gpio_pnp_match,
 	.probe          = chv_gpio_pnp_probe,
+	.driver		= {
+		.name = "chv_gpio",
+		.pm = &chv_gpio_pm,
+	},
 };
 
 static int __init chv_gpio_init(void)
