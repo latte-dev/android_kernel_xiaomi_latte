@@ -59,67 +59,23 @@ static struct rt5645_init_reg init_list[] = {
 	{ RT5645_PRIV_INDEX	, 0x003d },
 	{ RT5645_PRIV_DATA	, 0x3600 },
 	{ RT5645_A_JD_CTRL1	, 0x0202 },/* for combo jack 1.8v */
-	{RT5645_GEN_CTRL2	, 0x0028 },
+	{ RT5645_GEN_CTRL2	, 0x0028 },
+
 	/* playback */
 	{ RT5645_DAC_CTRL	, 0x0011 },
-	/* Dig inf 1 -> Sto DAC mixer -> DACL */
-	{ RT5645_STO_DAC_MIXER	, 0x1616 },
+	{ RT5645_HP_VOL		, 0x8888 }, /* HPMIX  -> HPVOL */
+	{ RT5645_SPK_VOL	, 0x8888 }, /* SPKMIX -> SPKVOL */
 
-	{ RT5645_MONO_DAC_MIXER	, 0x4444 },
-	{ RT5645_OUT_L1_MIXER	, 0x01fe },/* DACL1 -> OUTMIXL */
-	{ RT5645_OUT_R1_MIXER	, 0x01fe },/* DACR1 -> OUTMIXR */
-	{ RT5645_LOUT_MIXER	, 0xc000 },
-	{ RT5645_LOUT1		, 0x8888 },
-#if 0 /* HP direct path */
-	{ RT5645_HPO_MIXER	, 0x2000 },/* DAC1 -> HPOLMIX */
-#else /* HP via mixer path */
-	{ RT5645_HPOMIXL_CTRL	, 0x001e },/* DAC1 -> HPOVOL */
-	{ RT5645_HPOMIXR_CTRL	, 0x001e },/* DAC1 -> HPOVOL */
-	{ RT5645_HPO_MIXER	, 0x4000 },/* HPOVOL -> HPOLMIX */
-#endif
-	{ RT5645_HP_VOL		, 0x8888 },/* OUTMIX -> HPVOL */
-#if 0 /* SPK direct path */
-	{ RT5645_SPO_MIXER	, 0x7803 },/* DAC1 -> SPO */
-#else /* SPK via mixer path */
-	{ RT5645_SPK_L_MIXER	, 0x003c },/* DAC1 -> SPKVOL */
-	{ RT5645_SPK_R_MIXER	, 0x003c },/* DAC1 -> SPKVOL */
-	{ RT5645_SPO_MIXER	, 0xd806 },/* SPKVOL -> SPO */
-#endif
-	{ RT5645_SPK_VOL	, 0x8888 },
-	{ RT5645_AD_DA_MIXER	, 0x8580 },
-	{ RT5645_ASRC_8		, 0x0000 },
 	/* record */
-	/* IN1 boost 20db and signal ended mode */
-	{ RT5645_IN1_IN2	, 0x0200 },
-
-	{ RT5645_REC_L2_MIXER	, 0x007d },/* Mic1 -> RECMIXL */
-	{ RT5645_REC_R2_MIXER	, 0x007d },/* Mic1 -> RECMIXR */
-	/* DMIC1 */
-	{ RT5645_STO1_ADC_MIXER	, 0x5840 },
-	{ RT5645_MONO_ADC_MIXER	, 0x5858 },
-
-#if 0 /* DMIC2 */
-	{ RT5645_STO1_ADC_MIXER	, 0x5940 },
-	{ RT5645_MONO_ADC_MIXER	, 0x5858 },
-#endif
-#if 0 /* AMIC */
-	{ RT5645_STO1_ADC_MIXER	, 0x3020 },/* ADC -> Sto ADC mixer */
-	{ RT5645_MONO_ADC_MIXER	, 0x3838 },
-#endif
-	{ RT5645_DMIC_CTRL1	, 0x1469 },
-	/* Mute STO1 ADC for depop, Digital Input Gain */
-	/* { RT5645_STO1_ADC_DIG_VOL, 0xafaf },*/
-
-	/* Mute STO1 ADC for depop, Digital Input Gain */
-	{ RT5645_STO1_ADC_DIG_VOL, 0xd7d7 },
+	{ RT5645_IN1_IN2	, 0x0000 },
 
 	{ RT5645_GPIO_CTRL1	, 0xc000 },
 	{ RT5645_GPIO_CTRL2	, 0x0004 },
+
 #ifdef JD1_FUNC
 	{ RT5645_IRQ_CTRL2	, 0x0200 },
 	{ RT5645_MICBIAS	, 0x0008 },
 	{ RT5645_GEN_CTRL3	, 0x1180 },
-	{ RT5645_CJ_CTRL1	, 0x4021 },
 	{ RT5645_CJ_CTRL3	, 0x4000 },
 #endif
 
@@ -168,7 +124,7 @@ static const u16 rt5645_reg[RT5645_VENDOR_ID2 + 1] = {
 	[RT5645_HP_VOL] = 0xc8c8,
 	[RT5645_SPK_VOL] = 0xc8c8,
 	[RT5645_LOUT1] = 0xc8c8,
-	[RT5645_CJ_CTRL1] = 0x4002,
+	[RT5645_CJ_CTRL1] = 0x0002,
 	[RT5645_CJ_CTRL2] = 0x0827,
 	[RT5645_CJ_CTRL3] = 0xe000,
 	[RT5645_INL1_INR1_VOL] = 0x0808,
@@ -220,6 +176,7 @@ static const u16 rt5645_reg[RT5645_VENDOR_ID2 + 1] = {
 	[RT5645_DMIC_CTRL2] = 0x000a,
 	[RT5645_TDM_CTRL_3] = 0x0123,
 	[RT5645_ASRC_3] = 0x0003,
+	[RT5645_ASRC_8] = 0x0000,
 	[RT5645_DEPOP_M1] = 0x0004,
 	[RT5645_DEPOP_M2] = 0x1100,
 	[RT5645_DEPOP_M3] = 0x0646,
@@ -704,11 +661,7 @@ static const char *const rt5645_input_mode[] = {
 };
 
 static const SOC_ENUM_SINGLE_DECL(
-	rt5645_in1_mode_enum, RT5645_IN1_IN2,
-	RT5645_IN_SFT1, rt5645_input_mode);
-
-static const SOC_ENUM_SINGLE_DECL(
-	rt5645_in2_mode_enum, RT5645_IN3,
+	rt5645_in2_mode_enum, RT5645_IN1_IN2,
 	RT5645_IN_SFT2, rt5645_input_mode);
 
 /* Interface data select */
@@ -763,11 +716,13 @@ static const struct snd_kcontrol_new rt5645_snd_controls[] = {
 		RT5645_L_MUTE_SFT, RT5645_R_MUTE_SFT, 1, 1),
 	SOC_DOUBLE_TLV("Speaker Playback Volume", RT5645_SPK_VOL,
 		RT5645_L_VOL_SFT, RT5645_R_VOL_SFT, 39, 1, out_vol_tlv),
+
 	/* Headphone Output Volume */
 	SOC_DOUBLE("HP Playback Switch", RT5645_HP_VOL,
 		RT5645_L_MUTE_SFT, RT5645_R_MUTE_SFT, 1, 1),
 	SOC_DOUBLE_TLV("HP Playback Volume", RT5645_HP_VOL,
 		RT5645_L_VOL_SFT, RT5645_R_VOL_SFT, 39, 1, out_vol_tlv),
+
 	/* OUTPUT Control */
 	SOC_DOUBLE("OUT Playback Switch", RT5645_LOUT1,
 		RT5645_L_MUTE_SFT, RT5645_R_MUTE_SFT, 1, 1),
@@ -775,6 +730,7 @@ static const struct snd_kcontrol_new rt5645_snd_controls[] = {
 		RT5645_VOL_L_SFT, RT5645_VOL_R_SFT, 1, 1),
 	SOC_DOUBLE_TLV("OUT Playback Volume", RT5645_LOUT1,
 		RT5645_L_VOL_SFT, RT5645_R_VOL_SFT, 39, 1, out_vol_tlv),
+
 	/* DAC Digital Volume */
 	SOC_DOUBLE("DAC2 Playback Switch", RT5645_DAC_CTRL,
 		RT5645_M_DAC_L2_VOL_SFT, RT5645_M_DAC_R2_VOL_SFT, 1, 1),
@@ -784,24 +740,27 @@ static const struct snd_kcontrol_new rt5645_snd_controls[] = {
 	SOC_DOUBLE_TLV("Mono DAC Playback Volume", RT5645_DAC2_DIG_VOL,
 			RT5645_L_VOL_SFT, RT5645_R_VOL_SFT,
 			175, 0, dac_vol_tlv),
+
 	/* IN1/IN2 Control */
-	SOC_ENUM("IN1 Mode Control",  rt5645_in1_mode_enum),
-	SOC_SINGLE_TLV("IN1 Boost", RT5645_IN1_IN2,
+	SOC_SINGLE_TLV("IN1 Boost", RT5645_CJ_CTRL1,
 		RT5645_BST_SFT1, 8, 0, bst_tlv),
 	SOC_ENUM("IN2 Mode Control", rt5645_in2_mode_enum),
-	SOC_SINGLE_TLV("IN2 Boost", RT5645_IN3,
+	SOC_SINGLE_TLV("IN2 Boost", RT5645_IN1_IN2,
 		RT5645_BST_SFT2, 8, 0, bst_tlv),
+
 	/* INL/INR Volume Control */
 	SOC_DOUBLE_TLV("IN Capture Volume", RT5645_INL1_INR1_VOL,
 			RT5645_INL_VOL_SFT, RT5645_INR_VOL_SFT,
 			31, 1, in_vol_tlv),
+
 	/* ADC Digital Volume Control */
 	SOC_DOUBLE("ADC Capture Switch", RT5645_STO1_ADC_DIG_VOL,
 		RT5645_L_MUTE_SFT, RT5645_R_MUTE_SFT, 1, 1),
 	SOC_DOUBLE_TLV("ADC Capture Volume", RT5645_STO1_ADC_DIG_VOL,
 			RT5645_L_VOL_SFT, RT5645_R_VOL_SFT,
 			127, 0, adc_vol_tlv),
-
+	SOC_DOUBLE("Mono ADC Capture Switch", RT5645_MONO_ADC_DIG_VOL,
+		RT5645_L_MUTE_SFT, RT5645_R_MUTE_SFT, 1, 1),
 	SOC_DOUBLE_TLV("Mono ADC Capture Volume", RT5645_MONO_ADC_DIG_VOL,
 			RT5645_L_VOL_SFT, RT5645_R_VOL_SFT,
 			127, 0, adc_vol_tlv),
@@ -810,7 +769,6 @@ static const struct snd_kcontrol_new rt5645_snd_controls[] = {
 	SOC_DOUBLE_TLV("STO1 ADC Boost Gain", RT5645_ADC_BST_VOL1,
 			RT5645_STO1_ADC_L_BST_SFT, RT5645_STO1_ADC_R_BST_SFT,
 			3, 0, adc_bst_tlv),
-
 	SOC_DOUBLE_TLV("STO2 ADC Boost Gain", RT5645_ADC_BST_VOL1,
 			RT5645_STO2_ADC_L_BST_SFT, RT5645_STO2_ADC_R_BST_SFT,
 			3, 0, adc_bst_tlv),
@@ -1533,15 +1491,6 @@ static void hp_amp_power(struct snd_soc_codec *codec, int on)
 				RT5645_HP_R_SMT_MASK, RT5645_HP_SG_DIS |
 				RT5645_HP_L_SMT_DIS | RT5645_HP_R_SMT_DIS);
 			/* headphone amp power down */
-			/*
-			snd_soc_update_bits(codec, RT5645_DEPOP_M1,
-				RT5645_SMT_TRIG_MASK | RT5645_HP_CD_PD_MASK |
-				RT5645_HP_CO_MASK | RT5645_HP_CP_MASK |
-				RT5645_HP_SG_MASK | RT5645_HP_CB_MASK,
-				RT5645_SMT_TRIG_DIS | RT5645_HP_CD_PD_EN |
-				RT5645_HP_CO_DIS | RT5645_HP_CP_PD |
-				RT5645_HP_SG_EN | RT5645_HP_CB_PD);
-			*/
 			snd_soc_write(codec, RT5645_DEPOP_M1, 0x0000);
 			snd_soc_update_bits(codec, RT5645_PWR_ANLG1,
 				RT5645_PWR_HP_L | RT5645_PWR_HP_R
@@ -1888,13 +1837,9 @@ static const struct snd_soc_dapm_widget rt5645_dapm_widgets[] = {
 		RT5645_PWR_LDO2_BIT, 0, NULL, 0),
 	SND_SOC_DAPM_SUPPLY("PLL1", RT5645_PWR_ANLG2,
 		RT5645_PWR_PLL_BIT, 0, NULL, 0),
-	/*def JD1_FUNC*/
+
 	SND_SOC_DAPM_SUPPLY("Mic Det Power", RT5645_PWR_VOL,
 		RT5645_PWR_MIC_DET_BIT, 0, NULL, 0),
-#if 0
-	SND_SOC_DAPM_SUPPLY("Mic Det Power", SND_SOC_NOPM,
-		0, 0, NULL, 0),
-#endif
 	SND_SOC_DAPM_SUPPLY("JD Power", SND_SOC_NOPM,
 		0, 0, NULL, 0),
 
@@ -1904,6 +1849,7 @@ static const struct snd_soc_dapm_widget rt5645_dapm_widgets[] = {
 			RT5645_PWR_MB1_BIT, 0, NULL, 0),
 	SND_SOC_DAPM_SUPPLY("micbias2", RT5645_PWR_ANLG2,
 			RT5645_PWR_MB2_BIT, 0, NULL, 0),
+
 	/* Input Lines */
 	SND_SOC_DAPM_INPUT("DMIC L1"),
 	SND_SOC_DAPM_INPUT("DMIC R1"),
@@ -1926,25 +1872,30 @@ static const struct snd_soc_dapm_widget rt5645_dapm_widgets[] = {
 		RT5645_DMIC_1_EN_SFT, 0, NULL, 0),
 	SND_SOC_DAPM_SUPPLY("DMIC2 Power", RT5645_DMIC_CTRL1,
 		RT5645_DMIC_2_EN_SFT, 0, NULL, 0),
+
 	/* Boost */
 	SND_SOC_DAPM_PGA("BST1", RT5645_PWR_ANLG2,
 		RT5645_PWR_BST1_BIT, 0, NULL, 0),
 	SND_SOC_DAPM_PGA_E("BST2", RT5645_PWR_ANLG2,
 		RT5645_PWR_BST2_BIT, 0, NULL, 0, rt5645_bst2_event,
 		SND_SOC_DAPM_PRE_PMD | SND_SOC_DAPM_POST_PMU),
+
 	/* Input Volume */
 	SND_SOC_DAPM_PGA("INL VOL", RT5645_PWR_VOL,
 		RT5645_PWR_IN_L_BIT, 0, NULL, 0),
 	SND_SOC_DAPM_PGA("INR VOL", RT5645_PWR_VOL,
 		RT5645_PWR_IN_R_BIT, 0, NULL, 0),
+
 	/* IN Mux */
 	SND_SOC_DAPM_MUX("INL Mux", SND_SOC_NOPM, 0, 0, &rt5645_inl_mux),
 	SND_SOC_DAPM_MUX("INR Mux", SND_SOC_NOPM, 0, 0, &rt5645_inr_mux),
+
 	/* REC Mixer */
 	SND_SOC_DAPM_MIXER("RECMIXL", RT5645_PWR_MIXER, RT5645_PWR_RM_L_BIT,
 			0, rt5645_rec_l_mix, ARRAY_SIZE(rt5645_rec_l_mix)),
 	SND_SOC_DAPM_MIXER("RECMIXR", RT5645_PWR_MIXER, RT5645_PWR_RM_R_BIT,
 			0, rt5645_rec_r_mix, ARRAY_SIZE(rt5645_rec_r_mix)),
+
 	/* ADCs */
 	SND_SOC_DAPM_ADC("ADC L", NULL, SND_SOC_NOPM,
 		0, 0),
@@ -1959,6 +1910,7 @@ static const struct snd_soc_dapm_widget rt5645_dapm_widgets[] = {
 			0, 0, rt5645_adc_clk_event,
 			SND_SOC_DAPM_POST_PMD |
 			SND_SOC_DAPM_POST_PMU),
+
 	/* ADC Mux */
 	SND_SOC_DAPM_MUX("Stereo1 DMIC Mux", SND_SOC_NOPM, 0, 0,
 				&rt5645_sto1_dmic_mux),
@@ -1982,8 +1934,8 @@ static const struct snd_soc_dapm_widget rt5645_dapm_widgets[] = {
 				&rt5645_mono_adc_r1_mux),
 	SND_SOC_DAPM_MUX("Mono ADC R2 Mux", SND_SOC_NOPM, 0, 0,
 				&rt5645_mono_adc_r2_mux),
-	/* ADC Mixer */
 
+	/* ADC Mixer */
 	SND_SOC_DAPM_SUPPLY_S("adc stereo1 filter", 1, RT5645_PWR_DIG2,
 		RT5645_PWR_ADC_S1F_BIT, 0, NULL, 0),
 	SND_SOC_DAPM_SUPPLY_S("adc stereo2 filter", 1, RT5645_PWR_DIG2,
@@ -2117,6 +2069,7 @@ static const struct snd_soc_dapm_widget rt5645_dapm_widgets[] = {
 			RT5645_PWR_DAC_R1_BIT, 0),
 	SND_SOC_DAPM_DAC("DAC R2", NULL, RT5645_PWR_DIG1,
 			RT5645_PWR_DAC_R2_BIT, 0),
+
 	/* OUT Mixer */
 	SND_SOC_DAPM_MIXER("SPK MIXL", RT5645_PWR_MIXER, RT5645_PWR_SM_L_BIT,
 		0, rt5645_spk_l_mix, ARRAY_SIZE(rt5645_spk_l_mix)),
@@ -2126,6 +2079,7 @@ static const struct snd_soc_dapm_widget rt5645_dapm_widgets[] = {
 		0, rt5645_out_l_mix, ARRAY_SIZE(rt5645_out_l_mix)),
 	SND_SOC_DAPM_MIXER("OUT MIXR", RT5645_PWR_MIXER, RT5645_PWR_OM_R_BIT,
 		0, rt5645_out_r_mix, ARRAY_SIZE(rt5645_out_r_mix)),
+
 	/* Ouput Volume */
 	SND_SOC_DAPM_SWITCH("SPKVOL L", RT5645_PWR_VOL,
 		RT5645_PWR_SV_L_BIT, 0, &spk_l_vol_control),
@@ -2149,7 +2103,6 @@ static const struct snd_soc_dapm_widget rt5645_dapm_widgets[] = {
 		0, 0, &hp_l_vol_control),
 	SND_SOC_DAPM_SWITCH("HPOVOL R", SND_SOC_NOPM,
 		0, 0, &hp_r_vol_control),
-
 
 	/* HPO/LOUT/Mono Mixer */
 	SND_SOC_DAPM_MIXER("SPOL MIX", SND_SOC_NOPM, 0,
@@ -2306,25 +2259,19 @@ static const struct snd_soc_dapm_route rt5645_dapm_routes[] = {
 	{ "IF_ADC2", NULL, "Mono ADC MIXL" },
 	{ "IF_ADC2", NULL, "Mono ADC MIXR" },
 	{ "VAD_ADC", NULL, "VAD ADC Mux" },
-#if 0
-	{ "IF1 ADC Mux", "IF_ADC1", "IF_ADC1" },
-	{ "IF1 ADC Mux", "IF_ADC2", "IF_ADC2" },
-	{ "IF1 ADC Mux", "VAD_ADC", "VAD_ADC" },
-#endif
+
 	{ "IF2 ADC Mux", "IF_ADC1", "IF_ADC1" },
 	{ "IF2 ADC Mux", "IF_ADC2", "IF_ADC2" },
 	{ "IF2 ADC Mux", "VAD_ADC", "VAD_ADC" },
 
 	{ "IF1 ADC", NULL, "I2S1" },
-#if 0
-	{ "IF1 ADC", NULL, "IF1 ADC Mux" },
-#endif
-		{ "IF1 ADC", NULL, "IF_ADC1" },
-		{ "IF1 ADC", NULL, "IF_ADC2" },
-		{ "IF1 ADC", NULL, "VAD_ADC" },
-
 	{ "IF2 ADC", NULL, "I2S2" },
 	{ "IF2 ADC", NULL, "IF2 ADC Mux" },
+
+	{ "IF1 ADC", NULL, "IF_ADC1" },
+	{ "IF1 ADC", NULL, "IF_ADC2" },
+	{ "IF1 ADC", NULL, "VAD_ADC" },
+
 
 	{ "AIF1TX", NULL, "IF1 ADC" },
 #ifdef USE_TDM
@@ -3125,7 +3072,6 @@ static int rt5645_probe(struct snd_soc_codec *codec)
 
 #ifdef JD1_FUNC
 	snd_soc_dapm_force_enable_pin(&codec->dapm, "LDO2");
-	snd_soc_dapm_force_enable_pin(&codec->dapm, "Mic Det Power");
 	snd_soc_dapm_sync(&codec->dapm);
 	snd_soc_update_bits(codec, RT5645_HPO_MIXER, 0x1000, 0x1000);
 	snd_soc_update_bits(codec, RT5645_PWR_ANLG2, 0x0004, 0x0004);
