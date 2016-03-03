@@ -80,6 +80,7 @@ struct intel_soc_pmic {
 	struct intel_pmic_irqregmap	*irq_regmap;
 	struct mfd_cell			*cell_dev;
 	struct intel_pmic_opregion	*opregion;
+	int				print_wakeup;
 };
 
 int intel_pmic_add(struct intel_soc_pmic *chip);
