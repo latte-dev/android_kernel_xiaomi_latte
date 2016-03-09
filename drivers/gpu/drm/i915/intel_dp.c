@@ -4918,7 +4918,6 @@ out:
 			chv_set_lpe_audio_reg_pipe(dev, INTEL_OUTPUT_DISPLAYPORT,
 					intel_dig_port->port);
 			/* Send a disconnect event to audio */
-			DRM_DEBUG_DRIVER("Sending event to audio");
 			mid_hdmi_audio_signal_event(dev_priv->dev,
 						HAD_EVENT_HOT_UNPLUG);
 			dev_priv->audio_port = NULL;
