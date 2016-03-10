@@ -2088,8 +2088,14 @@
 #define RT5645_ZCD_HP_EN			(0x1 << 15)
 
 /* Inline Command Control 1 (0xdb) */
+#define RT5645_STA_ONE_UP_BTN			(0x1 << 15)
+#define RT5645_STA_DOUBLE_UP_BTN		(0x1 << 14)
 #define RT5645_STA_HOLD_UP_BTN			(0x1 << 13)
+#define RT5645_STA_ONE_CENTER_BTN		(0x1 << 12)
+#define RT5645_STA_DOUBLE_CENTER_BTN		(0x1 << 11)
 #define RT5645_STA_HOLD_CENTER_BTN		(0x1 << 10)
+#define RT5645_STA_ONE_DOWN_BTN			(0x1 << 9)
+#define RT5645_STA_DOUBLE_DOWN_BTN		(0x1 << 8)
 #define RT5645_STA_HOLD_DOWN_BTN		(0x1 << 7)
 #define RT5645_INLINE_EN			(0x1 << 5)
 
