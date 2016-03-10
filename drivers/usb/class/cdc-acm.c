@@ -885,7 +885,7 @@ static int wait_serial_change(struct acm *acm, unsigned long arg)
 		}
 	} while (!rv);
 
-
+	
 
 	return rv;
 }
@@ -1047,8 +1047,7 @@ static int acm_write_buffers_alloc(struct acm *acm)
 }
 
 /* Zero packet needs to be sent for some modems */
-static bool acm_needs_zerp_pkt(struct usb_device *usb_dev)
-{
+static bool acm_needs_zerp_pkt(struct usb_device *usb_dev) {
 	return usb_dev->descriptor.idVendor == INTEL_MODEM_VID &&
 		usb_dev->descriptor.idProduct == INTEL_MODEM_PID;
 }
