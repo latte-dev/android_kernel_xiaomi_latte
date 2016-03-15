@@ -754,7 +754,7 @@ static unsigned int mdm_ctrl_dev_poll(struct file *filep,
 		ret |= POLLHUP | POLLRDNORM;
 		pr_info(DRVNAME ": POLLHUP occured. Current state = 0x%x\n",
 			mdm_ctrl_get_state(mdm));
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 		wake_unlock(&mdm->stay_awake);
 #endif
 	}
@@ -788,7 +788,7 @@ static void mdm_cleanup(struct mdm_info *mdm)
 		destroy_workqueue(mdm->hu_wq);
 		del_timer(&mdm->flashing_timer);
 		mutex_destroy(&mdm->lock);
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 		{ 
 			char *name = (char *)mdm->stay_awake.ws.name;
 			wake_lock_destroy(&mdm->stay_awake);
@@ -913,7 +913,7 @@ static int mdm_ctrl_module_probe(struct platform_device *pdev)
 		init_waitqueue_head(&mdm->wait_wq);
 		init_timer(&mdm->flashing_timer);
 
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 		snprintf(name, sizeof(name), "%s-wakelock%d", DRVNAME, i);
 		wake_lock_init(&mdm->stay_awake, WAKE_LOCK_SUSPEND, kstrdup(name, GFP_KERNEL));
 #endif

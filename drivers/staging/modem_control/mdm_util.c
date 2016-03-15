@@ -189,7 +189,7 @@ inline void mdm_ctrl_set_state(struct mdm_info *mdm, int state)
 		/* Waking up the poll work queue */
 		wake_up(&mdm->wait_wq);
 		pr_info(DRVNAME ": Waking up polling 0x%x\r\n", state);
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 		/* Grab the wakelock for 10 ms to avoid
 		   the system going to sleep */
 		if (mdm->opened)
