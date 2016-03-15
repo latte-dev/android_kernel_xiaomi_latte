@@ -750,26 +750,13 @@ static int __power_ctrl(struct v4l2_subdev *sd, bool flag)
 		return dev->platform_data->power_ctrl(sd, flag);
 
 #ifdef CONFIG_GMIN_INTEL_MID
-	/* CHT HR requires a power rail of 1.2v */
-	if (strcmp(dmi_get_system_info(DMI_BOARD_NAME), CHT_HR_DEV_NAME) == 0) {
-		if (dev->platform_data->v1p2_ctrl) {
-			ret = dev->platform_data->v1p2_ctrl(sd, flag);
-			if (ret) {
-				dev_err(&client->dev,
-						"failed to power %s 1.2v power rail\n",
-						flag ? "up" : "down");
-				return ret;
-			}
-		}
-	} else { /* CHT MRD requires a power rail of 1.6v */
-		if (dev->platform_data->v1p5_ctrl) {
-			ret = dev->platform_data->v1p5_ctrl(sd, flag);
-			if (ret) {
-				dev_err(&client->dev,
-						"failed to power %s 1.6v power rail\n",
-						flag ? "up" : "down");
-				return ret;
-			}
+	if (dev->platform_data->v1p2_ctrl) {
+		ret = dev->platform_data->v1p2_ctrl(sd, flag);
+		if (ret) {
+			dev_err(&client->dev,
+					"failed to power %s 1.2v power rail\n",
+					flag ? "up" : "down");
+			return ret;
 		}
 	}
 
