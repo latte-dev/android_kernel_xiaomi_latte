@@ -274,7 +274,6 @@ static int pi3usb30532_probe(struct i2c_client *client,
 	/* Get typec edev */
 	chip->edev = extcon_get_extcon_dev("usb-typec");
 	chip->dp_cbl_state = 0;
-	hpd_trigger(chip->dp_cbl_state);
 	schedule_work(&chip->mux_work);
 
 	return 0;
