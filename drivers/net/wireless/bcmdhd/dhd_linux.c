@@ -82,7 +82,7 @@
 #include <dhd_bus.h>
 #include <dhd_proto.h>
 #include <dhd_dbg.h>
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 #include <linux/wakelock.h>
 #endif
 #ifdef WL_CFG80211
@@ -415,7 +415,7 @@ typedef struct dhd_info {
 	bool		rxthread_enabled;
 
 	/* Wakelocks */
-#if defined(CONFIG_HAS_WAKELOCK) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+#if defined(CONFIG_WAKELOCK) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
 	struct wake_lock wl_wifi;   /* Wifi wakelock */
 	struct wake_lock wl_rxwake; /* Wifi rx wakelock */
 	struct wake_lock wl_ctrlwake; /* Wifi ctrl wakelock */
@@ -4800,7 +4800,7 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	dhd->wakelock_wd_counter = 0;
 	dhd->wakelock_rx_timeout_enable = 0;
 	dhd->wakelock_ctrl_timeout_enable = 0;
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 	wake_lock_init(&dhd->wl_wifi, WAKE_LOCK_SUSPEND, "wlan_wake");
 	wake_lock_init(&dhd->wl_rxwake, WAKE_LOCK_SUSPEND, "wlan_rx_wake");
 	wake_lock_init(&dhd->wl_ctrlwake, WAKE_LOCK_SUSPEND, "wlan_ctrl_wake");
@@ -4808,7 +4808,8 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 #ifdef BCMPCIE_OOB_HOST_WAKE
 	wake_lock_init(&dhd->wl_intrwake, WAKE_LOCK_SUSPEND, "wlan_oob_irq_wake");
 #endif /* BCMPCIE_OOB_HOST_WAKE */
-#endif /* CONFIG_HAS_WAKELOCK */
+#endif /* CONFIG_WAKELOCK */
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 25))
 	mutex_init(&dhd->dhd_net_if_mutex);
 	mutex_init(&dhd->dhd_suspend_mutex);
@@ -6875,7 +6876,7 @@ void dhd_detach(dhd_pub_t *dhdp)
 #endif
 	if (dhd->dhd_state & DHD_ATTACH_STATE_WAKELOCKS_INIT) {
 		DHD_TRACE(("wd wakelock count:%d\n", dhd->wakelock_wd_counter));
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 		dhd->wakelock_counter = 0;
 		dhd->wakelock_wd_counter = 0;
 		dhd->wakelock_rx_timeout_enable = 0;
@@ -6887,7 +6888,8 @@ void dhd_detach(dhd_pub_t *dhdp)
 #ifdef BCMPCIE_OOB_HOST_WAKE
 		wake_lock_destroy(&dhd->wl_intrwake);
 #endif /* BCMPCIE_OOB_HOST_WAKE */
-#endif /* CONFIG_HAS_WAKELOCK */
+#endif /* CONFIG_WAKELOCK */
+
 	}
 
 
@@ -8412,7 +8414,7 @@ int dhd_os_wake_lock_timeout(dhd_pub_t *pub)
 		spin_lock_irqsave(&dhd->wakelock_spinlock, flags);
 		ret = dhd->wakelock_rx_timeout_enable > dhd->wakelock_ctrl_timeout_enable ?
 			dhd->wakelock_rx_timeout_enable : dhd->wakelock_ctrl_timeout_enable;
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 		if (dhd->wakelock_rx_timeout_enable)
 			wake_lock_timeout(&dhd->wl_rxwake,
 				msecs_to_jiffies(dhd->wakelock_rx_timeout_enable));
@@ -8473,7 +8475,7 @@ int dhd_os_wake_lock_ctrl_timeout_cancel(dhd_pub_t *pub)
 	if (dhd) {
 		spin_lock_irqsave(&dhd->wakelock_spinlock, flags);
 		dhd->wakelock_ctrl_timeout_enable = 0;
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 		if (wake_lock_active(&dhd->wl_ctrlwake))
 			wake_unlock(&dhd->wl_ctrlwake);
 #endif
@@ -8511,7 +8513,7 @@ int dhd_os_wake_lock(dhd_pub_t *pub)
 	if (dhd) {
 		spin_lock_irqsave(&dhd->wakelock_spinlock, flags);
 		if (dhd->wakelock_counter == 0 && !dhd->waive_wakelock) {
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 			wake_lock(&dhd->wl_wifi);
 #elif defined(BCMSDIO) && (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 36))
 			dhd_bus_dev_pm_stay_awake(pub);
@@ -8546,7 +8548,7 @@ int dhd_os_wake_unlock(dhd_pub_t *pub)
 		if (dhd->wakelock_counter > 0) {
 			dhd->wakelock_counter--;
 			if (dhd->wakelock_counter == 0 && !dhd->waive_wakelock) {
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 				wake_unlock(&dhd->wl_wifi);
 #elif defined(BCMSDIO) && (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 36))
 				dhd_bus_dev_pm_relax(pub);
@@ -8561,16 +8563,16 @@ int dhd_os_wake_unlock(dhd_pub_t *pub)
 
 int dhd_os_check_wakelock(dhd_pub_t *pub)
 {
-#if defined(CONFIG_HAS_WAKELOCK) || (defined(BCMSDIO) && (LINUX_VERSION_CODE > \
+#if defined(CONFIG_WAKELOCK) || (defined(BCMSDIO) && (LINUX_VERSION_CODE > \
 	KERNEL_VERSION(2, 6, 36)))
 	dhd_info_t *dhd;
 
 	if (!pub)
 		return 0;
 	dhd = (dhd_info_t *)(pub->info);
-#endif /* CONFIG_HAS_WAKELOCK || BCMSDIO */
+#endif /* CONFIG_WAKELOCK || BCMSDIO */
 
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 	/* Indicate to the SD Host to avoid going to suspend if internal locks are up */
 	if (dhd && (wake_lock_active(&dhd->wl_wifi) ||
 		(wake_lock_active(&dhd->wl_wdwake))))
@@ -8584,16 +8586,16 @@ int dhd_os_check_wakelock(dhd_pub_t *pub)
 
 int dhd_os_check_wakelock_all(dhd_pub_t *pub)
 {
-#if defined(CONFIG_HAS_WAKELOCK) || (defined(BCMSDIO) && (LINUX_VERSION_CODE > \
-	KERNEL_VERSION(2, 6, 36)))
+#if defined(CONFIG_WAKELOCK) || \
+	(defined(BCMSDIO) && (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 36)))
 	dhd_info_t *dhd;
 
 	if (!pub)
 		return 0;
 	dhd = (dhd_info_t *)(pub->info);
-#endif /* CONFIG_HAS_WAKELOCK || BCMSDIO */
+#endif /* CONFIG_WAKELOCK || BCMSDIO */
 
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 	/* Indicate to the SD Host to avoid going to suspend if internal locks are up */
 	if (dhd && (wake_lock_active(&dhd->wl_wifi) ||
 		wake_lock_active(&dhd->wl_wdwake) ||
@@ -8626,7 +8628,7 @@ int dhd_os_wd_wake_lock(dhd_pub_t *pub)
 
 	if (dhd) {
 		spin_lock_irqsave(&dhd->wakelock_spinlock, flags);
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 		/* if wakelock_wd_counter was never used : lock it at once */
 		if (!dhd->wakelock_wd_counter)
 			wake_lock(&dhd->wl_wdwake);
@@ -8648,7 +8650,7 @@ int dhd_os_wd_wake_unlock(dhd_pub_t *pub)
 		spin_lock_irqsave(&dhd->wakelock_spinlock, flags);
 		if (dhd->wakelock_wd_counter) {
 			dhd->wakelock_wd_counter = 0;
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 			wake_unlock(&dhd->wl_wdwake);
 #endif
 		}
@@ -8664,7 +8666,7 @@ int dhd_os_oob_irq_wake_lock_timeout(dhd_pub_t *pub, int val)
 	int ret = 0;
 
 	if (dhd) {
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 		wake_lock_timeout(&dhd->wl_intrwake, msecs_to_jiffies(val));
 #endif
 	}
@@ -8677,7 +8679,7 @@ int dhd_os_oob_irq_wake_unlock(dhd_pub_t *pub)
 	int ret = 0;
 
 	if (dhd) {
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 		/* if wl_intrwake is active, unlock it */
 		if (wake_lock_active(&dhd->wl_intrwake))
 			wake_unlock(&dhd->wl_intrwake);
@@ -8731,13 +8733,13 @@ int dhd_os_wake_lock_restore(dhd_pub_t *pub)
 	 * the lock in between, do the same by calling wake_unlock or pm_relax
 	 */
 	if (dhd->wakelock_before_waive == 0 && dhd->wakelock_counter > 0) {
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 		wake_lock(&dhd->wl_wifi);
 #elif defined(BCMSDIO) && (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 36))
 		dhd_bus_dev_pm_stay_awake(&dhd->pub);
 #endif
 	} else if (dhd->wakelock_before_waive > 0 && dhd->wakelock_counter == 0) {
-#ifdef CONFIG_HAS_WAKELOCK
+#ifdef CONFIG_WAKELOCK
 		wake_unlock(&dhd->wl_wifi);
 #elif defined(BCMSDIO) && (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 36))
 		dhd_bus_dev_pm_relax(&dhd->pub);
