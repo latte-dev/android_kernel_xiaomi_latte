@@ -98,6 +98,9 @@ struct usb_port {
 	unsigned did_runtime_put:1;
 	unsigned u1_allowed:1;
 	unsigned u2_allowed:1;
+	unsigned u1_enabled:1;
+	unsigned u2_enabled:1;
+	unsigned lpm_disabled:1;
 };
 
 #define to_usb_port(_dev) \

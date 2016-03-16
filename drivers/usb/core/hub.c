@@ -3948,6 +3948,8 @@ static int usb_disable_link_state(struct usb_hcd *hcd, struct usb_device *udev,
 int usb_disable_lpm(struct usb_device *udev)
 {
 	struct usb_hcd *hcd;
+	struct usb_hub *hub;
+	struct usb_port *port_dev;
 
 	if (!udev || !udev->parent ||
 			udev->speed != USB_SPEED_SUPER ||
@@ -3962,12 +3964,25 @@ int usb_disable_lpm(struct usb_device *udev)
 	if ((udev->u1_params.timeout == 0 && udev->u2_params.timeout == 0))
 		return 0;
 
+	hub = usb_hub_to_struct_hub(udev->parent);
+	if (!hub) {
+		dev_err(&udev->dev, "can't disable lpm, usb_hub is null.\n");
+		return 0;
+	}
+	port_dev = hub->ports[udev->portnum - 1];
+
+	if (port_dev->lpm_disabled) {
+		dev_err(&udev->dev, "lpm already disabled.\n");
+		return 0;
+	}
+
 	/* If LPM is enabled, attempt to disable it. */
 	if (usb_disable_link_state(hcd, udev, USB3_LPM_U1))
 		goto enable_lpm;
 	if (usb_disable_link_state(hcd, udev, USB3_LPM_U2))
 		goto enable_lpm;
 
+	port_dev->lpm_disabled = true;
 	return 0;
 
 enable_lpm:
@@ -4031,11 +4046,15 @@ void usb_enable_lpm(struct usb_device *udev)
 	}
 	port_dev = hub->ports[udev->portnum - 1];
 
-	if (port_dev->u1_allowed)
+	if (port_dev->u1_allowed && !port_dev->u1_enabled) {
 		usb_enable_link_state(hcd, udev, USB3_LPM_U1);
+		port_dev->u1_enabled = true;
+	}
 
-	if (port_dev->u2_allowed)
+	if (port_dev->u2_allowed && !port_dev->u2_enabled) {
 		usb_enable_link_state(hcd, udev, USB3_LPM_U2);
+		port_dev->u2_enabled = true;
+	}
 }
 EXPORT_SYMBOL_GPL(usb_enable_lpm);
 
