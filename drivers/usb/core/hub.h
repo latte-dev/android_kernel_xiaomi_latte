@@ -84,8 +84,8 @@ struct usb_hub {
  * @portnum: port index num based one
  * @power_is_on: port's power state
  * @did_runtime_put: port has done pm_runtime_put().
- * @u1_is_enabled: whether u1 should be enabled.
- * @u2_is_enabled: whether u2 should be enabled.
+ * @u1_allowed: whether u1 should be allowed.
+ * @u2_allowed: whether u2 should be allowed.
  */
 struct usb_port {
 	struct usb_device *child;
@@ -96,8 +96,8 @@ struct usb_port {
 	u8 portnum;
 	unsigned power_is_on:1;
 	unsigned did_runtime_put:1;
-	unsigned u1_is_enabled:1;
-	unsigned u2_is_enabled:1;
+	unsigned u1_allowed:1;
+	unsigned u2_allowed:1;
 };
 
 #define to_usb_port(_dev) \

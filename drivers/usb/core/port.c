@@ -54,13 +54,13 @@ static ssize_t usb3_lpm_show(struct device *dev,
 	struct usb_port *port_dev = to_usb_port(dev);
 	const char *p;
 
-	if (port_dev->u1_is_enabled) {
-		if (port_dev->u2_is_enabled)
+	if (port_dev->u1_allowed) {
+		if (port_dev->u2_allowed)
 			p = "u1_u2";
 		else
 			p = "u1";
 	} else {
-		if (port_dev->u2_is_enabled)
+		if (port_dev->u2_allowed)
 			p = "u2";
 		else
 			p = "0";
@@ -78,20 +78,20 @@ static ssize_t usb3_lpm_store(struct device *dev,
 	struct usb_hcd *hcd;
 
 	if (!strncmp(buf, "u1_u2", 5)) {
-		port_dev->u1_is_enabled = true;
-		port_dev->u2_is_enabled = true;
+		port_dev->u1_allowed = true;
+		port_dev->u2_allowed = true;
 
 	} else if (!strncmp(buf, "u1", 2)) {
-		port_dev->u1_is_enabled = true;
-		port_dev->u2_is_enabled = false;
+		port_dev->u1_allowed = true;
+		port_dev->u2_allowed = false;
 
 	} else if (!strncmp(buf, "u2", 2)) {
-		port_dev->u1_is_enabled = false;
-		port_dev->u2_is_enabled = true;
+		port_dev->u1_allowed = false;
+		port_dev->u2_allowed = true;
 
 	} else if (!strncmp(buf, "0", 1)) {
-		port_dev->u1_is_enabled = false;
-		port_dev->u2_is_enabled = false;
+		port_dev->u1_allowed = false;
+		port_dev->u2_allowed = false;
 	} else
 		return -EINVAL;
 
@@ -239,8 +239,8 @@ int usb_hub_create_port_device(struct usb_hub *hub, int port1)
 	port_dev->power_is_on = true;
 	port_dev->dev.parent = hub->intfdev;
 	if (hub_is_superspeed(hdev)) {
-		port_dev->u1_is_enabled = true;
-		port_dev->u2_is_enabled = true;
+		port_dev->u1_allowed = true;
+		port_dev->u2_allowed = true;
 		port_dev->dev.groups = port_dev_usb3_group;
 	} else
 		port_dev->dev.groups = port_dev_group;

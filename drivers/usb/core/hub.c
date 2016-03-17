@@ -4031,10 +4031,10 @@ void usb_enable_lpm(struct usb_device *udev)
 	}
 	port_dev = hub->ports[udev->portnum - 1];
 
-	if (port_dev->u1_is_enabled)
+	if (port_dev->u1_allowed)
 		usb_enable_link_state(hcd, udev, USB3_LPM_U1);
 
-	if (port_dev->u2_is_enabled)
+	if (port_dev->u2_allowed)
 		usb_enable_link_state(hcd, udev, USB3_LPM_U2);
 }
 EXPORT_SYMBOL_GPL(usb_enable_lpm);
