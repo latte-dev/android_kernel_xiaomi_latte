@@ -123,7 +123,7 @@ static int silead_ts_request_input_dev(struct silead_ts_data *data)
 	data->input_dev->evbit[0] = BIT_MASK(EV_SYN) |
 				    BIT_MASK(EV_KEY) |
 				    BIT_MASK(EV_ABS);
-
+	input_set_abs_params(data->input_dev, ABS_MT_TRACKING_ID, 0, 10, 0, 0);
 	input_set_abs_params(data->input_dev, ABS_MT_POSITION_X, 0,
 			     data->xy_swap ? data->y_max : data->x_max, 0, 0);
 	input_set_abs_params(data->input_dev, ABS_MT_POSITION_Y, 0,
@@ -155,6 +155,7 @@ static void silead_ts_report_touch(struct silead_ts_data *data, u16 x, u16 y,
 {
 	input_mt_slot(data->input_dev, id);
 	input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, true);
+	input_report_abs(data->input_dev, ABS_MT_TRACKING_ID, id);
 	input_report_abs(data->input_dev, ABS_MT_POSITION_X, x);
 	input_report_abs(data->input_dev, ABS_MT_POSITION_Y, y);
 	input_report_abs(data->input_dev, ABS_MT_TOUCH_MAJOR, data->pressure);
@@ -209,8 +210,7 @@ static void silead_ts_read_data(struct i2c_client *client)
 		offset = i * SILEAD_POINT_DATA_LEN;
 
 		/* Bits 4-7 are the touch id */
-		id = (buf[offset + SILEAD_POINT_X_MSB_OFF] &
-		      SILEAD_TOUCH_ID_MASK);
+		id = (buf[offset + SILEAD_POINT_X_MSB_OFF] >> 4);
 
 		/* Bits 0-3 are MSB of X */
 		buf[offset + SILEAD_POINT_X_MSB_OFF] = buf[offset +
