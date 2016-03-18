@@ -32,8 +32,10 @@
 #include <linux/power_hal_sysfs.h>
 #endif
 
+#include "silead.h"
 #define SILEAD_TS_NAME "silead_ts"
-
+#define SILEAD_X_B       0x08
+#define SILEAD_X_A          0x0a
 #define SILEAD_REG_RESET	0xE0
 #define SILEAD_REG_DATA		0x80
 #define SILEAD_REG_TOUCH_NR	0x80
@@ -85,6 +87,13 @@ enum silead_ts_power {
 	SILEAD_POWER_OFF = 0
 };
 
+#define GSL_ALG_ID
+#ifdef GSL_ALG_ID
+
+
+static unsigned int *gsl_config_data_id;
+const struct firmware *fw;
+#endif
 struct silead_ts_data {
 	struct i2c_client *client;
 	struct gpio_desc *gpio_irq;
@@ -125,9 +134,9 @@ static int silead_ts_request_input_dev(struct silead_ts_data *data)
 				    BIT_MASK(EV_ABS);
 	input_set_abs_params(data->input_dev, ABS_MT_TRACKING_ID, 0, 10, 0, 0);
 	input_set_abs_params(data->input_dev, ABS_MT_POSITION_X, 0,
-			     data->xy_swap ? data->y_max : data->x_max, 0, 0);
+			     800, 0, 0);
 	input_set_abs_params(data->input_dev, ABS_MT_POSITION_Y, 0,
-			     data->xy_swap ? data->x_max : data->y_max, 0, 0);
+			     1280, 0, 0);
 	input_set_abs_params(data->input_dev, ABS_MT_TOUCH_MAJOR, 0,
 			     255, 0, 0);
 	input_set_abs_params(data->input_dev, ABS_MT_WIDTH_MAJOR, 0,
@@ -150,14 +159,16 @@ static int silead_ts_request_input_dev(struct silead_ts_data *data)
 	return 0;
 }
 
-static void silead_ts_report_touch(struct silead_ts_data *data, u16 x, u16 y,
-				   u8 id)
+static void silead_ts_report_touch(struct silead_ts_data *data,
+		struct gsl_touch_info *cinfo, u8 i, bool swap)
 {
-	input_mt_slot(data->input_dev, id);
+	input_mt_slot(data->input_dev, cinfo->id[i]-1);
 	input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, true);
-	input_report_abs(data->input_dev, ABS_MT_TRACKING_ID, id);
-	input_report_abs(data->input_dev, ABS_MT_POSITION_X, x);
-	input_report_abs(data->input_dev, ABS_MT_POSITION_Y, y);
+	input_report_abs(data->input_dev, ABS_MT_TRACKING_ID, cinfo->id[i]-1);
+	input_report_abs(data->input_dev, ABS_MT_POSITION_X,
+			(swap ? cinfo->y[i] : cinfo->x[i]));
+	input_report_abs(data->input_dev, ABS_MT_POSITION_Y,
+			(swap ? cinfo->x[i] : cinfo->y[i]));
 	input_report_abs(data->input_dev, ABS_MT_TOUCH_MAJOR, data->pressure);
 	input_report_abs(data->input_dev, ABS_MT_WIDTH_MAJOR, 1);
 }
@@ -172,7 +183,7 @@ static void silead_ts_set_power(struct i2c_client *client,
 	if (data->gpio_power)
 		gpiod_set_value_cansleep(data->gpio_power, state);
 	else {
-		if(state == SILEAD_POWER_ON) {
+		if (state == SILEAD_POWER_ON) {
 			ret = i2c_smbus_write_byte_data(client, SILEAD_REG_CLOCK,
 					SILEAD_CLOCK);
 		}
@@ -190,8 +201,10 @@ static void silead_ts_read_data(struct i2c_client *client)
 	struct silead_ts_data *data = i2c_get_clientdata(client);
 	struct device *dev = &client->dev;
 	u8 buf[SILEAD_TS_DATA_LEN];
+	char read_buf[4];
+	u8 buf_t[4] = {0};
 	int x, y, id, touch_nr, ret, i, offset;
-
+	struct gsl_touch_info cinfo = { { 0 } };
 	ret = i2c_smbus_read_i2c_block_data(client, SILEAD_REG_DATA,
 					    SILEAD_TS_DATA_LEN, buf);
 	if (ret < 0) {
@@ -199,66 +212,53 @@ static void silead_ts_read_data(struct i2c_client *client)
 		return;
 	}
 
-	touch_nr = buf[0];
-
-	if (touch_nr < 0)
+	cinfo.finger_num = buf[0];
+	if (cinfo.finger_num < 0)
 		return;
 
-	dev_dbg(dev, "Touch number: %d\n", touch_nr);
-
-	for (i = 1; i <= touch_nr; i++) {
-		offset = i * SILEAD_POINT_DATA_LEN;
-
-		/* Bits 4-7 are the touch id */
-		id = (buf[offset + SILEAD_POINT_X_MSB_OFF] >> 4);
-
-		/* Bits 0-3 are MSB of X */
-		buf[offset + SILEAD_POINT_X_MSB_OFF] = buf[offset +
-			SILEAD_POINT_X_MSB_OFF] & SILEAD_POINT_HSB_MASK;
-
-		/* Bits 0-3 are MSB of Y */
-		buf[offset + SILEAD_POINT_Y_MSB_OFF] = buf[offset +
-			SILEAD_POINT_Y_MSB_OFF] & SILEAD_POINT_HSB_MASK;
-
-		x = le16_to_cpup((__le16 *)(buf + offset + SILEAD_POINT_X_OFF));
-		y = le16_to_cpup((__le16 *)(buf + offset + SILEAD_POINT_Y_OFF));
-		data->pos[i - 1].x = x;
-		data->pos[i - 1].y = y;
-
-		dev_dbg(dev, "x=%d y=%d id=%d, fw_name=%s\n", x, y, id, data->fw_name);
+	for (i = 0; i < cinfo.finger_num && i < 10; i++) {
+		cinfo.id[i] = buf[i*4+4+3] >> 4;
+		cinfo.y[i] = (buf[i*4+4] | ((buf[i*4+5]) << 8));
+		cinfo.x[i] = (buf[i*4+6] | ((buf[i*4+7] & 0x0f) << 8));
 	}
 
 	input_mt_assign_slots(data->input_dev, data->slots, data->pos, touch_nr);
 
-	for (i = 0; i < touch_nr; i++) {
-		x = data->pos[i].x;
-		y = data->pos[i].y;
-		id = data->slots[i];
-/* the i8880 with the di_xian panel firmware is badly broken for multi touch
- * We test for the firmware version and don't use the data slot information
- * but instead use the touch number
- */
-		if(strstr(data->fw_name,"di_xian") != NULL){
-			dev_dbg(dev, "%s in use no data slot support. using touch_nr\n", data->fw_name);
-			id = i;
+#ifdef GSL_ALG_ID
+	int tmp1 = 0;
+	cinfo.finger_num = (buf[3]<<24)|(buf[2]<<16)|(buf[1]<<8)|(buf[0]);
+	gsl_alg_id_main(&cinfo);
+
+	tmp1 = gsl_mask_tiaoping();
+	dev_dbg(dev, "tmp1: %d\n", tmp1);
+	if (tmp1 > 0 && tmp1 < 0xffffffff) {
+		i2c_smbus_write_byte_data(client, SILEAD_X_HSB_MASK,
+					SILEAD_X_A);
+
+		buf_t[0] = (u8)(tmp1 & 0xff);
+		buf_t[1] = (u8)((tmp1 >> 8) & 0xff);
+		buf_t[2] = (u8)((tmp1 >> 16) & 0xff);
+		buf_t[3] = (u8)((tmp1 >> 24) & 0xff);
+		dev_dbg(dev, "tmp1 = %08x, buf[0..3] = %02x : %02x : %02x : %02x\n",
+				tmp1, buf_t[0], buf_t[1], buf_t[2], buf_t[3]);
+		i2c_smbus_write_i2c_block_data(client,   SILEAD_X_B, 4, buf_t);
+	}
+#endif
+
+	for (i = 0; i < cinfo.finger_num; i++) {
+		/* the i8880 with the di_xian panel firmware is badly broken for
+		 * multi touch We test for the firmware version and don't use
+		 * the data slot information but instead use the touch number
+		 */
+		if (strstr(data->fw_name, "di_xian") != NULL) {
+			dev_dbg(dev, "%s in use no data slot. using touch_nr\n",
+					data->fw_name);
+			id = cinfo.id;
 		}
 
-		if (data->xy_swap)
-			silead_ts_report_touch(data,
-					       data->y_invert ?
-					       data->y_max - y : y,
-					       data->x_invert ?
-					       data->x_max - x : x,
-					       id);
-		else
-			silead_ts_report_touch(data,
-					       data->x_invert ?
-					       data->x_max - x : x,
-					       data->y_invert ?
-					       data->y_max - y : y,
-					       id);
-
-		dev_dbg(dev, "x=%d y=%d sw_id=%d\n", x, y, id);
+		silead_ts_report_touch(data, &cinfo, i, data->xy_swap);
+		dev_dbg(dev, "x=%d y=%d sw_id=%d\n", cinfo.x[i], cinfo.y[i],
+				cinfo.id[i]);
 	}
 
 	input_mt_sync_frame(data->input_dev);
@@ -346,7 +346,6 @@ static int silead_ts_load_fw(struct i2c_client *client)
 	struct device *dev = &client->dev;
 	struct silead_ts_data *data = i2c_get_clientdata(client);
 	unsigned int fw_size, i;
-	const struct firmware *fw;
 	struct silead_fw_data *fw_data;
 	int ret;
 
@@ -356,8 +355,11 @@ static int silead_ts_load_fw(struct i2c_client *client)
 		return ret;
 	}
 
-	fw_size = fw->size / sizeof(*fw_data);
-	fw_data = (struct silead_fw_data *)fw->data;
+	gsl_config_data_id = fw->data;
+
+	fw_size = (fw->size - 2048) / sizeof(*fw_data);
+	fw_data = (struct silead_fw_data *)(fw->data +
+			2048/sizeof(fw->data[0]));
 
 	for (i = 0; i < fw_size; i++) {
 		ret = i2c_smbus_write_i2c_block_data(client, fw_data[i].offset,
@@ -368,11 +370,9 @@ static int silead_ts_load_fw(struct i2c_client *client)
 		}
 	}
 
-	release_firmware(fw);
 	return 0;
 
 release_fw_err:
-	release_firmware(fw);
 	return ret;
 }
 
@@ -381,12 +381,14 @@ static u32 silead_ts_get_status(struct i2c_client *client)
 	int ret;
 	u32 status;
 
+	struct device *dev = &client->dev;
 	ret = i2c_smbus_read_i2c_block_data(client, SILEAD_REG_STATUS, 4,
 					    (u8 *)&status);
 	if (ret < 0) {
 		dev_err(&client->dev, "Status read error %d\n", ret);
 		return ret;
 	}
+
 
 	return status;
 }
@@ -443,9 +445,9 @@ static int silead_ts_setup(struct i2c_client *client)
 	msleep(20);
 
 	status = silead_ts_get_status(client);
+
 	if (status != SILEAD_STATUS_OK) {
 		dev_err(dev, "Initialization error, status: 0x%X\n", status);
-		return -ENODEV;
 	}
 
 	return 0;
@@ -561,7 +563,6 @@ static int silead_ts_resume(struct device *dev)
 	/* send power off again, to handle some hardware reset issue */
 	silead_ts_set_power(client, SILEAD_POWER_OFF);
 	silead_ts_set_power(client, SILEAD_POWER_ON);
-	msleep(20);
 
 	ret = silead_ts_reset(client);
 	if (ret)
@@ -610,7 +611,7 @@ static int silead_ts_probe(struct i2c_client *client,
 /* loading the firmware to the Silead takes about 4 seconds, so let's defer
  * probing until we are multi-threaded
  */
-	if(++first_time == 1)
+	if (++first_time == 1)
 		return -EPROBE_DEFER;
 
 	if (!i2c_check_functionality(client->adapter,
@@ -684,7 +685,7 @@ static int silead_ts_probe(struct i2c_client *client,
 		}
 	}
 
-	if(data->gpio_power) {
+	if (data->gpio_power) {
 		ret = gpiod_direction_output(data->gpio_power, 0);
 		if (ret) {
 			dev_err(dev, "Shutdown GPIO direction set failed\n");
@@ -699,7 +700,9 @@ static int silead_ts_probe(struct i2c_client *client,
 	ret = silead_ts_request_input_dev(data);
 	if (ret)
 		return ret;
-
+#ifdef GSL_ALG_ID
+	gsl_DataInit(gsl_config_data_id);
+#endif
 	ret = devm_request_threaded_irq(dev, client->irq, NULL,
 					silead_ts_irq_handler,
 					IRQF_ONESHOT | IRQ_TYPE_EDGE_RISING,
@@ -708,6 +711,7 @@ static int silead_ts_probe(struct i2c_client *client,
 		dev_err(dev, "IRQ request failed %d\n", ret);
 		return ret;
 	}
+
 #ifdef CONFIG_PM
 	ret = device_create_file(dev, &dev_attr_power_HAL_suspend);
 	if (ret < 0) {
@@ -721,6 +725,9 @@ static int silead_ts_probe(struct i2c_client *client,
 out:
 #endif
 
+#ifdef GSL_ALG_ID
+	gsl_DataInit(gsl_config_data_id);
+#endif
 	dev_dbg(dev, "Probing succeded\n");
 	return 0;
 }
