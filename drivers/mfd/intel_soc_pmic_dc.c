@@ -26,6 +26,7 @@
 #include <linux/power/dc_xpwr_battery.h>
 #include <linux/power/dc_xpwr_charger.h>
 #include <linux/regulator/intel_dollar_cove_pmic.h>
+#include <linux/regulator/machine.h>
 
 #include <asm/intel_em_config.h>
 #include <linux/extcon/extcon-dc-pwrsrc.h>
@@ -270,6 +271,12 @@ static struct mfd_cell dollar_cove_dev[] = {
 	{
 		.name = "dcovex_regulator",
 		.id = DCOVEX_ID_LDO3 + 1,
+		.num_resources = 0,
+		.resources = NULL,
+	},
+	{
+		.name = "dcovex_regulator",
+		.id = DCOVEX_ID_GPIO1 + 1,
 		.num_resources = 0,
 		.resources = NULL,
 	},
@@ -660,6 +667,28 @@ static void dc_set_gpio_pdata(void)
 				sizeof(dollar_cove_gpio_data), 0);
 }
 
+static struct regulator_init_data dcovex_gpio1_data = {
+	.constraints = {
+		.name = "GPIO1",
+		.min_uV = 700000,
+		.max_uV = 3300000,
+		.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE |
+					REGULATOR_CHANGE_STATUS,
+		.valid_modes_mask = REGULATOR_MODE_NORMAL,
+	},
+};
+
+static struct dcovex_regulator_info dollar_cove_reg_gpio1_data = {
+	.init_data = &dcovex_gpio1_data,
+};
+
+static void dc_set_regulator_pdata(void)
+{
+	intel_soc_pmic_set_pdata("dcovex_regulator",
+				(void *)&dollar_cove_reg_gpio1_data,
+				sizeof(dollar_cove_reg_gpio1_data),
+				DCOVEX_ID_GPIO1 + 1);
+}
 
 static int dollar_cove_init(void)
 {
@@ -668,6 +697,7 @@ static int dollar_cove_init(void)
 	dc_xpwr_pwrsrc_pdata();
 	dc_xpwr_fg_pdata();
 	dc_set_gpio_pdata();
+	dc_set_regulator_pdata();
 
 	return 0;
 }
