@@ -678,6 +678,10 @@ static ssize_t ffs_epfile_io(struct file *file,
 			goto out;
 
 		if (unlikely(wait_for_completion_interruptible(&done))) {
+			/* Wait for another 100ms to avoid data lost */
+			if (wait_for_completion_timeout(&done, HZ / 10))
+				goto done;
+
 			/*
 			 * To avoid race condition with ffs_epfile_io_complete,
 			 * dequeue the request first, then check status.
@@ -688,6 +692,7 @@ static ssize_t ffs_epfile_io(struct file *file,
 			usb_ep_dequeue(ep->ep, req);
 			interrupted = true;
 		}
+done:
 		/*
 		 * XXX We may end up silently droping data here.
 		 * Since data_len (i.e. req->length) may be bigger
