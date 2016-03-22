@@ -34,6 +34,7 @@
 #define AK09911_REG_HYH			0x14
 #define AK09911_REG_HZL			0x15
 #define AK09911_REG_HZH			0x16
+#define AK09911_REG_ST2			0x18
 
 #define AK09911_REG_ASAX		0x60
 #define AK09911_REG_ASAY		0x61
@@ -44,6 +45,10 @@
 #define AK09911_REG_CNTL3		0x32
 
 #define AK09911_MODE_SNG_MEASURE	0x01
+#define AK09911_MODE_CONTINUOUS_1	0x02
+#define AK09911_MODE_CONTINUOUS_2	0x04
+#define AK09911_MODE_CONTINUOUS_3	0x06
+#define AK09911_MODE_CONTINUOUS_4	0x08
 #define AK09911_MODE_SELF_TEST		0x10
 #define AK09911_MODE_FUSE_ACCESS	0x1F
 #define AK09911_MODE_POWERDOWN		0x00
@@ -78,20 +83,25 @@ static int ak09911_set_mode(struct i2c_client *client, u8 mode)
 	case AK09911_MODE_SELF_TEST:
 	case AK09911_MODE_FUSE_ACCESS:
 	case AK09911_MODE_POWERDOWN:
+	case AK09911_MODE_CONTINUOUS_1:
+	case AK09911_MODE_CONTINUOUS_2:
+	case AK09911_MODE_CONTINUOUS_3:
+	case AK09911_MODE_CONTINUOUS_4:
 		ret = i2c_smbus_write_byte_data(client,
 						AK09911_REG_CNTL2, mode);
 		if (ret < 0) {
 			dev_err(&client->dev, "set_mode error\n");
 			return ret;
 		}
-		/* After mode change wait atleast 100us */
-		usleep_range(100, 500);
 		break;
 	default:
 		dev_err(&client->dev,
 			"%s: Unknown mode(%d).", __func__, mode);
 		return -EINVAL;
 	}
+	/* After mode change to powerdown wait atleast 100us */
+	if(mode == AK09911_MODE_POWERDOWN)
+		usleep_range(100, 500);
 
 	return ret;
 }
@@ -187,11 +197,7 @@ static int ak09911_read_axis(struct iio_dev *indio_dev, int index, int *val)
 
 	mutex_lock(&data->lock);
 
-	ret = ak09911_set_mode(client,  AK09911_MODE_SNG_MEASURE);
-	if (ret < 0)
-		goto fn_exit;
-
-	ret = wait_conversion_complete_polled(data);
+	ret = ak09911_set_mode(client,  AK09911_MODE_CONTINUOUS_4);
 	if (ret < 0)
 		goto fn_exit;
 
@@ -203,6 +209,13 @@ static int ak09911_read_axis(struct iio_dev *indio_dev, int index, int *val)
 	}
 	meas_reg = ret;
 
+	/* datasheet recommends reading ST2 register after each
+	 * data read operation */
+	ret = i2c_smbus_read_byte_data(client, AK09911_REG_ST2);
+	if (ret < 0) {
+		dev_err(&client->dev, "Read AK09911_REG_ST2 reg fails\n");
+		goto fn_exit;
+	}
 	mutex_unlock(&data->lock);
 
 	/* Endian conversion of the measured values. */
