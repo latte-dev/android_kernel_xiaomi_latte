@@ -15342,9 +15342,6 @@ start_link_train:
 		crtc->config.port_clock =
 				drm_dp_bw_code_to_link_rate(intel_dp->link_bw);
 
-		crtc->config.pixel_multiplier = intel_dp_calc_multiplier(
-						encoder, intel_dp->link_bw);
-
 		/* Enable PLL followed by port */
 		intel_dp_set_clock(encoder, &crtc->config, intel_dp->link_bw);
 		chv_update_pll(crtc);

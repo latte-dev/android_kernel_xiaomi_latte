@@ -1016,8 +1016,6 @@ bool intel_dp_compute_config(struct intel_encoder *encoder,
 bool intel_dp_is_edp(struct drm_device *dev, enum port port);
 bool intel_dp_hpd_pulse(struct intel_digital_port *intel_dig_port,
 			bool long_hpd);
-uint8_t intel_dp_calc_multiplier(struct intel_encoder *encoder,
-			u32 pixel_clock);
 int intel_dp_max_link_bw(struct intel_dp *intel_dp);
 
 void intel_edp_backlight_on(struct intel_dp *intel_dp);

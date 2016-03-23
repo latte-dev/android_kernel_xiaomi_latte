@@ -1032,27 +1032,6 @@ intel_dp_set_m2_n2(struct intel_crtc *crtc, struct intel_link_m_n *m_n)
 	I915_WRITE(PIPE_LINK_N2(transcoder), m_n->link_n);
 }
 
-uint8_t intel_dp_calc_multiplier(struct intel_encoder *encoder,
-			u32 link_rate)
-{
-	struct drm_device *dev = encoder->base.dev;
-	uint8_t multiplier = 1;
-
-	if (!IS_VALLEYVIEW(dev))
-		return multiplier;
-
-	/*
-	 * CHV/VLV supports only HBR and LBR,
-	 * so use precalculated values
-	 */
-	if (link_rate == DP_LINK_BW_2_7)
-		multiplier = 4;
-	else if (link_rate != DP_LINK_BW_1_62)
-		DRM_ERROR("Invalid link rate used\n");
-
-	return multiplier;
-}
-
 bool
 intel_dp_compute_config(struct intel_encoder *encoder,
 			struct intel_crtc_config *pipe_config)
@@ -1187,14 +1166,12 @@ found:
 	intel_dp->lane_count = lane_count;
 	pipe_config->pipe_bpp = bpp;
 	pipe_config->port_clock = drm_dp_bw_code_to_link_rate(intel_dp->link_bw);
-	pipe_config->pixel_multiplier =
-			intel_dp_calc_multiplier(encoder, bws[clock]);
 
 	DRM_DEBUG_KMS("DP link bw %02x lane count %d clock %d bpp %d\n",
 		      intel_dp->link_bw, intel_dp->lane_count,
 		      pipe_config->port_clock, bpp);
-	DRM_DEBUG_KMS("DP link bw required %i available %i and multiplier %d\n",
-		      mode_rate, link_avail, pipe_config->pixel_multiplier);
+	DRM_DEBUG_KMS("DP link bw required %i available %i\n",
+		      mode_rate, link_avail);
 
 	intel_link_compute_m_n(bpp, lane_count,
 			       adjusted_mode->crtc_clock,
