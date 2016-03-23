@@ -559,18 +559,21 @@ static int silead_ts_resume(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	int ret, status;
 
-	enable_irq(client->irq);
 	/* send power off again, to handle some hardware reset issue */
 	silead_ts_set_power(client, SILEAD_POWER_OFF);
 	silead_ts_set_power(client, SILEAD_POWER_ON);
 
 	ret = silead_ts_reset(client);
-	if (ret)
+	if (ret) {
+		dev_err(dev, "reset error, ret: 0x%X\n", ret);
 		return ret;
+	}
 
 	ret = silead_ts_startup(client);
-	if (ret)
+	if (ret) {
+		dev_err(dev, "start up error, ret: 0x%X\n", ret);
 		return ret;
+	}
 
 	msleep(20);
 
@@ -579,6 +582,8 @@ static int silead_ts_resume(struct device *dev)
 		dev_err(dev, "Resume error, status: 0x%X\n", status);
 		return -ENODEV;
 	}
+
+	enable_irq(client->irq);
 
 	return 0;
 }
