@@ -679,7 +679,7 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 		status = I915_READ_NOTRACE(ch_ctl);
 		if ((status & DP_AUX_CH_CTL_SEND_BUSY) == 0)
 			break;
-		msleep(1);
+		usleep_range(1000, 1100);
 	}
 
 	if (try == 3) {
