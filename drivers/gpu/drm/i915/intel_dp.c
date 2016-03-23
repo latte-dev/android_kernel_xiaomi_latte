@@ -643,6 +643,69 @@ static uint32_t i9xx_get_aux_send_ctl(struct intel_dp *intel_dp,
 	       (aux_clock_divider << DP_AUX_CH_CTL_BIT_CLOCK_2X_SHIFT);
 }
 
+/*
+ * This funcion brings together the assumptions(hack) about
+ * combinations of displays possible in CHT to find the
+ * current pipe. this is required since our power domain
+ * logic works on pipe id and during our detection we do
+ * not have any pipe associated with the current encoder
+ * or connector. so this is the only way to handle this
+ * as of now. The proper fix is to move the get/put
+ * calls to power domain to the caller and let them
+ * worry about the power domain. but that has to be done
+ * another day as any such change is not going to be
+ * simple fix.
+ */
+static enum pipe cht_find_pipe(struct intel_dp *intel_dp)
+{
+	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
+	struct drm_device *dev = intel_dig_port->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_encoder *intel_encoder;
+
+	if (intel_dig_port->port == PORT_D)
+		return PIPE_C;
+
+	if (is_edp(intel_dp))
+		return PIPE_B;
+
+	/*
+	 * since we have handled edp above, reaching here means
+	 * we have an external DP, hence use the logic below
+	 */
+	list_for_each_entry(intel_encoder, &dev->
+			mode_config.encoder_list, base.head) {
+
+		/*
+		 * MIPI always comes on Pipe A or Pipe B
+		 * depending on Port A or Port C and EDP
+		 * comes on Pipe B. So the other pipe
+		 * will only be able to drive the DP.
+		 * MIPI on Port A is driven by Pipe A
+		 * and MIPI on Port C is driven by
+		 * Pipe B. So the other pipe will
+		 * drive DP.
+		 */
+
+		if (intel_encoder->type == INTEL_OUTPUT_EDP) {
+			return PIPE_A;
+		} else if (intel_encoder->type == INTEL_OUTPUT_DSI &&
+				dev_priv->vbt.dsi.port == DVO_PORT_MIPIA) {
+			return PIPE_B;
+		} else if (intel_encoder->type == INTEL_OUTPUT_DSI &&
+				dev_priv->vbt.dsi.port == DVO_PORT_MIPIC) {
+			return PIPE_A;
+		}
+	}
+
+	/*
+	 * if none of the above conditions are hit
+	 * it means we are in a system without LFP
+	 * just taking a guess and sending A
+	 */
+	return PIPE_A;
+}
+
 static int
 intel_dp_aux_ch(struct intel_dp *intel_dp,
 		uint8_t *send, int send_bytes,
@@ -659,6 +722,7 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 	int try, clock = 0;
 	bool has_aux_irq = HAS_AUX_IRQ(dev) && !IS_VALLEYVIEW(dev);
 	bool vdd = false;
+	enum pipe pipe;
 
 	/* If we already have panel power, do not call _vdd_on */
 	if (is_edp(intel_dp) && !edp_have_panel_power(intel_dp))
@@ -672,7 +736,12 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 
 	intel_dp_check_edp(intel_dp);
 
-	intel_display_power_get(dev_priv, PIPE_A);
+	if (IS_CHERRYVIEW(dev))
+		pipe = cht_find_pipe(intel_dp);
+	else
+		pipe = PIPE_A;
+
+	intel_display_power_get(dev_priv, pipe);
 
 	/* Try to wait for any previous AUX channel activity */
 	for (try = 0; try < 3; try++) {
@@ -775,7 +844,7 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 	ret = recv_bytes;
 out:
 	pm_qos_update_request(&dev_priv->pm_qos, PM_QOS_DEFAULT_VALUE);
-	intel_display_power_put(dev_priv, PIPE_A);
+	intel_display_power_put(dev_priv, pipe);
 
 	if (vdd)
 		edp_panel_vdd_off(intel_dp, false);
