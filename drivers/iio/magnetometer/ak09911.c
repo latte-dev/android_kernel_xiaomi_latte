@@ -18,9 +18,12 @@
 #include <linux/types.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
+#include <linux/regmap.h>
 #include <linux/i2c.h>
 #include <linux/acpi.h>
 #include <linux/iio/iio.h>
+
+#define AK09911_REGMAP_NAME "ak09911_regmap"
 
 #define AK09911_REG_WIA1		0x00
 #define AK09911_REG_WIA2		0x01
@@ -60,15 +63,36 @@
 
 #define RAW_TO_GAUSS(asa)	((((asa) + 128) * 6000) / 256)
 
-#define AK09911_MAX_CONVERSION_TIMEOUT	500
-#define AK09911_CONVERSION_DONE_POLL_TIME 10
+#define AK09911_CNTL2_CONTINUOUS_1_BIT	BIT(1)
+#define AK09911_CNTL2_CONTINUOUS_2_BIT  BIT(2)
+#define AK09911_CNTL2_CONTINUOUS_3_BIT  BIT(3)
+
+#define AK09911_CNTL2_CONTINUOUS_MASK	(AK09911_CNTL2_CONTINUOUS_1_BIT | \
+					AK09911_CNTL2_CONTINUOUS_2_BIT | \
+					AK09911_CNTL2_CONTINUOUS_3_BIT)
+#define AK09911_CNTL2_CONTINUOUS_SHIFT	0
+
+#define AK09911_MAX_CONVERSION_TIMEOUT		500
+#define AK09911_CONVERSION_DONE_POLL_TIME	10
+#define AK09911_CNTL2_CONTINUOUS_DEFAULT	0
+#define IF_USE_REGMAP_INTERFACE			0
 
 struct ak09911_data {
 	struct i2c_client	*client;
 	struct mutex		lock;
+	u8			reg_cntl2;
+	struct regmap		*regmap;
 	u8			asa[3];
 	long			raw_to_gauss[3];
 };
+
+static const struct {
+	int val;
+	int val2;
+} ak09911_samp_freq[] = {  {10, 0},
+			   {20, 0},
+			   {50, 0},
+			   {100, 0} };
 
 static const int ak09911_index_to_reg[] = {
 	AK09911_REG_HXL, AK09911_REG_HYL, AK09911_REG_HZL,
@@ -237,6 +261,10 @@ static int ak09911_read_raw(struct iio_dev *indio_dev,
 			   int *val, int *val2,
 			   long mask)
 {
+	int ret, i;
+#if IF_USE_REGMAP_INTERFACE
+	unsigned int reg;
+#endif
 	struct ak09911_data *data = iio_priv(indio_dev);
 
 	switch (mask) {
@@ -245,6 +273,34 @@ static int ak09911_read_raw(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_SCALE:
 		*val = 0;
 		*val2 = data->raw_to_gauss[chan->address];
+		return IIO_VAL_INT_PLUS_MICRO;
+	case IIO_CHAN_INFO_SAMP_FREQ:
+#if IF_USE_REGMAP_INTERFACE
+		mutex_lock(&data->lock);
+		ret = regmap_read(data->regmap, AK09911_REG_CNTL2, &reg);
+		mutex_unlock(&data->lock);
+		if (ret < 0)
+			return ret;
+
+		i = (reg & AK09911_CNTL2_CONTINUOUS_MASK)
+			>> AK09911_CNTL2_CONTINUOUS_SHIFT;
+#else
+		ret = i2c_smbus_read_byte_data(data->client, AK09911_REG_CNTL2);
+		if (ret < 0) {
+			dev_err(&data->client->dev, "Error in reading CNTL2\n");
+			return ret;
+		}
+
+		data->reg_cntl2 = ret;
+
+		i = data->reg_cntl2 >> AK09911_CNTL2_CONTINUOUS_SHIFT;
+		i = i - 1;
+		if (i < 0 || i >= ARRAY_SIZE(ak09911_samp_freq))
+			return -EINVAL;
+
+#endif
+		*val  = ak09911_samp_freq[i].val;
+		*val2 = ak09911_samp_freq[i].val2;
 		return IIO_VAL_INT_PLUS_MICRO;
 	}
 
@@ -257,7 +313,8 @@ static int ak09911_read_raw(struct iio_dev *indio_dev,
 		.modified = 1,						\
 		.channel2 = IIO_MOD_##axis,				\
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |		\
-			     BIT(IIO_CHAN_INFO_SCALE),			\
+				BIT(IIO_CHAN_INFO_SCALE) |		\
+				BIT(IIO_CHAN_INFO_SAMP_FREQ),		\
 		.address = index,					\
 	}
 
@@ -265,9 +322,57 @@ static const struct iio_chan_spec ak09911_channels[] = {
 	AK09911_CHANNEL(X, 0), AK09911_CHANNEL(Y, 1), AK09911_CHANNEL(Z, 2),
 };
 
+static int ak09911_get_samp_freq_index(struct ak09911_data *data,
+					int val, int val2)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(ak09911_samp_freq); i++)
+		if (ak09911_samp_freq[i].val == val &&
+			ak09911_samp_freq[i].val2 == val2)
+				return i;
+	return -EINVAL;
+}
+
+static int ak09911_write_raw(struct iio_dev *indio_dev,
+				struct iio_chan_spec const *chan, int val,
+				int val2, long mask)
+{
+	struct ak09911_data *data = iio_priv(indio_dev);
+	int ret, i;
+
+	if (iio_buffer_enabled(indio_dev))
+		return -EBUSY;
+
+	switch (mask) {
+	case IIO_CHAN_INFO_SAMP_FREQ:
+		i = ak09911_get_samp_freq_index(data, val, val2);
+		if (i < 0)
+			return -EINVAL;
+
+		data->reg_cntl2 &= ~AK09911_CNTL2_CONTINUOUS_MASK;
+		data->reg_cntl2 |= (i + 1) << AK09911_CNTL2_CONTINUOUS_SHIFT;
+
+		mutex_lock(&data->lock);
+#if IF_USE_REGMAP_INTERFACE
+		ret = regmap_update_bits(data->regmap, AK09911_REG_CNTL2,
+					AK09911_CNTL2_CONTINUOUS_MASK,
+				(i + 1) << AK09911_CNTL2_CONTINUOUS_SHIFT);
+#else
+		ret = i2c_smbus_write_byte_data(data->client,
+				AK09911_REG_CNTL2, data->reg_cntl2);
+#endif
+		mutex_unlock(&data->lock);
+		return ret;
+	default:
+		return -EINVAL;
+	}
+}
+
 static const struct iio_info ak09911_info = {
-	.read_raw = &ak09911_read_raw,
-	.driver_module = THIS_MODULE,
+	.read_raw	= ak09911_read_raw,
+	.write_raw	= ak09911_write_raw,
+	.driver_module	= THIS_MODULE,
 };
 
 static const struct acpi_device_id ak_acpi_match[] = {
@@ -276,12 +381,77 @@ static const struct acpi_device_id ak_acpi_match[] = {
 };
 MODULE_DEVICE_TABLE(acpi, ak_acpi_match);
 
+static bool ak09911_is_writeable_reg(struct device *dev, unsigned int reg)
+{
+	switch (reg) {
+	case AK09911_REG_CNTL1:
+	case AK09911_REG_CNTL2:
+	case AK09911_REG_CNTL3:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool ak09911_is_readable_reg(struct device *dev, unsigned int reg)
+{
+	switch (reg) {
+	case AK09911_REG_HXL:
+	case AK09911_REG_HXH:
+	case AK09911_REG_HYL:
+	case AK09911_REG_HYH:
+	case AK09911_REG_HZL:
+	case AK09911_REG_HZH:
+	case AK09911_REG_ST2:
+	case AK09911_REG_ST1:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool ak09911_is_volatile_reg(struct device *dev, unsigned int reg)
+{
+	switch (reg) {
+	case AK09911_REG_CNTL1:
+	case AK09911_REG_CNTL2:
+	case AK09911_REG_CNTL3:
+		return false;
+	default:
+		return true;
+	}
+}
+
+static struct reg_default ak09911_reg_defaults[] = {
+	{ AK09911_REG_CNTL1,  0x00 },
+	{ AK09911_REG_CNTL2,  0x00 },
+	{ AK09911_REG_CNTL3,  0x00 },
+};
+
+static const struct regmap_config ak09911_regmap_config = {
+	.name = AK09911_REGMAP_NAME,
+
+	.reg_bits = 8,
+	.val_bits = 8,
+
+	/* .max_register = AK09911_REG_ID, */
+	.cache_type = REGCACHE_FLAT,
+
+	.writeable_reg = ak09911_is_writeable_reg,
+	.readable_reg  = ak09911_is_readable_reg,
+	.volatile_reg  = ak09911_is_volatile_reg,
+
+	.reg_defaults  = ak09911_reg_defaults,
+	.num_reg_defaults = ARRAY_SIZE(ak09911_reg_defaults),
+};
+
 static int ak09911_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	struct iio_dev *indio_dev;
 	struct ak09911_data *data;
-	char *name;
+	struct regmap *regmap;
+	const char *name;
 	int ret;
 
 	ret = ak09911_verify_chip_id(client);
@@ -294,10 +464,17 @@ static int ak09911_probe(struct i2c_client *client,
 	if (indio_dev == NULL)
 		return -ENOMEM;
 
+	regmap = devm_regmap_init_i2c(client, &ak09911_regmap_config);
+	if (IS_ERR(regmap)) {
+		dev_err(&client->dev, "regmap initialization failed\n");
+		return PTR_ERR(regmap);
+	}
+
 	data = iio_priv(indio_dev);
 	i2c_set_clientdata(client, indio_dev);
 
 	data->client = client;
+	data->regmap = regmap;
 	mutex_init(&data->lock);
 
 	ret = ak09911_get_asa(client);
@@ -320,6 +497,9 @@ static int ak09911_probe(struct i2c_client *client,
 	indio_dev->name = id->name;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->name = name;
+
+	data->reg_cntl2 = AK09911_CNTL2_CONTINUOUS_DEFAULT;
+
 	ret = iio_device_register(indio_dev);
 	if (ret < 0)
 		return ret;
