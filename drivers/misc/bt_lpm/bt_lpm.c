@@ -27,16 +27,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
 #include <linux/serial_hsu.h>
-#include <linux/dmi.h>
-
-static const struct dmi_system_id mrd_bt_gpio[] = {
-	{
-		.matches = {DMI_MATCH(DMI_BIOS_VERSION, "CHTMRD"),},
-	},
-	{}
-};
-
-static bool isMrdBoard;
 
 enum {
 	gpio_wake_acpi_idx,
@@ -119,32 +109,14 @@ static int bt_lpm_acpi_probe(struct platform_device *pdev)
 {
 	acpi_handle handle;
 	acpi_integer port;
-	const struct dmi_system_id *dmi_id;
-
-	isMrdBoard = false;
-	dmi_id = dmi_first_match(mrd_bt_gpio);
-	if (dmi_id) {
-		pr_debug("CHT MRD found - reordering GPIO\n");
-		isMrdBoard = true;
-	}
 
 	/*
 	 * Handle ACPI specific initializations.
 	 */
 	dev_dbg(&pdev->dev, "ACPI specific probe\n");
 
-	/*
-	 * In CHT MRD the gpio_wake_acpi_idx and gpio_enable_bt_acpi_idx
-	 * coming from the ACPI table are swapped
-	 * This is a temporary fix waiting for the correct ACPI table
-	 */
-	if (isMrdBoard) {
-		bt_lpm_gpiod = gpiod_get_index(&pdev->dev, "enable_bt",
-						gpio_wake_acpi_idx);
-	} else {
-		bt_lpm_gpiod = gpiod_get_index(&pdev->dev, "enable_bt",
+	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, "enable_bt",
 						gpio_enable_bt_acpi_idx);
-	}
 	bt_lpm.gpio_enable_bt = desc_to_gpio(bt_lpm_gpiod);
 	if (!gpio_is_valid(bt_lpm.gpio_enable_bt)) {
 		pr_err("%s: gpio %d for gpio_enable_bt not valid\n", __func__,
@@ -153,13 +125,8 @@ static int bt_lpm_acpi_probe(struct platform_device *pdev)
 	}
 
 #ifndef DBG_DISABLE_BT_LOW_POWER
-	if (isMrdBoard) {
-		bt_lpm_gpiod = gpiod_get_index(&pdev->dev, "host_wake_bt",
-						gpio_enable_bt_acpi_idx);
-	} else {
-		bt_lpm_gpiod = gpiod_get_index(&pdev->dev, "host_wake_bt",
+	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, "host_wake_bt",
 						gpio_wake_acpi_idx);
-	}
 	bt_lpm.gpio_wake = desc_to_gpio(bt_lpm_gpiod);
 	if (!gpio_is_valid(bt_lpm.gpio_wake)) {
 		pr_err("%s: gpio %d for gpio_wake not valid\n", __func__,
