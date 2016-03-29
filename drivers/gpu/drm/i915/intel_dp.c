@@ -728,12 +728,6 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 	if (is_edp(intel_dp) && !edp_have_panel_power(intel_dp))
 		vdd = _edp_panel_vdd_on(intel_dp);
 
-	/* dp aux is extremely sensitive to irq latency, hence request the
-	 * lowest possible wakeup latency and so prevent the cpu from going into
-	 * deep sleep states.
-	 */
-	pm_qos_update_request(&dev_priv->pm_qos, 0);
-
 	intel_dp_check_edp(intel_dp);
 
 	if (IS_CHERRYVIEW(dev))
@@ -843,7 +837,6 @@ intel_dp_aux_ch(struct intel_dp *intel_dp,
 
 	ret = recv_bytes;
 out:
-	pm_qos_update_request(&dev_priv->pm_qos, PM_QOS_DEFAULT_VALUE);
 	intel_display_power_put(dev_priv, pipe);
 
 	if (vdd)
@@ -4882,6 +4875,7 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 		intel_dp->aux.i2c_defer_count = 0;
 
 		intel_dp->has_audio =  false;
+		pm_qos_update_request(&dev_priv->pm_qos, PM_QOS_DEFAULT_VALUE);
 		goto out;
 	}
 
@@ -4939,9 +4933,12 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 		chv_upfront_link_train(dev, intel_dp, intel_crtc);
 	}
 
-	/* if simulation was in progress clear the flag */
-	if (dev_priv->simulate_dp_in_progress & intel_encoder->hpd_pin)
-		dev_priv->simulate_dp_in_progress &= ~(intel_encoder->hpd_pin);
+	/*
+	 * dp aux is extremely sensitive to irq latency, hence request the
+	 * lowest possible wakeup latency and so prevent the cpu from going into
+	 * deep sleep states.
+	 */
+	pm_qos_update_request(&dev_priv->pm_qos, 0);
 
 out:
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
