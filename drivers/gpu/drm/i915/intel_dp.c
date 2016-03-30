@@ -3137,7 +3137,6 @@ static void chv_pre_enable_dp(struct intel_encoder *encoder)
 	if (is_edp(intel_dp))
 		vlv_init_panel_power_sequencer(intel_dp);
 
-	intel_dp->allow_dpcd = true;
 	intel_enable_dp(encoder);
 
 	vlv_wait_port_ready(dev_priv, dport);
@@ -4088,6 +4087,7 @@ intel_dp_complete_link_train(struct intel_dp *intel_dp)
 
 	if (channel_eq) {
 		intel_dp->has_fast_link_train = true;
+		intel_dp->allow_dpcd = true;
 		DRM_DEBUG_KMS("Channel EQ done. DP Training successful\n");
 	}
 
@@ -4562,7 +4562,7 @@ intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 	intel_dp->compliance_test_type = 0;
 	intel_dp->compliance_test_data = 0;
 
-	while (!intel_dp->allow_dpcd && counter-- > 0)
+	while (!intel_dp->allow_dpcd && counter-- > 1)
 		mdelay(10);
 
 	DRM_DEBUG_KMS("\n");
