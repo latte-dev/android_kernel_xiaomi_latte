@@ -4605,7 +4605,6 @@ intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 		 */
 		if (old_lane_count != intel_dp->dpcd[DP_MAX_LANE_COUNT]) {
 			DRM_DEBUG_KMS("Lane count changed\n");
-			intel_dp_update_simulate_detach_info(intel_dp);
 			*perform_full_detect = true;
 			return;
 		}
@@ -4640,7 +4639,6 @@ intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 
 	if (check_link) {
 		if (IS_CHERRYVIEW(dev)) {
-			intel_dp_update_simulate_detach_info(intel_dp);
 			*perform_full_detect = true;
 		} else {
 			if (intel_dp_start_link_train(intel_dp))
@@ -4915,7 +4913,10 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 			DRM_DEBUG_DRIVER("CP or sink specific irq unhandled\n");
 	}
 
-	if (IS_CHERRYVIEW(dev) &&
+	/* if simulation was in progress clear the flag & skip upfront */
+	if (dev_priv->simulate_dp_in_progress & intel_encoder->hpd_pin)
+		dev_priv->simulate_dp_in_progress &= ~(intel_encoder->hpd_pin);
+	else if (IS_CHERRYVIEW(dev) &&
 		intel_dp->compliance_test_type != DP_TEST_LINK_TRAINING &&
 			intel_encoder->type == INTEL_OUTPUT_DISPLAYPORT) {
 
@@ -5239,6 +5240,7 @@ intel_dp_hpd_pulse(struct intel_digital_port *intel_dig_port, bool long_hpd)
 
 	if (full_detect) {
 		DRM_DEBUG_KMS("Forcing full detect for short pulse\n");
+		intel_dp_update_simulate_detach_info(intel_dp);
 		return true;
 	}
 
