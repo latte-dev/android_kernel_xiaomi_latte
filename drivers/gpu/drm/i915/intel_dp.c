@@ -4515,6 +4515,7 @@ intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 	u8 old_sink_count = intel_dp->sink_count;
 	u8 old_lane_count = intel_dp->dpcd[DP_MAX_LANE_COUNT];
 	bool ret;
+	bool check_link = false;
 	uint8_t counter = MAX_SHORT_PULSE_RETRY_COUNT;
 
 	*perform_full_detect = false;
@@ -4545,13 +4546,6 @@ intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 		/* No need to proceed if we are going to do full detect */
 		return;
 	}
-
-	/* FIXME: This access isn't protected by any locks. */
-	if (!intel_encoder->connectors_active)
-		return;
-
-	if (WARN_ON(!intel_encoder->base.crtc))
-		return;
 
 	/* Try to read the source of the interrupt */
 	if (intel_dp->dpcd[DP_DPCD_REV] >= 0x11 &&
@@ -4590,12 +4584,22 @@ intel_dp_check_link_status(struct intel_dp *intel_dp, bool *perform_full_detect)
 		}
 	}
 
-	/* if link training is requested we should perform it always */
-	if ((intel_dp->compliance_test_type == DP_TEST_LINK_TRAINING) ||
-	    (!drm_dp_channel_eq_ok(link_status, intel_dp->lane_count))) {
+	/* FIXME: This access isn't protected by any locks.
+	 * if link training is requested we should perform it always
+	 */
+	if (intel_dp->compliance_test_type == DP_TEST_LINK_TRAINING) {
+		DRM_DEBUG_KMS("%s: Link training requested, retraining\n",
+				intel_encoder->base.name);
+		check_link = true;
+	} else  if (((intel_encoder->connectors_active) &&
+				(intel_encoder->base.crtc)) &&
+		(!drm_dp_channel_eq_ok(link_status, intel_dp->lane_count))) {
 		DRM_DEBUG_KMS("%s: channel EQ not ok, retraining\n",
-			      intel_encoder->base.name);
+				intel_encoder->base.name);
+		check_link = true;
+	}
 
+	if (check_link) {
 		if (IS_CHERRYVIEW(dev)) {
 			intel_dp_update_simulate_detach_info(intel_dp);
 			*perform_full_detect = true;
