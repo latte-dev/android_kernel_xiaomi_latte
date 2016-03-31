@@ -56,7 +56,7 @@
 #define DISP_PORT_SIGNAL_GEN2		2
 
 #define DP_HPD_LONG_PULSE_TIME		5 /* 5 mSec */
-#define DP_HPD_SHORT_PULSE_TIME		2   /* 2 mSec */
+#define DP_HPD_SHORT_PULSE_TIME		1   /* 1 mSec */
 #define DP_HPD_AUTO_TRIGGER_TIME	200 /* 200 mSec */
 
 static void pe_prepare_vdm_header(struct vdm_header *v_hdr, enum vdm_cmd cmd,
