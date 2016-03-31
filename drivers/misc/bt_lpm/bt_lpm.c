@@ -222,7 +222,6 @@ static int bt_lpm_rfkill_set_power(void *data, bool blocked)
 		gpio_set_value(bt_lpm.gpio_reset, 1);
 #else
 		gpio_set_value(bt_lpm.gpio_enable_bt, 1);
-		set_wake_locked(1);
 
 #endif
 		pr_debug("%s: turn BT on\n", __func__);
@@ -232,7 +231,6 @@ static int bt_lpm_rfkill_set_power(void *data, bool blocked)
 		gpio_set_value(bt_lpm.gpio_reset, 0);
 #else
 		gpio_set_value(bt_lpm.gpio_enable_bt, 0);
-		set_wake_locked(0);
 #endif
 		pr_debug("%s: turn BT off\n", __func__);
 	}
