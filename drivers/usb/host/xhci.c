@@ -166,6 +166,10 @@ int xhci_reset(struct xhci_hcd *xhci)
 	u32 state;
 	int ret, i;
 
+	/* Disable PIPE 4.1 synchronous phystatus */
+	if (xhci->quirks & XHCI_PIPE_4_1_SYNC_PHYSTAT_TOGGLE)
+		xhci_intel_pipe_sync_phystatus_quirk(xhci, true);
+
 	state = readl(&xhci->op_regs->status);
 	if ((state & STS_HALT) == 0) {
 		xhci_warn(xhci, "Host controller not halted, aborting reset.\n");

@@ -1565,6 +1565,7 @@ struct xhci_hcd {
 #define XHCI_SPURIOUS_WAKEUP	(1 << 18)
 #define XHCI_SPURIOUS_PME	(1 << 19)
 #define XHCI_SSIC_DISABLE_STALL	(1 << 20)
+#define XHCI_PIPE_4_1_SYNC_PHYSTAT_TOGGLE	(1 << 21)
 	unsigned int		num_active_eps;
 	unsigned int		limit_active_eps;
 	/* There are two roothubs to keep track of bus suspend info for */
