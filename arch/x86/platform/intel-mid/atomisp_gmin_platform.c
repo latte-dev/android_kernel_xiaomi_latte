@@ -17,6 +17,7 @@
 #include <asm/spid.h>
 
 #define MAX_SUBDEVS 8
+//#define DEBUG
 
 /* This needs to be initialized at runtime so the various
  * platform-checking macros in spid.h return the correct results.
@@ -889,8 +890,10 @@ int gmin_get_config_var(struct device *dev, const char *var, char *out, size_t *
 	kfree(ev);
 	*out_len = efilen;
 
+#ifdef DEBUG
 	if (ret)
  		dev_warn(dev, "Failed to find gmin variable %s\n", var8);
+#endif
 
 	return ret;
 }

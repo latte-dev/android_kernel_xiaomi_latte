@@ -82,9 +82,10 @@ static int ov8858_read_reg(struct i2c_client *client, u16 type, u16 reg,
 {
 	u8 data[OV8858_SHORT_MAX];
 	int err;
-
+#ifdef DEBUG
 	dev_dbg(&client->dev, "%s: type = %d, reg = 0x%04x\n",
 		__func__, type, reg);
+#endif
 
 	/* read only 8 and 16 bit values */
 	if (type != OV8858_8BIT && type != OV8858_16BIT) {
@@ -622,6 +623,7 @@ static int __ov8858_init(struct v4l2_subdev *sd)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct ov8858_device *dev = to_ov8858_sensor(sd);
 	int ret;
+
 	dev_dbg(&client->dev, "%s\n", __func__);
 
 #ifndef CONFIG_GMIN_INTEL_MID
@@ -644,8 +646,11 @@ static int __ov8858_init(struct v4l2_subdev *sd)
 		ov8858_BasicSettings[3].val = 0x50; /* pll1_multiplier = 80 */
 	}
 #endif
+
+#ifdef DEBUG
 	dev_dbg(&client->dev, "%s: Writing basic settings to ov8858\n",
 		__func__);
+#endif
 	ret = ov8858_write_reg_array(client, ov8858_BasicSettings);
 	if (ret)
 		return ret;
@@ -1524,21 +1529,27 @@ static int ov8858_detect(struct i2c_client *client, u16 *id)
 	/* i2c check */
 	if (!i2c_check_functionality(adapter, I2C_FUNC_I2C))
 		return -ENODEV;
-
+#ifdef DEBUG
 	dev_dbg(&client->dev, "%s: I2C functionality ok\n", __func__);
+#endif
 	ret = ov8858_read_reg(client, OV8858_8BIT, OV8858_CHIP_ID_HIGH, &id_hi);
 	if (ret)
 		return ret;
+#ifdef DEBUG
 	dev_dbg(&client->dev, "%s: id_high = 0x%04x\n", __func__, id_hi);
+#endif
 	ret = ov8858_read_reg(client, OV8858_8BIT, OV8858_CHIP_ID_LOW, &id_low);
 	if (ret)
 		return ret;
+#ifdef DEBUG
 	dev_dbg(&client->dev, "%s: id_low = 0x%04x\n", __func__, id_low);
+#endif
 	*id = (id_hi << 8) | id_low;
-
+#ifdef DEBUG
 	dev_dbg(&client->dev, "%s: chip_id = 0x%04x\n", __func__, *id);
 
 	dev_info(&client->dev, "%s: chip_id = 0x%04x\n", __func__, *id);
+#endif
 	if (*id != OV8858_CHIP_ID)
 		return -ENODEV;
 

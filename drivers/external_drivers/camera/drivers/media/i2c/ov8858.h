@@ -19,6 +19,8 @@
  *
  */
 
+
+//#define DEBUG
 #ifndef __OV8858_H__
 #define __OV8858_H__
 #include <linux/atomisp_platform.h>
