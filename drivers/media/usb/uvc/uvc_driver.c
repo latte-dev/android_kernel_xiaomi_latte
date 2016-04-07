@@ -36,6 +36,7 @@ unsigned int uvc_no_drop_param;
 static unsigned int uvc_quirks_param = -1;
 unsigned int uvc_trace_param;
 unsigned int uvc_timeout_param = UVC_CTRL_STREAMING_TIMEOUT;
+unsigned int uvc_urbs_param = UVC_DEFAULT_URBS;
 
 /* ------------------------------------------------------------------------
  * Video formats
@@ -2087,6 +2088,8 @@ module_param_named(trace, uvc_trace_param, uint, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(trace, "Trace level bitmask");
 module_param_named(timeout, uvc_timeout_param, uint, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(timeout, "Streaming control requests timeout");
+module_param_named(uvc_urbs, uvc_urbs_param, uint, S_IRUGO);
+MODULE_PARM_DESC(uvc_urbs, "Number of URB buffers to allocate");
 
 /* ------------------------------------------------------------------------
  * Driver initialization and cleanup
@@ -2559,6 +2562,9 @@ static int __init uvc_init(void)
 		uvc_debugfs_cleanup();
 		return ret;
 	}
+
+	if (uvc_urbs_param > UVC_MAX_URBS)
+		uvc_urbs_param = UVC_MAX_URBS;
 
 	printk(KERN_INFO DRIVER_DESC " (" DRIVER_VERSION ")\n");
 	return 0;

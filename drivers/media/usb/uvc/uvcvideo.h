@@ -132,8 +132,10 @@
 
 #define DRIVER_VERSION		"1.1.1"
 
-/* Number of isochronous URBs. */
-#define UVC_URBS		5
+/* Default Number of isochronous URBs. */
+#define UVC_DEFAULT_URBS	5
+/* Maximum Number of isochronous URBs. */
+#define UVC_MAX_URBS		32
 /* Maximum number of packets per URB. */
 #define UVC_MAX_PACKETS		32
 /* Maximum number of video buffers. */
@@ -489,9 +491,9 @@ struct uvc_streaming {
 		__u32 max_payload_size;
 	} bulk;
 
-	struct urb *urb[UVC_URBS];
-	char *urb_buffer[UVC_URBS];
-	dma_addr_t urb_dma[UVC_URBS];
+	struct urb *urb[UVC_MAX_URBS];
+	char *urb_buffer[UVC_MAX_URBS];
+	dma_addr_t urb_dma[UVC_MAX_URBS];
 	unsigned int urb_size;
 
 	__u32 sequence;
@@ -606,6 +608,7 @@ extern unsigned int uvc_clock_param;
 extern unsigned int uvc_no_drop_param;
 extern unsigned int uvc_trace_param;
 extern unsigned int uvc_timeout_param;
+extern unsigned int uvc_urbs_param;
 
 #define uvc_trace(flag, msg...) \
 	do { \
