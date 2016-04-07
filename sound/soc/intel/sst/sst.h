@@ -541,6 +541,7 @@ struct intel_sst_drv {
 	unsigned int		csr_value;
 	struct sst_dma		dma;
 	void			*fw_in_mem;
+	size_t			fw_in_mem_size;
 	struct sst_runtime_param runtime_param;
 	unsigned int		device_input_mixer;
 	struct mutex		mixer_ctrl_lock;

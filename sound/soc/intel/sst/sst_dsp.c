@@ -1204,10 +1204,14 @@ void sst_firmware_load_cb(const struct firmware *fw, void *context)
 		goto out;
 	}
 
-	ctx->fw_in_mem = kzalloc(fw->size, GFP_KERNEL);
-	if (!ctx->fw_in_mem) {
-		pr_err("%s unable to allocate memory\n", __func__);
-		goto out;
+	if (!ctx->fw_in_mem || (ctx->fw_in_mem_size < fw->size)) {
+		kfree(ctx->fw_in_mem);
+		ctx->fw_in_mem = kzalloc(fw->size, GFP_KERNEL);
+		if (!ctx->fw_in_mem) {
+			pr_err("%s unable to allocate memory\n", __func__);
+			goto out;
+		}
+		ctx->fw_in_mem_size = fw->size;
 	}
 
 	pr_debug("copied fw to %p", ctx->fw_in_mem);
@@ -1231,11 +1235,9 @@ void sst_firmware_load_cb(const struct firmware *fw, void *context)
 							&ctx->memcpy_list);
 	}
 	trace_sst_fw_download("End FW parsing", ctx->sst_state);
-	if (ret) {
-		kfree(ctx->fw_in_mem);
-		ctx->fw_in_mem = NULL;
+	if (ret)
 		goto out;
-	}
+
 	/* If static module download(download at boot time) is supported,
 	 * set the flag to indicate lib download is to be done
 	 */
@@ -1278,11 +1280,15 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 		pr_err("FW image invalid...\n");
 		goto end_release;
 	}
-	sst->fw_in_mem = kzalloc(fw->size, GFP_KERNEL);
-	if (!sst->fw_in_mem) {
-		pr_err("%s unable to allocate memory\n", __func__);
-		retval = -ENOMEM;
-		goto end_release;
+	if (!sst->fw_in_mem || (sst->fw_in_mem_size < fw->size)) {
+		kfree(sst->fw_in_mem);
+		sst->fw_in_mem = kzalloc(fw->size, GFP_KERNEL);
+		if (!sst->fw_in_mem) {
+			pr_err("%s unable to allocate memory\n", __func__);
+			retval = -ENOMEM;
+			goto end_release;
+		}
+		sst->fw_in_mem_size = fw->size;
 	}
 	pr_debug("copied fw to %p", sst->fw_in_mem);
 	pr_debug("phys: %lx", (unsigned long)virt_to_phys(sst->fw_in_mem));

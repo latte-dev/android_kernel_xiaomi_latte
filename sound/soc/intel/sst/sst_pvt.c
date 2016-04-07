@@ -421,8 +421,6 @@ void sst_do_recovery_mrfld(struct intel_sst_drv *sst)
 
 	if (sst_drv_ctx->fw_in_mem) {
 		pr_err("Clearing the cached FW copy...\n");
-		kfree(sst_drv_ctx->fw_in_mem);
-		sst_drv_ctx->fw_in_mem = NULL;
 		sst_memcpy_free_resources();
 		kfree(sst_drv_ctx->fw_sg_list.src);
 		kfree(sst_drv_ctx->fw_sg_list.dst);
