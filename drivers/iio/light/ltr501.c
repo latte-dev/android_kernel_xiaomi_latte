@@ -18,6 +18,7 @@
 #include <linux/delay.h>
 #include <linux/regmap.h>
 #include <linux/acpi.h>
+#include <linux/gpio/consumer.h>
 
 #include <linux/iio/iio.h>
 #include <linux/iio/events.h>
@@ -525,16 +526,13 @@ static const struct iio_event_spec ltr501_als_event_spec[] = {
 	{
 		.type = IIO_EV_TYPE_THRESH,
 		.dir = IIO_EV_DIR_RISING,
-		.mask_separate = BIT(IIO_EV_INFO_VALUE),
+		.mask_separate = BIT(IIO_EV_INFO_ENABLE) |
+				BIT(IIO_EV_INFO_VALUE),
 	}, {
 		.type = IIO_EV_TYPE_THRESH,
 		.dir = IIO_EV_DIR_FALLING,
-		.mask_separate = BIT(IIO_EV_INFO_VALUE),
-	}, {
-		.type = IIO_EV_TYPE_THRESH,
-		.dir = IIO_EV_DIR_EITHER,
 		.mask_separate = BIT(IIO_EV_INFO_ENABLE) |
-				 BIT(IIO_EV_INFO_PERIOD),
+				BIT(IIO_EV_INFO_VALUE),
 	},
 
 };
@@ -1374,6 +1372,37 @@ static const char *ltr501_match_acpi_device(struct device *dev, int *chip_idx)
 	return dev_name(dev);
 }
 
+static int ltr501_gpio_probe(struct i2c_client *client,
+				struct ltr501_data *data)
+{
+	struct device *dev;
+	struct gpio_desc *gpio;
+	int ret;
+
+	if (!client)
+		return -EINVAL;
+
+	dev = &client->dev;
+
+	/* data ready gpio interrupt pin */
+	gpio = devm_gpiod_get_index(dev, "ltr501_int", 0);
+	if (IS_ERR(gpio)) {
+		dev_err(dev, "acpi gpio get index failed\n");
+		return PTR_ERR(gpio);
+	}
+
+	ret = gpiod_direction_input(gpio);
+	if (ret)
+		return ret;
+
+	ret = gpiod_to_irq(gpio);
+
+	dev_dbg(dev, "GPIO resource, no:%d irq:%d\n", desc_to_gpio(gpio), ret);
+
+	return ret;
+}
+
+
 static int ltr501_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
@@ -1478,7 +1507,11 @@ static int ltr501_probe(struct i2c_client *client,
 	if (ret < 0)
 		return ret;
 
-	if (client->irq > 0) {
+
+	if (client->irq < 0)
+		client->irq = ltr501_gpio_probe(client, data);
+
+	if (client->irq >= 0) {
 		ret = devm_request_threaded_irq(&client->dev, client->irq,
 						NULL, ltr501_interrupt_handler,
 						IRQF_TRIGGER_FALLING |
