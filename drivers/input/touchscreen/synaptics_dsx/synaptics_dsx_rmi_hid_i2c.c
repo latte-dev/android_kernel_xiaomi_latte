@@ -147,7 +147,6 @@ static struct synaptics_dsx_board_data s7300_board_data = {
 	.cap_button_map = &cap_button_map,
 	.vir_button_map = &vir_button_map,
 	.device_descriptor_addr = DSX_HID_DEVICE_DESCRIPTOR_ADDR,
-	.pwr_reg_name = "GPIO1",
 };
 
 static int do_i2c_transfer(struct i2c_client *client, struct i2c_msg *msg)
