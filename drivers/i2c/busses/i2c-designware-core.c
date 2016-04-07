@@ -497,10 +497,13 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 	struct i2c_msg *msgs = dev->msgs;
 	u32 intr_mask;
 	int tx_limit, rx_limit;
-	u32 addr = msgs[dev->msg_write_idx].addr;
+	u32 addr = 0;
 	u32 buf_len = dev->tx_buf_len;
 	u8 *buf = dev->tx_buf;
 	bool need_restart = false;
+
+	if (dev->msg_write_idx < dev->msgs_num)
+		addr = msgs[dev->msg_write_idx].addr;
 
 	intr_mask = DW_IC_INTR_DEFAULT_MASK;
 
