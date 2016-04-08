@@ -70,6 +70,8 @@
 #define AK09911_REG_CNTL2		0x31
 #define AK09911_REG_CNTL3		0x32
 
+#define AK09911_MAX_REGS		0x63
+
 #define RAW_TO_GAUSS(asa)	((((asa) + 128) * 6000) / 256)
 
 #define AK09911_CNTL2_CONTINUOUS_1_BIT	BIT(1)
@@ -490,6 +492,7 @@ static const struct regmap_config ak09911_regmap_config = {
 
 	.reg_defaults  = ak09911_reg_defaults,
 	.num_reg_defaults = ARRAY_SIZE(ak09911_reg_defaults),
+	.max_register = AK09911_MAX_REGS,
 };
 static irqreturn_t ak09911_trigger_handler(int irq, void *p)
 {
