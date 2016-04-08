@@ -328,6 +328,17 @@ static int ak09911_read_raw(struct iio_dev *indio_dev,
 	return -EINVAL;
 }
 
+static IIO_CONST_ATTR_SAMP_FREQ_AVAIL("10 20 50 100");
+
+static struct attribute *ak09911_attributes[] = {
+	&iio_const_attr_sampling_frequency_available.dev_attr.attr,
+	NULL,
+};
+
+static const struct attribute_group ak09911_attrs_group = {
+	.attrs = ak09911_attributes,
+};
+
 enum ak09911_axis {
 	AXIS_X = 0,
 	AXIS_Y,
@@ -419,6 +430,7 @@ static int ak09911_write_raw(struct iio_dev *indio_dev,
 }
 
 static const struct iio_info ak09911_info = {
+	.attrs		= &ak09911_attrs_group,
 	.read_raw	= ak09911_read_raw,
 	.write_raw	= ak09911_write_raw,
 	.driver_module	= THIS_MODULE,
