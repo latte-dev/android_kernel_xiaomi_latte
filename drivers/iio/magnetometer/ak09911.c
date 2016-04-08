@@ -178,7 +178,7 @@ static int ak09911_verify_chip_id(struct i2c_client *client)
 	int ret;
 
 	ret = i2c_smbus_read_i2c_block_data(client, AK09911_REG_WIA1,
-					    3, wia_val);
+					    2, wia_val);
 	if (ret < 0) {
 		dev_err(&client->dev, "Error reading WIA\n");
 		return ret;
