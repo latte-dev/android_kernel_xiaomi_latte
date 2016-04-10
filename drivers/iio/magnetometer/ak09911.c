@@ -83,7 +83,7 @@
 					AK09911_CNTL2_CONTINUOUS_3_BIT)
 #define AK09911_CNTL2_CONTINUOUS_SHIFT	1
 
-#define AK09911_MAX_CONVERSION_TIMEOUT		500
+#define AK09911_MAX_CONVERSION_TIMEOUT		100
 #define AK09911_CONVERSION_DONE_POLL_TIME	10
 #define AK09911_CNTL2_CONTINUOUS_DEFAULT	0
 #define IF_USE_REGMAP_INTERFACE			0
@@ -506,30 +506,44 @@ static const struct regmap_config ak09911_regmap_config = {
 	.num_reg_defaults = ARRAY_SIZE(ak09911_reg_defaults),
 	.max_register = AK09911_MAX_REGS,
 };
+
 static irqreturn_t ak09911_trigger_handler(int irq, void *p)
 {
 	struct iio_poll_func *pf = p;
 	struct iio_dev *indio_dev = pf->indio_dev;
 	struct ak09911_data *data = iio_priv(indio_dev);
+	struct i2c_client *client = data->client;
 	int ret, i=0 ,j=0 ;
 	u16 meas_reg;
 	s16 raw;
-
-	ret = ak09911_set_mode(data->client,  AK09911_MODE_CONTINUOUS_4);
-	if (ret < 0)
-		goto err;
-
-	ret = wait_conversion_complete_polled(data);
-	if (ret < 0)
-		goto err;
+	int count = AK09911_MAX_CONVERSION_TIMEOUT;
+	u8 read_status;
 
 	mutex_lock(&data->lock);
+
+	do {
+		ret = i2c_smbus_read_byte_data(client, AK09911_REG_ST1);
+		if (ret < 0) {
+			dev_err(&client->dev, "Error in reading ST1\n");
+			return ret;
+		}
+		read_status = ret & 0x01;
+		if (read_status)
+			break;
+		} while (count--);
+
+	if (count <=  0)
+		dev_err(&client->dev,"timeout reading AK09911_REG_ST1 reg\n");
+
+
 	for_each_set_bit(i, indio_dev->active_scan_mask,
 		indio_dev->masklength) {
 
 	ret = i2c_smbus_read_word_data(data->client, ak09911_index_to_reg[i]);
-	if (ret < 0)
+	if (ret < 0) {
+		dev_err(&client->dev, "Read ERROR\n");
 		goto err;
+	}
 
 	meas_reg = ret;
 	/* Endian conversion of the measured values. */
@@ -543,8 +557,10 @@ static irqreturn_t ak09911_trigger_handler(int irq, void *p)
 	/* datasheet recommends reading ST2 register after each
 	 * data read operation */
 	ret = i2c_smbus_read_byte_data(data->client, AK09911_REG_ST2);
-	if (ret < 0)
+	if (ret < 0){
+		dev_err(&client->dev, "read AK09911_REG_ST2 ERROR\n");
 		goto err;
+	}
 
 	iio_push_to_buffers_with_timestamp(indio_dev, data->buffer,
 					   pf->timestamp);
