@@ -1592,12 +1592,8 @@ struct xhci_hcd {
 	u32			port_status_u0;
 /* Compliance Mode Timer Triggered every 2 seconds */
 #define COMP_MODE_RCVRY_MSECS 2000
-	/* SSIC device present */
-	bool ssic_device_present;
 	/* SSIC port number */
 	int ssic_port_number;
-	/* Timer for SSIC D3 entry */
-	struct timer_list	set_d3_timer;
 };
 
 /* convert between an HCD pointer and the corresponding EHCI_HCD */

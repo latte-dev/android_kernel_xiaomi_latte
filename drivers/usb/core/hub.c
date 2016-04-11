@@ -32,7 +32,6 @@
 #include <asm/byteorder.h>
 
 #include "hub.h"
-#include "../host/hub-intel-cap.h"
 
 #define USB_VENDOR_GENESYS_LOGIC		0x05e3
 #define HUB_QUIRK_CHECK_PORT_AUTOSUSPEND	0x01
@@ -1665,14 +1664,6 @@ static void hub_disconnect(struct usb_interface *intf)
 	if (hub->hdev->speed == USB_SPEED_HIGH)
 		highspeed_hubs--;
 
-	/* Free the timer as the context will be freed */
-	if (hub_intel_ssic_port_check(hdev)) {
-		struct usb_port	*port_dev = hub->ports[hdev->portnum - 1];
-		dev_dbg(&hdev->dev, "Enable D3 timer, portnum %d\n",
-				hdev->portnum);
-		hub_intel_ssic_d3_timer_set(hdev, port_dev, false);
-	}
-
 	usb_free_urb(hub->urb);
 	kfree(hub->ports);
 	kfree(hub->descriptor);
@@ -2131,17 +2122,9 @@ void usb_disconnect(struct usb_device **pdev)
 		sysfs_remove_link(&udev->dev.kobj, "port");
 		sysfs_remove_link(&port_dev->dev.kobj, "device");
 
-		if (!port_dev->did_runtime_put) {
-			/* Check for SSIC port disconnect
-			 * and enable the timer */
-			if (hub_intel_ssic_port_check(udev)) {
-				dev_dbg(&udev->dev, "Enable D3 timer, portnum %d\n",
-						udev->portnum);
-				hub_intel_ssic_d3_timer_set(udev,
-						port_dev, true);
-			} else
-				pm_runtime_put(&port_dev->dev);
-		} else
+		if (!port_dev->did_runtime_put)
+			pm_runtime_put(&port_dev->dev);
+		else
 			port_dev->did_runtime_put = false;
 	}
 
@@ -2456,13 +2439,6 @@ int usb_new_device(struct usb_device *udev)
 		}
 
 		pm_runtime_get_sync(&port_dev->dev);
-
-		/* Remove the timer as SSIC has enumerated correctly */
-		if (hub_intel_ssic_port_check(udev)) {
-			dev_dbg(&udev->dev, "Disable D3 timer, portnum %d\n",
-					udev->portnum);
-			hub_intel_ssic_d3_timer_set(udev, port_dev, false);
-		}
 	}
 
 	(void) usb_create_ep_devs(&udev->dev, &udev->ep0, udev);
@@ -4552,15 +4528,6 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 	}
 
 	retval = 0;
-
-	/* Initialize the timer if it's empty */
-	if (hub_intel_ssic_port_check(udev)) {
-		struct usb_port	*port_dev = hub->ports[udev->portnum - 1];
-		dev_dbg(&udev->dev, "Initialize D3 timer, portnum %d\n",
-				udev->portnum);
-		hub_intel_ssic_d3_timer_init(hcd, port_dev);
-	}
-
 	/* notify HCD that we have a device connected and addressed */
 	if (hcd->driver->update_device)
 		hcd->driver->update_device(hcd, udev);
