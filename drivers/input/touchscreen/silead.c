@@ -203,7 +203,7 @@ static void silead_ts_read_data(struct i2c_client *client)
 	u8 buf[SILEAD_TS_DATA_LEN];
 	char read_buf[4];
 	u8 buf_t[4] = {0};
-	int x, y, id, touch_nr, ret, i, offset;
+	int x, y, id, touch_nr = 0, ret, i, offset;
 	struct gsl_touch_info cinfo = { { 0 } };
 	ret = i2c_smbus_read_i2c_block_data(client, SILEAD_REG_DATA,
 					    SILEAD_TS_DATA_LEN, buf);
