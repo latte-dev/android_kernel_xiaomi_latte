@@ -78,7 +78,7 @@
 #define SILEAD_FW_NAME		"silead.fw"
 #define SILEAD_X_MAX		960
 #define SILEAD_Y_MAX		600
-#define SILEAD_MAX_FINGERS	5
+#define SILEAD_MAX_FINGERS	10
 #define SILEAD_PRESSURE		50
 #define SILEAD_FW_NAME_LEN	30
 
