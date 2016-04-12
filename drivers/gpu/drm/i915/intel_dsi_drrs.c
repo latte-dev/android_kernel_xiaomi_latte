@@ -258,7 +258,9 @@ int intel_dsi_drrs_init(struct i915_drrs *drrs,
 	DRM_DEBUG("downclock_mode :\n");
 	drm_mode_debug_printmodeline(downclock_mode);
 
+	mutex_lock(&drrs->drrs_mutex);
 	panel->target_mode = NULL;
+	mutex_unlock(&drrs->drrs_mutex);
 
 	if (IS_VALLEYVIEW(intel_encoder->base.dev)) {
 

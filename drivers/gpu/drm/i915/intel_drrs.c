@@ -164,7 +164,11 @@ static void intel_cancel_idleness_drrs_work(struct i915_drrs *drrs)
 		return;
 
 	cancel_delayed_work_sync(&drrs->idleness_drrs_work->work);
+
+	/* Avoid target_mode is NULL when it is in used */
+	mutex_lock(&drrs->drrs_mutex);
 	drrs->connector->panel.target_mode = NULL;
+	mutex_unlock(&drrs->drrs_mutex);
 }
 
 static void intel_enable_idleness_drrs(struct i915_drrs *drrs)
@@ -362,6 +366,7 @@ int intel_drrs_init(struct drm_device *dev,
 		goto err_out;
 	}
 
+	mutex_init(&drrs->drrs_mutex);
 	if (!drrs->encoder_ops->init || !drrs->encoder_ops->exit ||
 					!drrs->encoder_ops->set_drrs_state) {
 		DRM_DEBUG("Essential func ptrs are NULL\n");
@@ -383,7 +388,6 @@ int intel_drrs_init(struct drm_device *dev,
 
 	/* SEAMLESS DRRS is supported and downclock mode also exist */
 	drrs->has_drrs = true;
-	mutex_init(&drrs->drrs_mutex);
 	drrs->drrs_state.current_rr_type = DRRS_HIGH_RR;
 	DRM_INFO("SEAMLESS DRRS supported on this panel.\n");
 
