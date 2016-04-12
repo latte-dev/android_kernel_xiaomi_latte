@@ -44,6 +44,83 @@
 #define SSIC_SS_PORT_LINK_CTRL 0x80ec
 #define SSIC_SS_PORT_LINK_CTRL_U3_MASK (0x7 << 9)
 
+#define CAM_PORT_CHT 3
+
+static ssize_t cam_port_power_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct usb_hcd *hcd = dev_get_drvdata(dev);
+	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
+	__le32 __iomem **port_array;
+	int val, port, status;
+	u32 temp;
+	int tt, poll_for_port_power = 0;
+	unsigned long flags;
+	ssize_t ret = size;
+
+	port_array = xhci->usb3_ports;
+	port = CAM_PORT_CHT;
+
+	status = kstrtoint(buf, 0, &val);
+	if (status != 0) {
+		xhci_err(xhci, "Invalid, value: %s\n", buf);
+		return -EINVAL;
+	}
+
+	xhci_dbg(xhci, "value from user space: %d, port: %d\n",
+		val, port);
+
+	pm_runtime_get_sync(dev);
+
+	spin_lock_irqsave(&xhci->lock, flags);
+
+	temp = readl(port_array[port]);
+	xhci_dbg(xhci, "Get PORTSC=0x%X, port %d\n", temp, port);
+
+	if (val == 1) {
+		temp &= ~PORT_PLS_MASK;
+		temp |= (5 << 5);
+		temp |= PORT_LINK_STROBE;
+		writel(temp, port_array[port]);
+		xhci_dbg(xhci, "Set PORTSC=0x%X, port %d\n", temp, port);
+	} else if (val == 0) {
+		temp |= PORT_PE;
+		writel(temp, port_array[port]);
+		xhci_dbg(xhci, "Set PORTSC=0x%X, port %d\n", temp, port);
+	} else {
+		xhci_err(xhci, "Invalid parameter val: %d\n", val);
+		ret = -EINVAL;
+	}
+
+	spin_unlock_irqrestore(&xhci->lock, flags);
+
+	pm_runtime_put(dev);
+
+	return ret;
+}
+
+static ssize_t cam_port_power_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct usb_hcd *hcd = dev_get_drvdata(dev);
+	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
+	__le32 __iomem **port_array;
+	int port = CAM_PORT_CHT;
+	u32 temp;
+
+	port_array = xhci->usb3_ports;
+
+	pm_runtime_get_sync(dev);
+
+	temp = readl(port_array[port]);
+	xhci_dbg(xhci, "Get PORTSC=0x%X, port %d\n", temp, port);
+
+	pm_runtime_put(dev);
+
+	return sprintf(buf, "%d\n", temp & PORT_POWER?1:0);
+}
+static DEVICE_ATTR_RW(cam_port_power);
+
 static ssize_t ssic_port_enable_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
@@ -351,6 +428,9 @@ static int xhci_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
 	if (device_create_file(&dev->dev, &dev_attr_ssic_port_enable))
 		dev_err(&dev->dev, "can't create ssic_port_enable attribute\n");
+
+	if (device_create_file(&dev->dev, &dev_attr_cam_port_power))
+		dev_err(&dev->dev, "can't create cam_port_power attribute\n");
 
 	/* USB-2 and USB-3 roothubs initialized, allow runtime pm suspend */
 	pm_runtime_put_noidle(&dev->dev);
