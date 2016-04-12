@@ -85,7 +85,8 @@
 #define DC_BC12_IRQ_CFG_REG		0x45
 #define BC12_IRQ_CFG_MASK		0x2
 
-#define DC_XPWR_CHARGE_CUR_DCP		2000
+#define DC_XPWR_CHARGE_CUR_DCP_1500		1500
+#define DC_XPWR_CHARGE_CUR_DCP_2000		2000
 #define DC_XPWR_CHARGE_CUR_CDP		1500
 #define DC_XPWR_CHARGE_CUR_SDP_500	500
 #define DC_XPWR_CHARGE_CUR_SDP_100	100
@@ -270,7 +271,10 @@ static int handle_chrg_det_event(struct dc_pwrsrc_info *info)
 		notify_charger = true;
 		cable_props.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_CONNECT;
 		cable_props.chrg_type = POWER_SUPPLY_CHARGER_TYPE_USB_DCP;
-		cable_props.ma = DC_XPWR_CHARGE_CUR_DCP;
+		if (info->pdata->chrg_usb_compliance)
+			cable_props.ma = DC_XPWR_CHARGE_CUR_DCP_1500;
+		else
+			cable_props.ma = DC_XPWR_CHARGE_CUR_DCP_2000;
 	} else {
 		dev_warn(&info->pdev->dev,
 			"disconnect or unknown or ID event\n");
