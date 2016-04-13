@@ -27,6 +27,7 @@
 #include <linux/regulator/intel_whiskey_cove_pmic.h>
 #include <linux/regulator/intel_dollar_cove_pmic.h>
 #include <linux/regulator/intel_dollar_cove_ti_pmic.h>
+#include <linux/dmi.h>
 
 struct acpi_ids { char *hid; char *uid; };
 
@@ -93,6 +94,20 @@ static struct fixed_voltage_config ccove_vsdcard = {
 static struct regulator_init_data vqmmc_data = {
 	.constraints = {
 		.min_uV			= 1800000,
+		.max_uV			= 3300000,
+		.valid_ops_mask		= REGULATOR_CHANGE_VOLTAGE |
+					REGULATOR_CHANGE_STATUS,
+		.valid_modes_mask	= REGULATOR_MODE_NORMAL,
+	},
+	.num_consumer_supplies	= ARRAY_SIZE(sd_vqmmc_consumer),
+	.consumer_supplies	= sd_vqmmc_consumer,
+};
+
+/* Dollar Cover GPIO1 regulator */
+static struct regulator_init_data gpio1_data = {
+	.constraints = {
+		.name			= "GPIO1",
+		.min_uV			= 700000,
 		.max_uV			= 3300000,
 		.valid_ops_mask		= REGULATOR_CHANGE_VOLTAGE |
 					REGULATOR_CHANGE_STATUS,
@@ -227,22 +242,35 @@ static struct dcovex_regulator_info dcove_vqmmc_info = {
 
 static void intel_setup_dollar_cove_sd_regulators(void)
 {
+	const char *dmi_board = NULL;
+	int reg_id;
+
 	memcpy((void *)&dcovex_vmmc_data, (void *)&vmmc_data,
 				sizeof(struct regulator_init_data));
-	memcpy((void *)&dcovex_vqmmc_data, (void *)&vqmmc_data,
+	dcovex_vmmc_data.constraints.name = "LDO_2";
+
+	dmi_board = dmi_get_system_info(DMI_BOARD_NAME);
+	if (dmi_board && !strncmp(dmi_board, "T3 MRD", DMI_STRING_MAX)) {
+		/* T3 MRD uses GPIO1 */
+		reg_id = DCOVEX_ID_GPIO1;
+		memcpy((void *)&dcovex_vqmmc_data, (void *)&gpio1_data,
 				sizeof(struct regulator_init_data));
+	} else {
+		/* T3 RVP uses LDO3 */
+		reg_id = DCOVEX_ID_LDO3;
+		memcpy((void *)&dcovex_vqmmc_data, (void *)&vqmmc_data,
+				sizeof(struct regulator_init_data));
+		dcovex_vqmmc_data.constraints.name = "LDO_3";
+	}
 
 	/* set enable time for vqmmc regulator, stabilize power rail */
 	dcovex_vqmmc_data.constraints.enable_time = 10000;
-
-	dcovex_vmmc_data.constraints.name = "LDO_2";
-	dcovex_vqmmc_data.constraints.name = "LDO_3";
 
 	/* register SD card regulator for dollar cove PMIC */
 	intel_soc_pmic_set_pdata("dcovex_regulator", &dcove_vmmc_info,
 		sizeof(struct dcovex_regulator_info), DCOVEX_ID_LDO2 + 1);
 	intel_soc_pmic_set_pdata("dcovex_regulator", &dcove_vqmmc_info,
-		sizeof(struct dcovex_regulator_info), DCOVEX_ID_LDO3 + 1);
+		sizeof(struct dcovex_regulator_info), reg_id + 1);
 }
 
 /*************************************************************
