@@ -337,11 +337,11 @@ static inline int pmic_chrg_set_cv(struct pmic_chrg_info *info, int cv)
 	if (ret < 0)
 		goto set_cv_fail;
 
-	if (cv < CV_4100)
+	if (cv <= CV_4100)
 		reg_val = CHRG_CCCV_CV_4100MV;
-	else if (cv < CV_4150)
+	else if (cv <= CV_4150)
 		reg_val = CHRG_CCCV_CV_4150MV;
-	else if (cv < CV_4200)
+	else if (cv <= CV_4200)
 		reg_val = CHRG_CCCV_CV_4200MV;
 	else
 		reg_val = CHRG_CCCV_CV_4350MV;
