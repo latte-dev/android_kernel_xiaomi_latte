@@ -42,8 +42,20 @@
 #define OV8858_SUNNY		1
 #define OV8858_MRD			2
 
-#define OV8858_OTP_START_ADDR	0x7010
-#define OV8858_OTP_END_ADDR	0x7186
+#define OV8858_OTP_START_ADDR		0x7010
+#define OV8858_OTP_END_ADDR		0x720A
+
+#define OV8858_OTP_LENC_FLAG_ADDR	0x7028
+#define OV8858_OTP_LENC_OFFSET1		0x19
+#define OV8858_OTP_LENC_OFFSET2		0x10A
+#define OV8858_OTP_LENC_SIZE		240
+#define OV8858_OTP_AWB_START_ADDR1	0x7011
+#define OV8858_OTP_AWB_START_ADDR2	0x7019
+#define OV8858_OTP_AWB_SIZE		8
+#define BG_Ratio_Typical		0x144
+#define RG_Ratio_Typical		0x117
+#define OV8858_WB_GAIN1			0x400
+
 
 /*
  * ov8858 System control registers
@@ -164,6 +176,8 @@
 
 #define OV8858_MAX_FOCUS_POS			1023
 
+#define OV8858_ISP_CTRL00_REG			0x5000
+#define OV8858_LENC_G00_REG			0x5800
 #define OV8858_TEST_PATTERN_REG			0x5E00
 
 char *CHT_HR_DEV_NAME  = "Cherry Trail FFD";
@@ -243,6 +257,16 @@ struct ov8858_resolution {
 	const struct ov8858_fps_setting fps_options[MAX_FPS_OPTIONS_SUPPORTED];
 };
 
+struct ov8858_otp_struct {
+	u8 *otp_data;
+	u16 lenc_offset;
+	int otp_lenc_en;
+	int R_gain;
+	int G_gain;
+	int B_gain;
+	int otp_awb_en;
+};
+
 /*
  * ov8858 device structure
  * */
@@ -265,7 +289,8 @@ struct ov8858_device {
 	u16 pixels_per_line;
 	u16 lines_per_frame;
 	u8 fps;
-	u8 *otp_data;
+	struct ov8858_otp_struct otp;
+
 	/* Prevent the framerate from being lowered in low light scenes. */
 	int limit_exposure_flag;
 	bool hflip;
