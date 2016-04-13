@@ -273,6 +273,12 @@ static struct mfd_cell dollar_cove_dev[] = {
 		.num_resources = 0,
 		.resources = NULL,
 	},
+	{
+		.name = "dcovex_regulator",
+		.id = DCOVEX_ID_GPIO1 + 1,
+		.num_resources = 0,
+		.resources = NULL,
+	},
 	{NULL, },
 };
 
