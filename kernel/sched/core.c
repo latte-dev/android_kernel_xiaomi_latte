@@ -4476,6 +4476,10 @@ void sched_show_task(struct task_struct *p)
 	show_stack(p, NULL);
 }
 
+#ifdef CONFIG_SCHED_DEBUG
+static __read_mostly int sched_debug_enabled;
+#endif
+
 void show_state_filter(unsigned long state_filter)
 {
 	struct task_struct *g, *p;
@@ -4501,7 +4505,8 @@ void show_state_filter(unsigned long state_filter)
 	touch_all_softlockup_watchdogs();
 
 #ifdef CONFIG_SCHED_DEBUG
-	sysrq_sched_debug_show();
+	if (sched_debug_enabled)
+		sysrq_sched_debug_show();
 #endif
 	rcu_read_unlock();
 	/*
@@ -5184,8 +5189,6 @@ early_initcall(migration_init);
 static cpumask_var_t sched_domains_tmpmask; /* sched_domains_mutex */
 
 #ifdef CONFIG_SCHED_DEBUG
-
-static __read_mostly int sched_debug_enabled;
 
 static int __init sched_debug_setup(char *str)
 {
