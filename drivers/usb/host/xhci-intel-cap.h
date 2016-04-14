@@ -15,6 +15,9 @@
  */
 
 /* Extended capability IDs for Intel Vendor Defined */
+
+#include "xhci.h"
+
 #define XHCI_EXT_CAPS_INTEL_HOST_CAP	192
 #define XHCI_EXT_CAPS_INTEL_SSIC	196
 #define XHCI_EXT_CAPS_INTEL_SSIC_PROFILE	197
@@ -74,5 +77,7 @@ extern void xhci_intel_ssic_port_unused(struct xhci_hcd *xhci, bool unused);
 extern void xhci_change_ssic_regs(struct xhci_hcd *xhci, bool enable);
 extern bool xhci_intel_ssic_port_check(struct xhci_hcd *xhci, int port);
 extern int xhci_intel_need_disable_stall(struct xhci_hcd *xhci);
+extern void hub_intel_ssic_check_block_runtime(struct usb_device *udev);
+extern void hub_intel_ssic_check_unblock_runtime(struct usb_device *udev);
 extern void xhci_intel_pipe_sync_phystatus_quirk(struct xhci_hcd *xhci,
 						 bool enable);

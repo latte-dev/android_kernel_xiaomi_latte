@@ -83,7 +83,10 @@ int xhci_intel_need_disable_stall(struct xhci_hcd *xhci)
 
 	/* Assign the values */
 	modem_present = modem_data->package.elements[0].integer.value;
+	xhci->ssic_device_present = modem_present;
 	xhci->ssic_port_number = modem_data->package.elements[1].integer.value;
+	xhci_warn(xhci, "ssic_device_present[%d] ssic_port_number[%d]\n",
+		xhci->ssic_device_present, xhci->ssic_port_number);
 	modem_type = modem_data->package.elements[2].integer.value;
 
 	/* Evaluate the values from ACPI */
@@ -293,6 +296,48 @@ void xhci_intel_ssic_port_unused(struct xhci_hcd *xhci, bool unused)
 
 }
 EXPORT_SYMBOL_GPL(xhci_intel_ssic_port_unused);
+
+void hub_intel_ssic_check_block_runtime(struct usb_device *udev)
+{
+	struct usb_hcd *hcd = bus_to_hcd(udev->bus);
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+
+	xhci_warn(xhci, "udev[%s]: Check if need block ssic runtime, "
+			"portnum[%d] ssic_runtime_blocked[%d]\n",
+			dev_name(&udev->dev),
+			udev->portnum,
+			xhci->ssic_runtime_blocked);
+
+	if (xhci_intel_ssic_port_check(xhci, udev->portnum)) {
+		if (!xhci->ssic_runtime_blocked) {
+			xhci_warn(xhci, "block runtime\n");
+			wake_lock(&xhci->ssic_wake_lock);
+			xhci->ssic_runtime_blocked = 1;
+			pm_runtime_get(hcd->self.controller);
+		}
+	}
+}
+
+void hub_intel_ssic_check_unblock_runtime(struct usb_device *udev)
+{
+	struct usb_hcd *hcd = bus_to_hcd(udev->bus);
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+
+	xhci_warn(xhci, "udev[%s]: Check if need unblock ssic runtime, "
+			"portnum[%d] ssic_runtime_blocked[%d]\n",
+			dev_name(&udev->dev),
+			udev->portnum,
+			xhci->ssic_runtime_blocked);
+
+	if (xhci_intel_ssic_port_check(xhci, udev->portnum)) {
+		if (xhci->ssic_runtime_blocked) {
+			xhci_warn(xhci, "unblock runtime\n");
+			xhci->ssic_runtime_blocked = 0;
+			pm_runtime_put(hcd->self.controller);
+			wake_unlock(&xhci->ssic_wake_lock);
+		}
+	}
+}
 
 /*
  * This function enables/disables the PIPE 4.1 synchronous phystatus.

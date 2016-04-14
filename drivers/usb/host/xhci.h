@@ -28,6 +28,7 @@
 #include <linux/timer.h>
 #include <linux/kernel.h>
 #include <linux/usb/hcd.h>
+#include <linux/wakelock.h>
 
 /* Code sharing between pci-quirks and xhci hcd */
 #include	"xhci-ext-caps.h"
@@ -1592,6 +1593,12 @@ struct xhci_hcd {
 	u32			port_status_u0;
 /* Compliance Mode Timer Triggered every 2 seconds */
 #define COMP_MODE_RCVRY_MSECS 2000
+	/* SSIC device present */
+	int ssic_device_present;
+	/* SSIC runtime is blocked */
+	bool ssic_runtime_blocked;
+	struct wake_lock ssic_wake_lock;
+
 	/* SSIC port number */
 	int ssic_port_number;
 };

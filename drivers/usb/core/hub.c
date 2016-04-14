@@ -32,6 +32,7 @@
 #include <asm/byteorder.h>
 
 #include "hub.h"
+#include "../host/xhci-intel-cap.h"
 
 #define USB_VENDOR_GENESYS_LOGIC		0x05e3
 #define HUB_QUIRK_CHECK_PORT_AUTOSUSPEND	0x01
@@ -2122,6 +2123,8 @@ void usb_disconnect(struct usb_device **pdev)
 		sysfs_remove_link(&udev->dev.kobj, "port");
 		sysfs_remove_link(&port_dev->dev.kobj, "device");
 
+		hub_intel_ssic_check_block_runtime(udev);
+
 		if (!port_dev->did_runtime_put)
 			pm_runtime_put(&port_dev->dev);
 		else
@@ -2439,6 +2442,7 @@ int usb_new_device(struct usb_device *udev)
 		}
 
 		pm_runtime_get_sync(&port_dev->dev);
+		hub_intel_ssic_check_unblock_runtime(udev);
 	}
 
 	(void) usb_create_ep_devs(&udev->dev, &udev->ep0, udev);

@@ -4868,6 +4868,12 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 
 	xhci->quirks = quirks;
 
+	wake_lock_init(&xhci->ssic_wake_lock,
+			WAKE_LOCK_SUSPEND,
+			"xhci_enumeration");
+	/* In case ACPI doesn't provide info */
+	xhci->ssic_device_present = -1;
+
 	get_quirks(dev, xhci);
 
 	/* In xhci controllers which follow xhci 1.0 spec gives a spurious
