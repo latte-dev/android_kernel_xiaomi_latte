@@ -303,7 +303,7 @@ void xhci_intel_pipe_sync_phystatus_quirk(struct xhci_hcd *xhci, bool enable)
 	u32	data;
 
 	if (!xhci || !xhci->phy_mux_regs) {
-		xhci_err(xhci, "no xhci or phy_mux_regs\n");
+		pr_err("no xhci or phy_mux_regs\n");
 		return;
 	}
 
