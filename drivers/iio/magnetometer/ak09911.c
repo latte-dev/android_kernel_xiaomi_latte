@@ -87,6 +87,8 @@
 #define AK09911_CONVERSION_DONE_POLL_TIME	10
 #define AK09911_CNTL2_CONTINUOUS_DEFAULT	0
 #define IF_USE_REGMAP_INTERFACE			0
+#define CLAMP_RANGE_MIN -8191
+#define CLAMP_RANGE_MAX 8191
 
 struct ak09911_data {
 	struct i2c_client	*client;
@@ -343,6 +345,7 @@ enum ak09911_axis {
 	AXIS_X = 0,
 	AXIS_Y,
 	AXIS_Z,
+	AXIS_MAX,
 };
 
 #define AK09911_CHANNEL(axis, index)					\
@@ -513,11 +516,11 @@ static irqreturn_t ak09911_trigger_handler(int irq, void *p)
 	struct iio_dev *indio_dev = pf->indio_dev;
 	struct ak09911_data *data = iio_priv(indio_dev);
 	struct i2c_client *client = data->client;
-	int ret, i=0 ,j=0 ;
-	u16 meas_reg;
-	s16 raw;
+	int ret, i = 0;
+	s16 raw[AXIS_MAX];
 	int count = AK09911_MAX_CONVERSION_TIMEOUT;
 	u8 read_status;
+	u16 values[AXIS_MAX];
 
 	mutex_lock(&data->lock);
 
@@ -530,36 +533,30 @@ static irqreturn_t ak09911_trigger_handler(int irq, void *p)
 		read_status = ret & 0x01;
 		if (read_status)
 			break;
-		} while (count--);
+	} while (count--);
 
 	if (count <=  0)
 		dev_err(&client->dev,"timeout reading AK09911_REG_ST1 reg\n");
-
-
-	for_each_set_bit(i, indio_dev->active_scan_mask,
-		indio_dev->masklength) {
-
-	ret = i2c_smbus_read_word_data(data->client, ak09911_index_to_reg[i]);
-	if (ret < 0) {
-		dev_err(&client->dev, "Read ERROR\n");
+	ret = i2c_smbus_read_i2c_block_data(data->client, AK09911_REG_HXL,
+					    sizeof(values), (u8 *) values);
+	if (ret < 0)
 		goto err;
-	}
-
-	meas_reg = ret;
-	/* Endian conversion of the measured values. */
-	raw = (s16) (le16_to_cpu(meas_reg));
-
-	/* Clamp to valid range. */
-	raw = clamp_t(s16, raw, -8192, 8192);
-	data->buffer[j++] = raw;
-	}
 
 	/* datasheet recommends reading ST2 register after each
-	 * data read operation */
+	 data read operation */
 	ret = i2c_smbus_read_byte_data(data->client, AK09911_REG_ST2);
 	if (ret < 0){
 		dev_err(&client->dev, "read AK09911_REG_ST2 ERROR\n");
 		goto err;
+	}
+
+	for (i = 0; i < AXIS_MAX; i++) {
+		/* Endian conversion of the measured values. */
+		raw[i] = (s16) (le16_to_cpu(values[i]));
+
+		/* Clamp to valid range. */
+		raw[i] = clamp_t(s16, raw[i], CLAMP_RANGE_MIN, CLAMP_RANGE_MAX);
+		data->buffer[i] = raw[i];
 	}
 
 	iio_push_to_buffers_with_timestamp(indio_dev, data->buffer,
