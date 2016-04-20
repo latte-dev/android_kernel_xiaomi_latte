@@ -188,6 +188,7 @@ static void silead_ts_set_power(struct i2c_client *client,
 					SILEAD_CLOCK);
 		}
 		else {
+			i2c_smbus_write_byte_data(client, SILEAD_REG_RESET,	SILEAD_CMD_RESET);
 			ret = i2c_smbus_write_byte_data(client, SILEAD_REG_CLOCK,
 					SILEAD_CLOCK_OFF);
 		}
