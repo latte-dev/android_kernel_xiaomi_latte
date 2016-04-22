@@ -747,25 +747,36 @@ static struct ov8858_reg ov8858_BasicSettings[] = {
 	{OV8858_8BIT, 0x5041, 0x1D}, /* ISP CTRL41 - embedded data=on */
 	{OV8858_8BIT, 0x5046, 0x12}, /* ISP CTRL46 = default */
 	/*
-	 * Tail enable = 1
-	 * Saturate cross cluster enable = 1
+	 * Tail enable = 0
+	 * Saturate cross cluster enable = 0
 	 * Remove cross cluster enable = 1
 	 * Enable to remove connected defect pixels in same channel = 1
 	 * Enable to remove connected defect pixels in different channel = 1
 	 * Smooth enable, use average G for recovery = 1
-	 * Black/white sensor mode enable = 0
+	 * Black/white sensor mode enable = 1
 	 * Manual mode enable = 0
 	 */
-	{OV8858_8BIT, 0x5780, 0xFC},
-	{OV8858_8BIT, 0x5784, 0x0C}, /* DPC CTRL04 */
-	{OV8858_8BIT, 0x5787, 0x40}, /* DPC CTRL07 */
-	{OV8858_8BIT, 0x5788, 0x08}, /* DPC CTRL08 */
-	{OV8858_8BIT, 0x578A, 0x02}, /* DPC CTRL0A */
-	{OV8858_8BIT, 0x578B, 0x01}, /* DPC CTRL0B */
-	{OV8858_8BIT, 0x578C, 0x01}, /* DPC CTRL0C */
-	{OV8858_8BIT, 0x578E, 0x02}, /* DPC CTRL0E */
-	{OV8858_8BIT, 0x578F, 0x01}, /* DPC CTRL0F */
-	{OV8858_8BIT, 0x5790, 0x01}, /* DPC CTRL10 */
+	{OV8858_8BIT, 0x5780, 0x3e}, /* DPC CTRL00 */
+	{OV8858_8BIT, 0x5781, 0x0f}, /* DPC CTRL01 */
+	{OV8858_8BIT, 0x5782, 0x44}, /* DPC CTRL02 */
+	{OV8858_8BIT, 0x5783, 0x02}, /* DPC CTRL03 */
+	{OV8858_8BIT, 0x5784, 0x01}, /* DPC CTRL04 */
+	{OV8858_8BIT, 0x5785, 0x00}, /* DPC CTRL05 */
+	{OV8858_8BIT, 0x5786, 0x00}, /* DPC CTRL06 */
+	{OV8858_8BIT, 0x5787, 0x04}, /* DPC CTRL07 */
+	{OV8858_8BIT, 0x5788, 0x02}, /* DPC CTRL08 */
+	{OV8858_8BIT, 0x5789, 0x0f}, /* DPC CTRL09 */
+	{OV8858_8BIT, 0x578A, 0xfd}, /* DPC CTRL0A */
+	{OV8858_8BIT, 0x578B, 0xf5}, /* DPC CTRL0B */
+	{OV8858_8BIT, 0x578C, 0xf5}, /* DPC CTRL0C */
+	{OV8858_8BIT, 0x578D, 0x03}, /* DPC CTRL0D */
+	{OV8858_8BIT, 0x578E, 0x08}, /* DPC CTRL0E */
+	{OV8858_8BIT, 0x578F, 0x0c}, /* DPC CTRL0F */
+	{OV8858_8BIT, 0x5790, 0x08}, /* DPC CTRL10 */
+	{OV8858_8BIT, 0x5791, 0x04}, /* DPC CTRL11 */
+	{OV8858_8BIT, 0x5792, 0x00}, /* DPC CTRL12 */
+	{OV8858_8BIT, 0x5793, 0x52}, /* DPC CTRL13 */
+	{OV8858_8BIT, 0x5794, 0xa3}, /* DPC CTRL14 */
 	{OV8858_8BIT, 0x5901, 0x00}, /* VAP CTRL01 = default */
 	/* WINC CTRL08 = embedded data in 1st line*/
 	{OV8858_8BIT, 0x5A08, 0x00},
