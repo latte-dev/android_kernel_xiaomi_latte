@@ -72,7 +72,7 @@ static struct rt5645_init_reg init_list[] = {
 
 #ifdef JD1_FUNC
 	{ RT5645_IRQ_CTRL2	, 0x0200 },
-	{ RT5645_MICBIAS	, 0xC008 },
+	{ RT5645_MICBIAS	, 0x0008 },
 	{ RT5645_GEN_CTRL3	, 0x1180 },
 	{ RT5645_CJ_CTRL3	, 0x4000 },
 #endif
