@@ -488,14 +488,14 @@ static struct ov8858_reg ov8858_BasicSettings[] = {
 	{OV8858_8BIT, 0x3602, 0x00}, /* Unknown */
 	{OV8858_8BIT, 0x3603, 0x00}, /* Unknown */
 	{OV8858_8BIT, 0x3604, 0x22}, /* Unknown */
-	{OV8858_8BIT, 0x3605, 0x30}, /* Unknown */
+	{OV8858_8BIT, 0x3605, 0x20}, /* Unknown */
 	{OV8858_8BIT, 0x3606, 0x00}, /* Unknown */
 	{OV8858_8BIT, 0x3607, 0x20}, /* Unknown */
 	{OV8858_8BIT, 0x3608, 0x11}, /* Unknown */
 	{OV8858_8BIT, 0x3609, 0x28}, /* Unknown */
 	{OV8858_8BIT, 0x360A, 0x00}, /* Unknown */
-	{OV8858_8BIT, 0x360B, 0x06}, /* Unknown */
-	{OV8858_8BIT, 0x360C, 0xDC}, /* Unknown */
+	{OV8858_8BIT, 0x360B, 0x05}, /* Unknown */
+	{OV8858_8BIT, 0x360C, 0xD4}, /* Unknown */
 	{OV8858_8BIT, 0x360D, 0x40}, /* Unknown */
 	{OV8858_8BIT, 0x360E, 0x0C}, /* Unknown */
 	{OV8858_8BIT, 0x360F, 0x20}, /* Unknown */
@@ -506,19 +506,19 @@ static struct ov8858_reg ov8858_BasicSettings[] = {
 	{OV8858_8BIT, 0x3614, 0x58}, /* Unknown */
 	{OV8858_8BIT, 0x3615, 0x00}, /* Unknown */
 	{OV8858_8BIT, 0x3616, 0x4A}, /* Unknown */
-	{OV8858_8BIT, 0x3617, 0x90}, /* Unknown */
-	{OV8858_8BIT, 0x3618, 0x56}, /* Unknown */
+	{OV8858_8BIT, 0x3617, 0x40}, /* Unknown */
+	{OV8858_8BIT, 0x3618, 0x5a}, /* Unknown */
 	{OV8858_8BIT, 0x3619, 0x70}, /* Unknown */
 	{OV8858_8BIT, 0x361A, 0x99}, /* Unknown */
-	{OV8858_8BIT, 0x361B, 0x00}, /* Unknown */
+	{OV8858_8BIT, 0x361B, 0x0a}, /* Unknown */
 	{OV8858_8BIT, 0x361C, 0x07}, /* Unknown */
 	{OV8858_8BIT, 0x361D, 0x00}, /* Unknown */
 	{OV8858_8BIT, 0x361E, 0x00}, /* Unknown */
 	{OV8858_8BIT, 0x361F, 0x00}, /* Unknown */
-	{OV8858_8BIT, 0x3633, 0x0C}, /* Unknown */
-	{OV8858_8BIT, 0x3634, 0x0C}, /* Unknown */
-	{OV8858_8BIT, 0x3635, 0x0C}, /* Unknown */
-	{OV8858_8BIT, 0x3636, 0x0C}, /* Unknown */
+	{OV8858_8BIT, 0x3633, 0x0f}, /* Unknown */
+	{OV8858_8BIT, 0x3634, 0x0f}, /* Unknown */
+	{OV8858_8BIT, 0x3635, 0x0f}, /* Unknown */
+	{OV8858_8BIT, 0x3636, 0x12}, /* Unknown */
 	{OV8858_8BIT, 0x3638, 0xFF}, /* Unknown */
 	{OV8858_8BIT, 0x3645, 0x13}, /* Unknown */
 	{OV8858_8BIT, 0x3646, 0x83}, /* Unknown */
@@ -530,12 +530,12 @@ static struct ov8858_reg ov8858_BasicSettings[] = {
 	{OV8858_8BIT, 0x3703, 0x32}, /* Unknown */
 	{OV8858_8BIT, 0x3704, 0x28}, /* Unknown */
 	{OV8858_8BIT, 0x3705, 0x00}, /* Unknown */
-	{OV8858_8BIT, 0x3706, 0x6A}, /* Unknown */
+	{OV8858_8BIT, 0x3706, 0x82}, /* Unknown */
 	{OV8858_8BIT, 0x3707, 0x08}, /* Unknown */
 	{OV8858_8BIT, 0x3708, 0x48}, /* Unknown */
 	{OV8858_8BIT, 0x3709, 0x66}, /* Unknown */
 	{OV8858_8BIT, 0x370A, 0x01}, /* Unknown */
-	{OV8858_8BIT, 0x370B, 0x6A}, /* Unknown */
+	{OV8858_8BIT, 0x370B, 0x82}, /* Unknown */
 	{OV8858_8BIT, 0x370C, 0x07}, /* Unknown */
 	{OV8858_8BIT, 0x3712, 0x44}, /* Unknown */
 	{OV8858_8BIT, 0x3714, 0x24}, /* Unknown */
@@ -566,6 +566,8 @@ static struct ov8858_reg ov8858_BasicSettings[] = {
 	{OV8858_8BIT, 0x373B, 0x0B}, /* Unknown */
 	{OV8858_8BIT, 0x373C, 0x14}, /* Unknown */
 	{OV8858_8BIT, 0x373E, 0x06}, /* Unknown */
+	{OV8858_8BIT, 0x3750, 0x0a}, /* Unknown */
+	{OV8858_8BIT, 0x3751, 0x0e}, /* Unknown */
 	{OV8858_8BIT, 0x3755, 0x10}, /* Unknown */
 	{OV8858_8BIT, 0x3758, 0x00}, /* Unknown */
 	{OV8858_8BIT, 0x3759, 0x4C}, /* Unknown */
@@ -578,9 +580,9 @@ static struct ov8858_reg ov8858_BasicSettings[] = {
 	{OV8858_8BIT, 0x3760, 0x00}, /* Unknown */
 	{OV8858_8BIT, 0x3761, 0x00}, /* Unknown */
 	{OV8858_8BIT, 0x3762, 0x00}, /* Unknown */
-	{OV8858_8BIT, 0x3763, 0x00}, /* Unknown */
+	{OV8858_8BIT, 0x3763, 0x18}, /* Unknown */
 	{OV8858_8BIT, 0x3766, 0xFF}, /* Unknown */
-	{OV8858_8BIT, 0x3768, 0x22}, /* Unknown */
+	{OV8858_8BIT, 0x3768, 0xcc}, /* Unknown */
 	{OV8858_8BIT, 0x3769, 0x44}, /* Unknown */
 	{OV8858_8BIT, 0x376A, 0x44}, /* Unknown */
 	{OV8858_8BIT, 0x376B, 0x00}, /* Unknown */
@@ -591,7 +593,7 @@ static struct ov8858_reg ov8858_BasicSettings[] = {
 	{OV8858_8BIT, 0x3775, 0x13}, /* Unknown */
 	{OV8858_8BIT, 0x3776, 0x08}, /* Unknown */
 	{OV8858_8BIT, 0x3777, 0x00}, /* Unknown */
-	{OV8858_8BIT, 0x3778, 0x16}, /* Unknown */
+	{OV8858_8BIT, 0x3778, 0x17}, /* Unknown */
 	{OV8858_8BIT, 0x37A0, 0x88}, /* Unknown */
 	{OV8858_8BIT, 0x37A1, 0x7A}, /* Unknown */
 	{OV8858_8BIT, 0x37A2, 0x7A}, /* Unknown */
@@ -613,7 +615,7 @@ static struct ov8858_reg ov8858_BasicSettings[] = {
 	{OV8858_8BIT, 0x37B2, 0x00}, /* Unknown */
 	{OV8858_8BIT, 0x37B3, 0x84}, /* Unknown */
 	{OV8858_8BIT, 0x37B4, 0x84}, /* Unknown */
-	{OV8858_8BIT, 0x37B5, 0x66}, /* Unknown */
+	{OV8858_8BIT, 0x37B5, 0x60}, /* Unknown */
 	{OV8858_8BIT, 0x37B6, 0x00}, /* Unknown */
 	{OV8858_8BIT, 0x37B7, 0x00}, /* Unknown */
 	{OV8858_8BIT, 0x37B8, 0x00}, /* Unknown */
