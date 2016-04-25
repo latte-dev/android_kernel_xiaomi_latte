@@ -373,6 +373,9 @@ static int silead_ts_load_fw(struct i2c_client *client)
 	return 0;
 
 release_fw_err:
+	release_firmware(fw);
+	fw = NULL;
+
 	return ret;
 }
 
@@ -707,6 +710,7 @@ static int silead_ts_probe(struct i2c_client *client,
 					client->name, data);
 	if (ret) {
 		dev_err(dev, "IRQ request failed %d\n", ret);
+		input_unregister_device(data->input_dev);
 		return ret;
 	}
 
@@ -723,9 +727,6 @@ static int silead_ts_probe(struct i2c_client *client,
 out:
 #endif
 
-#ifdef GSL_ALG_ID
-	gsl_DataInit(gsl_config_data_id);
-#endif
 	dev_dbg(dev, "Probing succeded\n");
 	return 0;
 }
