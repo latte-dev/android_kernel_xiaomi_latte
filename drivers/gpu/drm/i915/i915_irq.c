@@ -26,6 +26,7 @@
  *
  */
 
+
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/sysrq.h>
@@ -928,10 +929,14 @@ static int __intel_get_crtc_scanline(struct intel_crtc *crtc)
 {
 	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	const struct drm_display_mode *mode = &crtc->config.adjusted_mode;
+	const struct drm_display_mode *mode;
 	enum pipe pipe = crtc->pipe;
 	int position, vtotal;
 
+	if (!crtc->active)
+		return 0;
+
+	mode = &crtc->config.adjusted_mode;
 	vtotal = mode->crtc_vtotal;
 	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
 		vtotal /= 2;
