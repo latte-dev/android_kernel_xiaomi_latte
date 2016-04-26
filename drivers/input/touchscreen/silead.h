@@ -172,4 +172,5 @@ unsigned int gsl_version_id(void);
 void gsl_alg_id_main(struct gsl_touch_info *cinfo);
 void gsl_DataInit(unsigned int *conf);
 
+void gsl_ReportPressure(unsigned int *p);
 #endif

@@ -86,7 +86,7 @@ enum silead_ts_power {
 	SILEAD_POWER_ON  = 1,
 	SILEAD_POWER_OFF = 0
 };
-
+int report_pressure[10] = {0};
 #define GSL_ALG_ID
 #ifdef GSL_ALG_ID
 
@@ -142,6 +142,8 @@ static int silead_ts_request_input_dev(struct silead_ts_data *data)
 	input_set_abs_params(data->input_dev, ABS_MT_WIDTH_MAJOR, 0,
 			     200, 0, 0);
 
+	input_set_abs_params(data->input_dev, ABS_MT_PRESSURE, 0, 255, 0, 0);
+
 	input_mt_init_slots(data->input_dev, data->max_fingers,
 			    INPUT_MT_DIRECT | INPUT_MT_DROP_UNUSED |
 			    INPUT_MT_TRACK);
@@ -169,8 +171,8 @@ static void silead_ts_report_touch(struct silead_ts_data *data,
 			(swap ? cinfo->y[i] : cinfo->x[i]));
 	input_report_abs(data->input_dev, ABS_MT_POSITION_Y,
 			(swap ? cinfo->x[i] : cinfo->y[i]));
-	input_report_abs(data->input_dev, ABS_MT_TOUCH_MAJOR, data->pressure);
-	input_report_abs(data->input_dev, ABS_MT_WIDTH_MAJOR, 1);
+	input_report_abs(data->input_dev, ABS_MT_PRESSURE, report_pressure[i]);
+	input_report_abs(data->input_dev, ABS_MT_TOUCH_MAJOR, report_pressure[i]);
 }
 
 static void silead_ts_set_power(struct i2c_client *client,
@@ -212,10 +214,13 @@ static void silead_ts_read_data(struct i2c_client *client)
 		dev_err(dev, "Data read error %d\n", ret);
 		return;
 	}
+	dev_dbg(dev, "silead_ts_read_data", ret);
 
 	cinfo.finger_num = buf[0];
-	if (cinfo.finger_num < 0)
+	if (cinfo.finger_num < 0) {
+		dev_dbg(dev, "cinfo.finger_num_1: %08x\n", cinfo.finger_num);
 		return;
+	}
 
 	for (i = 0; i < cinfo.finger_num && i < 10; i++) {
 		cinfo.id[i] = buf[i*4+4+3] >> 4;
@@ -229,9 +234,8 @@ static void silead_ts_read_data(struct i2c_client *client)
 	int tmp1 = 0;
 	cinfo.finger_num = (buf[3]<<24)|(buf[2]<<16)|(buf[1]<<8)|(buf[0]);
 	gsl_alg_id_main(&cinfo);
-
+	gsl_ReportPressure(report_pressure);
 	tmp1 = gsl_mask_tiaoping();
-	dev_dbg(dev, "tmp1: %d\n", tmp1);
 	if (tmp1 > 0 && tmp1 < 0xffffffff) {
 		i2c_smbus_write_byte_data(client, SILEAD_X_HSB_MASK,
 					SILEAD_X_A);
@@ -240,8 +244,6 @@ static void silead_ts_read_data(struct i2c_client *client)
 		buf_t[1] = (u8)((tmp1 >> 8) & 0xff);
 		buf_t[2] = (u8)((tmp1 >> 16) & 0xff);
 		buf_t[3] = (u8)((tmp1 >> 24) & 0xff);
-		dev_dbg(dev, "tmp1 = %08x, buf[0..3] = %02x : %02x : %02x : %02x\n",
-				tmp1, buf_t[0], buf_t[1], buf_t[2], buf_t[3]);
 		i2c_smbus_write_i2c_block_data(client,   SILEAD_X_B, 4, buf_t);
 	}
 #endif
@@ -258,8 +260,6 @@ static void silead_ts_read_data(struct i2c_client *client)
 		}
 
 		silead_ts_report_touch(data, &cinfo, i, data->xy_swap);
-		dev_dbg(dev, "x=%d y=%d sw_id=%d\n", cinfo.x[i], cinfo.y[i],
-				cinfo.id[i]);
 	}
 
 	input_mt_sync_frame(data->input_dev);
