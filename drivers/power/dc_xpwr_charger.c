@@ -1037,15 +1037,16 @@ static int pmic_chrg_probe(struct platform_device *pdev)
 			 * on usb id during boot.
 			 */
 			schedule_work(&info->otg_work);
-		}
-	}
 
-	/* Register cooling device to control the vbus */
-	ret = register_cooling_device(info);
-	if (ret) {
-		dev_err(&info->pdev->dev,
-			"Register cooling device Failed (%d)\n", ret);
-		goto cdev_reg_fail;
+			/* Register cooling device to control the vbus */
+			ret = register_cooling_device(info);
+			if (ret) {
+				dev_err(&info->pdev->dev,
+					"Register cooling device Failed (%d)\n",
+					ret);
+				goto cdev_reg_fail;
+			}
+		}
 	}
 
 	return 0;
