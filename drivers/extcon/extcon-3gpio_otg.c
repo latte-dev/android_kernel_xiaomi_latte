@@ -20,8 +20,21 @@
 #include <linux/interrupt.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
+#include <linux/thermal.h>
 
 #define DRV_NAME	"usb_otg_port"
+#define VBUS_CTRL_CDEV_NAME		"vbus_control"
+
+enum vbus_states {
+	VBUS_ENABLE,
+	VBUS_DISABLE,
+	MAX_VBUSCTRL_STATES,
+};
+
+enum vup_modes {
+	VUP_HOST,
+	VUP_PERIPHERAL,
+};
 
 struct vuport {
 	struct device *dev;
@@ -29,10 +42,84 @@ struct vuport {
 	struct gpio_desc *gpio_usb_id;
 	struct gpio_desc *gpio_usb_mux;
 	int usb_id_value;
+	int vbus_state;
+	struct thermal_cooling_device *vbus_cdev;
 
 	struct mutex mutex_port;
 	struct extcon_dev edev;
 };
+
+/* vbus control cooling device callbacks */
+static int vbus_get_max_state(struct thermal_cooling_device *tcd,
+				unsigned long *state)
+{
+	*state = MAX_VBUSCTRL_STATES;
+	return 0;
+}
+
+static int vbus_get_cur_state(struct thermal_cooling_device *tcd,
+				unsigned long *state)
+{
+	struct vuport *vup = tcd->devdata;
+
+	mutex_lock(&vup->mutex_port);
+	*state = vup->vbus_state;
+	mutex_unlock(&vup->mutex_port);
+
+	return 0;
+}
+
+static int vbus_set_cur_state(struct thermal_cooling_device *tcd,
+					unsigned long new_state)
+{
+	struct vuport *vup = tcd->devdata;
+
+	if (new_state >= MAX_VBUSCTRL_STATES || new_state < 0) {
+		dev_err(vup->dev, "Invalid vbus control state: %ld\n",
+				new_state);
+		return -EINVAL;
+	}
+
+	dev_info(vup->dev, "%s: id_short=%d\n", __func__,
+			vup->usb_id_value);
+	/**
+	 * set gpio directly only when the ID_GND and want to change the state
+	 * from previous state (vbus enable/disable).
+	 */
+	mutex_lock(&vup->mutex_port);
+	if ((vup->usb_id_value == VUP_HOST) && (vup->vbus_state != new_state) &&
+			!IS_ERR(vup->gpio_vbus_en)) {
+		gpiod_direction_output(vup->gpio_vbus_en, !new_state);
+	}
+
+	vup->vbus_state = new_state;
+	mutex_unlock(&vup->mutex_port);
+
+	return 0;
+}
+
+static struct thermal_cooling_device_ops psy_vbuscd_ops = {
+	.get_max_state = vbus_get_max_state,
+	.get_cur_state = vbus_get_cur_state,
+	.set_cur_state = vbus_set_cur_state,
+};
+
+static inline int register_cooling_device(struct vuport *vup)
+{
+	vup->vbus_cdev = thermal_cooling_device_register(
+				(char *)VBUS_CTRL_CDEV_NAME,
+				vup,
+				&psy_vbuscd_ops);
+	if (IS_ERR(vup->vbus_cdev)) {
+		dev_err(vup->dev,
+			"Error registering cooling device vbus_control\n");
+		return PTR_ERR(vup->vbus_cdev);
+	}
+
+	dev_dbg(vup->dev, "cooling device register success for %s\n",
+				VBUS_CTRL_CDEV_NAME);
+	return 0;
+}
 
 static const char *vuport_extcon_cable[] = {
 	[0] = "USB-Host",
@@ -49,7 +136,7 @@ static const char *vuport_extcon_cable[] = {
 static void vuport_set_port(struct vuport *vup, int id)
 {
 	int mux_val = id;
-	int vbus_val = !id;
+	int vbus_val = !id & !vup->vbus_state;
 
 	if (!IS_ERR(vup->gpio_usb_mux))
 		gpiod_direction_output(vup->gpio_usb_mux, mux_val);
@@ -136,6 +223,8 @@ static int vuport_probe(struct platform_device *pdev)
 						 VUPORT_GPIO_VBUS_EN);
 	if (IS_ERR(vup->gpio_vbus_en))
 		dev_info(dev, "cannot request VBUS EN GPIO, skipping it.\n");
+	else
+		ret = register_cooling_device(vup);
 
 	vup->gpio_usb_mux = devm_gpiod_get_index(dev, "usb mux",
 						 VUPORT_GPIO_USB_MUX);
