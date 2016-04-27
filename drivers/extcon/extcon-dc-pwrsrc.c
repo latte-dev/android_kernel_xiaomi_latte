@@ -531,6 +531,15 @@ static int dc_xpwr_pwrsrc_probe(struct platform_device *pdev)
 		}
 	}
 
+	/* Register extcon notifier */
+	info->extcon_nb.notifier_call = dc_pwrsrc_handle_extcon_event;
+	ret = extcon_register_interest(&info->cable_obj, NULL,
+				"USB-Host", &info->extcon_nb);
+	if (ret)
+		dev_err(&pdev->dev, "failed to register extcon notifier\n");
+
+	if (info->cable_obj.edev)
+		info->id_short = is_usb_host_mode(info->cable_obj.edev);
 
 	dev_info(&info->pdev->dev, "%s: gpio_mux_cntl=%d\n",
 			__func__, desc_to_gpio(info->pdata->gpio_mux_cntl));
@@ -550,14 +559,6 @@ static int dc_xpwr_pwrsrc_probe(struct platform_device *pdev)
 				__func__,
 				desc_to_gpio(info->pdata->gpio_mux_cntl));
 
-		info->extcon_nb.notifier_call = dc_pwrsrc_handle_extcon_event;
-		ret = extcon_register_interest(&info->cable_obj, NULL,
-					"USB-Host", &info->extcon_nb);
-		if (ret)
-			dev_err(&pdev->dev, "failed to register extcon notifier\n");
-
-		if (info->cable_obj.edev)
-			info->id_short = is_usb_host_mode(info->cable_obj.edev);
 		if (info->id_short)
 			gpiod_set_value(info->pdata->gpio_mux_cntl,
 					PWRSRC_GPIO_MUX_SEL_SOC);
