@@ -1247,15 +1247,9 @@ static void intel_dp_prepare(struct intel_encoder *encoder)
 	intel_dp->DP |= DP_VOLTAGE_0_4 | DP_PRE_EMPHASIS_0;
 	intel_dp->DP |= DP_PORT_WIDTH(intel_dp->lane_count);
 
-	/*
-	 * LP audio driver communicates through i915
-	 * where we enable audio output on port
-	 * hence not needed to be enabled during
-	 * modeset
-	 */
-	if (crtc->config.has_audio && !IS_VALLEYVIEW(dev)) {
+	if (crtc->config.has_audio) {
 		DRM_DEBUG_DRIVER("Enabling DP audio on pipe %c\n",
-				pipe_name(crtc->pipe));
+				 pipe_name(crtc->pipe));
 		intel_dp->DP |= DP_AUDIO_OUTPUT_ENABLE;
 		intel_write_eld(&encoder->base, adjusted_mode);
 	}

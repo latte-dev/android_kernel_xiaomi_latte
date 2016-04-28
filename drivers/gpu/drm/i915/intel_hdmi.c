@@ -692,13 +692,7 @@ static void intel_hdmi_prepare(struct intel_encoder *encoder)
 	if (crtc->config.has_hdmi_sink)
 		hdmi_val |= HDMI_MODE_SELECT_HDMI;
 
-	/*
-	 * LP audio driver communicates through i915
-	 * where we enable audio output on port
-	 * hence not needed to be enabled during
-	 * modeset
-	 */
-	if (crtc->config.has_audio && !IS_VALLEYVIEW(dev)) {
+	if (crtc->config.has_audio) {
 		WARN_ON(!crtc->config.has_hdmi_sink);
 		DRM_DEBUG_DRIVER("Enabling HDMI audio on pipe %c\n",
 				 pipe_name(crtc->pipe));
@@ -793,7 +787,7 @@ static void intel_enable_hdmi(struct intel_encoder *encoder)
 	u32 temp;
 	u32 enable_bits = SDVO_ENABLE;
 
-	if (intel_crtc->config.has_audio && !IS_VALLEYVIEW(dev))
+	if (intel_crtc->config.has_audio)
 		enable_bits |= SDVO_AUDIO_ENABLE;
 
 	temp = I915_READ(intel_hdmi->hdmi_reg);
