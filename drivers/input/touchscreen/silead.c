@@ -47,6 +47,8 @@
 
 #define SILEAD_STATUS_OK	0x5A5A5A5A
 #define SILEAD_TS_DATA_LEN	44
+#define SILEAD_TS_READ_FIRST_DATA_LEN	12
+#define SILEAD_TS_THIRD_POINT_REGISTER	0x8c
 
 #define SILEAD_CLOCK		0x04
 #define SILEAD_CLOCK_OFF	0xB5
@@ -209,7 +211,14 @@ static void silead_ts_read_data(struct i2c_client *client)
 	int x, y, id, touch_nr = 0, ret, i, offset;
 	struct gsl_touch_info cinfo = { { 0 } };
 	ret = i2c_smbus_read_i2c_block_data(client, SILEAD_REG_DATA,
-					    SILEAD_TS_DATA_LEN, buf);
+					    SILEAD_TS_READ_FIRST_DATA_LEN, buf);
+	if (buf[0] > SILEAD_MAX_FINGERS)
+		buf[0] = SILEAD_MAX_FINGERS;
+	if (buf[0] > 2)
+		ret = i2c_smbus_read_i2c_block_data(client,
+			SILEAD_TS_THIRD_POINT_REGISTER,
+				(buf[0] - 2) * SILEAD_POINT_DATA_LEN,
+					buf + SILEAD_TS_READ_FIRST_DATA_LEN);
 	if (ret < 0) {
 		dev_err(dev, "Data read error %d\n", ret);
 		return;
