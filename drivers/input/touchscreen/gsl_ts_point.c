@@ -1053,7 +1053,7 @@ static void PointReport(struct gsl_touch_info *cinfo)
 {
 	int i;
 	unsigned int data[POINT_MAX];
-	unsigned int dp[POINT_MAX];
+	unsigned int dp[POINT_MAX] = {0};
 	int num = 0;
 	if (point_num > point_num_max && global_flag.over_report_mask != 0) {
 		point_num = 0;
