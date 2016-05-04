@@ -605,7 +605,8 @@ static int pmic_chrg_usb_set_property(struct power_supply *psy,
 		ret = pmic_chrg_enable_charging(info, val->intval);
 		if (ret < 0)
 			dev_warn(&info->pdev->dev, "enable charger failed\n");
-		 info->is_charger_enabled = val->intval;
+		info->is_charging_enabled = val->intval;
+		info->is_charger_enabled = val->intval;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CURRENT:
 		ret = pmic_chrg_set_cc(info, val->intval);
