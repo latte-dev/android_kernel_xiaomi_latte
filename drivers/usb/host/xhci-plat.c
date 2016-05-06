@@ -190,6 +190,11 @@ static int xhci_plat_remove(struct platform_device *dev)
 	usb_remove_hcd(xhci->shared_hcd);
 	usb_put_hcd(xhci->shared_hcd);
 
+	if (xhci->ssic_runtime_blocked) {
+		wake_unlock(&xhci->ssic_wake_lock);
+		cancel_delayed_work(&xhci->ssic_delayed_work);
+	}
+
 	usb_remove_hcd(hcd);
 	iounmap(hcd->regs);
 	release_mem_region(hcd->rsrc_start, hcd->rsrc_len);

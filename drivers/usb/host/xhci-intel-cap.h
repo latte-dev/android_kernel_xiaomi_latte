@@ -79,5 +79,6 @@ extern bool xhci_intel_ssic_port_check(struct xhci_hcd *xhci, int port);
 extern int xhci_intel_need_disable_stall(struct xhci_hcd *xhci);
 extern void hub_intel_ssic_check_block_runtime(struct usb_device *udev);
 extern void hub_intel_ssic_check_unblock_runtime(struct usb_device *udev);
+extern void hub_intel_ssic_check_unblock_work(struct work_struct *work);
 extern void xhci_intel_pipe_sync_phystatus_quirk(struct xhci_hcd *xhci,
 						 bool enable);

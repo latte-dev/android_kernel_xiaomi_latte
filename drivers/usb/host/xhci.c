@@ -4873,6 +4873,8 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 			"xhci_enumeration");
 	/* In case ACPI doesn't provide info */
 	xhci->ssic_device_present = -1;
+	INIT_DELAYED_WORK(&xhci->ssic_delayed_work,
+		hub_intel_ssic_check_unblock_work);
 
 	get_quirks(dev, xhci);
 

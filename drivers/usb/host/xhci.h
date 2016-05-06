@@ -1598,6 +1598,7 @@ struct xhci_hcd {
 	/* SSIC runtime is blocked */
 	bool ssic_runtime_blocked;
 	struct wake_lock ssic_wake_lock;
+	struct delayed_work ssic_delayed_work;
 
 	/* SSIC port number */
 	int ssic_port_number;

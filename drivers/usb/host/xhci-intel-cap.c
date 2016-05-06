@@ -297,6 +297,7 @@ void xhci_intel_ssic_port_unused(struct xhci_hcd *xhci, bool unused)
 }
 EXPORT_SYMBOL_GPL(xhci_intel_ssic_port_unused);
 
+#define SSIC_ENUMERATION_TIMEOUT	(10)
 void hub_intel_ssic_check_block_runtime(struct usb_device *udev)
 {
 	struct usb_hcd *hcd = bus_to_hcd(udev->bus);
@@ -314,7 +315,22 @@ void hub_intel_ssic_check_block_runtime(struct usb_device *udev)
 			wake_lock(&xhci->ssic_wake_lock);
 			xhci->ssic_runtime_blocked = 1;
 			pm_runtime_get(hcd->self.controller);
+			schedule_delayed_work(&xhci->ssic_delayed_work,
+				HZ * SSIC_ENUMERATION_TIMEOUT);
 		}
+	}
+}
+
+static void hub_intel_ssic_check_unblock_runtime_work(struct xhci_hcd *xhci,
+		int worker)
+{
+	if (xhci->ssic_runtime_blocked) {
+		if (!worker)
+			cancel_delayed_work(&xhci->ssic_delayed_work);
+		xhci_warn(xhci, "unblock runtime\n");
+		xhci->ssic_runtime_blocked = 0;
+		pm_runtime_put(xhci_to_hcd(xhci)->self.controller);
+		wake_unlock(&xhci->ssic_wake_lock);
 	}
 }
 
@@ -329,14 +345,15 @@ void hub_intel_ssic_check_unblock_runtime(struct usb_device *udev)
 			udev->portnum,
 			xhci->ssic_runtime_blocked);
 
-	if (xhci_intel_ssic_port_check(xhci, udev->portnum)) {
-		if (xhci->ssic_runtime_blocked) {
-			xhci_warn(xhci, "unblock runtime\n");
-			xhci->ssic_runtime_blocked = 0;
-			pm_runtime_put(hcd->self.controller);
-			wake_unlock(&xhci->ssic_wake_lock);
-		}
-	}
+	if (xhci_intel_ssic_port_check(xhci, udev->portnum))
+		hub_intel_ssic_check_unblock_runtime_work(xhci, 0);
+}
+
+void hub_intel_ssic_check_unblock_work(struct work_struct *work)
+{
+	struct xhci_hcd *xhci = container_of(work,
+			struct xhci_hcd, ssic_delayed_work.work);
+	hub_intel_ssic_check_unblock_runtime_work(xhci, 1);
 }
 
 /*

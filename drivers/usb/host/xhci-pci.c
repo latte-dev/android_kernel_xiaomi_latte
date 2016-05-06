@@ -454,6 +454,12 @@ static void xhci_pci_remove(struct pci_dev *dev)
 		usb_remove_hcd(xhci->shared_hcd);
 		usb_put_hcd(xhci->shared_hcd);
 	}
+
+	if (xhci->ssic_runtime_blocked) {
+		wake_unlock(&xhci->ssic_wake_lock);
+		cancel_delayed_work(&xhci->ssic_delayed_work);
+	}
+
 	usb_hcd_pci_remove(dev);
 
 	/* Workaround for spurious wakeups at shutdown with HSW */
