@@ -2102,8 +2102,10 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 		host->mrq = NULL;
 
 		if (unlikely(host->quirks2 & SDHCI_QUIRK2_TUNING_POLL)) {
-			unsigned long timeout = jiffies + msecs_to_jiffies(150);
+			u64 timeout = sched_clock() + 150 * ((u64) NSEC_PER_MSEC);
+			u64 clock;
 			do {
+				clock = sched_clock();
 				unsigned int intmask =
 					sdhci_readl(host, SDHCI_INT_STATUS);
 				if (!(intmask & SDHCI_INT_DATA_AVAIL))
@@ -2113,7 +2115,7 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 						intmask & SDHCI_INT_DATA_AVAIL,
 						SDHCI_INT_STATUS);
 				break;
-			} while (!time_after(jiffies, timeout));
+			} while (!time_after64(clock, timeout));
 		} else {
 			spin_unlock_irqrestore(&host->lock, flags);
 			/* Wait for Buffer Read Ready interrupt */
