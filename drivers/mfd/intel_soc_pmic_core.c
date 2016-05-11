@@ -351,9 +351,8 @@ static irqreturn_t pmic_irq_thread(int irq, void *data)
 			pmic_regmap_write(&pmic->irq_regmap[i].ack,
 				pmic->irq_regmap[i].ack.mask);
 			if (pmic->print_wakeup) {
-				pr_info("pmic: device[%s] irq[%d] might"
+				pr_info("pmic: irq[%d] might"
 					" wake up system!\n",
-					pmic->cell_dev[i].name,
 					pmic->irq_base + i);
 			}
 
