@@ -1742,8 +1742,8 @@ static void handle_port_status(struct xhci_hcd *xhci,
 	}
 
 	/* Check for CCS and CSC bits */
-	if (xhci->quirks & XHCI_SSIC_DISABLE_STALL &&
-		port_id == xhci->ssic_port_number) {
+	if ((xhci->quirks & XHCI_SSIC_DISABLE_STALL) &&
+		(faked_port_index + 1) == xhci->ssic_port_number) {
 		/* Check the bit 17 in PORTSC */
 		if (temp & PORT_CSC) {
 			/*
