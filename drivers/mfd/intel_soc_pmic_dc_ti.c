@@ -166,7 +166,7 @@ static int dollar_cove_ti_init(void)
 
 struct intel_soc_pmic dollar_cove_ti_pmic = {
 	.label		= "dollar cove_ti",
-	.irq_flags	= IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+	.irq_flags	= IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
 	.init		= dollar_cove_ti_init,
 	.cell_dev	= dollar_cove_ti_dev,
 	.irq_regmap	= dollar_cove_ti_irqregmap,
