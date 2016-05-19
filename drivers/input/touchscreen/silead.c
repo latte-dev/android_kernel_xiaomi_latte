@@ -84,6 +84,9 @@
 #define SILEAD_PRESSURE		50
 #define SILEAD_FW_NAME_LEN	30
 
+#define PRESSURE_SCALE 6
+#define SIZE_SCALE    4.5
+
 enum silead_ts_power {
 	SILEAD_POWER_ON  = 1,
 	SILEAD_POWER_OFF = 0
@@ -173,8 +176,8 @@ static void silead_ts_report_touch(struct silead_ts_data *data,
 			(swap ? cinfo->y[i] : cinfo->x[i]));
 	input_report_abs(data->input_dev, ABS_MT_POSITION_Y,
 			(swap ? cinfo->x[i] : cinfo->y[i]));
-	input_report_abs(data->input_dev, ABS_MT_PRESSURE, report_pressure[i]);
-	input_report_abs(data->input_dev, ABS_MT_TOUCH_MAJOR, report_pressure[i]);
+	input_report_abs(data->input_dev, ABS_MT_PRESSURE, PRESSURE_SCALE*report_pressure[i]);
+	input_report_abs(data->input_dev, ABS_MT_TOUCH_MAJOR, SIZE_SCALE*report_pressure[i]);
 }
 
 static void silead_ts_set_power(struct i2c_client *client,
