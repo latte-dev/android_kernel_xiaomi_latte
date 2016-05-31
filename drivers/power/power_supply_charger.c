@@ -1017,12 +1017,14 @@ int power_supply_register_charger(struct power_supply *psy)
 {
 	int ret = 0;
 
-	if (!psy_chrgr.is_cable_evt_reg && psy) {
-		ret = register_usb_notifier();
-		schedule_work(&notifier_work);
+	if (psy) {
+		if (!psy_chrgr.is_cable_evt_reg) {
+			ret = register_usb_notifier();
+			schedule_work(&notifier_work);
+		}
+		SET_MAX_THROTTLE_STATE(psy);
 	}
 	psy_chrgr.is_cable_evt_reg = true;
-	SET_MAX_THROTTLE_STATE(psy);
 	return ret;
 }
 EXPORT_SYMBOL(power_supply_register_charger);
