@@ -243,9 +243,9 @@ out:
 	return 0;
 }
 
-static unsigned long i915_obj_get_shmem_pages_alloced(struct drm_i915_gem_object *obj)
+static int i915_obj_get_shmem_pages_alloced(struct drm_i915_gem_object *obj)
 {
-	unsigned long ret;
+	int ret;
 
 	if (obj->base.filp) {
 		struct inode *inode = file_inode(obj->base.filp);
@@ -605,29 +605,27 @@ i915_describe_obj(struct get_obj_stats_buf *obj_stat_buf,
 	struct per_file_obj_mem_info *stats = &pid_entry->stats;
 	int obj_shared_count = 0;
 	bool discard = false;
-	u64 nr_bytes = 0;
+
 
 	obj_shared_count = i915_obj_shared_count(obj, pid_entry, &discard);
 	if (obj_shared_count < 0)
 		return obj_shared_count;
 
-	if (!obj->stolen)
-		nr_bytes = i915_obj_get_shmem_pages_alloced(obj)*PAGE_SIZE;
-
 	if (!discard && !obj->stolen &&
-			(obj->madv != __I915_MADV_PURGED) && (nr_bytes != 0)) {
+			(obj->madv != __I915_MADV_PURGED) &&
+			(i915_obj_get_shmem_pages_alloced(obj) != 0)) {
 		if (obj_shared_count > 1)
 			stats->phys_space_shared_proportion +=
-				(nr_bytes)/obj_shared_count;
+				obj->base.size/obj_shared_count;
 		else
-			stats->phys_space_allocated_priv += nr_bytes;
+			stats->phys_space_allocated_priv +=
+				obj->base.size;
 	}
 
 	err_printf(m,
-		"%p: %7zdK  %10zdK %s    %s     %s      %s     %s      %s       %s     ",
+		"%p: %7zdK  %s    %s     %s      %s     %s      %s       %s     ",
 		   &obj->base,
 		   obj->base.size / 1024,
-		   (size_t)nr_bytes / 1024,
 		   get_pin_flag(obj),
 		   get_tiling_flag(obj),
 		   obj->dirty ? "Y" : "N",
@@ -640,7 +638,7 @@ i915_describe_obj(struct get_obj_stats_buf *obj_stat_buf,
 		err_puts(m, " purged    ");
 	else if (obj->madv == I915_MADV_DONTNEED)
 		err_puts(m, " purgeable   ");
-	else if (obj->has_backing_pages != 0)
+	else if (i915_obj_get_shmem_pages_alloced(obj) != 0)
 		err_puts(m, " allocated   ");
 	else
 		err_puts(m, "             ");
@@ -751,27 +749,31 @@ i915_drm_gem_object_per_file_summary(int id, void *ptr, void *data)
 		stats->stolen_space_allocated += obj->base.size;
 	} else if (obj->madv == __I915_MADV_PURGED) {
 		stats->num_obj_purged++;
-	} else {
-		u64 nr_bytes =
-			i915_obj_get_shmem_pages_alloced(obj)*PAGE_SIZE;
-
-		if (obj->has_backing_pages)
-			stats->num_obj_allocated++;
-
-		if (obj->madv == I915_MADV_DONTNEED) {
-			stats->num_obj_purgeable++;
-			if (nr_bytes != 0)
-				stats->phys_space_purgeable += nr_bytes;
-		}
-
-		if (nr_bytes != 0) {
+	} else if (obj->madv == I915_MADV_DONTNEED) {
+		stats->num_obj_purgeable++;
+		stats->num_obj_allocated++;
+		if (i915_obj_get_shmem_pages_alloced(obj) != 0) {
+			stats->phys_space_purgeable += obj->base.size;
 			if (obj_shared_count > 1) {
-				stats->phys_space_allocated_shared += nr_bytes;
+				stats->phys_space_allocated_shared +=
+					obj->base.size;
 				stats->phys_space_shared_proportion +=
-					nr_bytes/obj_shared_count;
+					obj->base.size/obj_shared_count;
 			} else
-				stats->phys_space_allocated_priv += nr_bytes;
-		}
+				stats->phys_space_allocated_priv +=
+					obj->base.size;
+		} else
+			WARN_ON(1);
+	} else if (i915_obj_get_shmem_pages_alloced(obj) != 0) {
+		stats->num_obj_allocated++;
+			if (obj_shared_count > 1) {
+				stats->phys_space_allocated_shared +=
+					obj->base.size;
+				stats->phys_space_shared_proportion +=
+					obj->base.size/obj_shared_count;
+			}
+		else
+			stats->phys_space_allocated_priv += obj->base.size;
 	}
 	if (obj->fault_mappable) {
 		stats->num_obj_fault_mappable++;
@@ -978,7 +980,7 @@ __i915_gem_get_obj_info(struct drm_i915_error_state_buf *m,
 
 		file_priv_reqd = file_priv;
 		err_puts(m,
-			"\n Obj Identifier   Obj-Size Resident-Size Pin Tiling Dirty Shared Vmap Stolen Mappable  AllocState Global/PP  GttOffset (PID: handle count: user virt addrs)\n");
+			"\n Obj Identifier       Size Pin Tiling Dirty Shared Vmap Stolen Mappable  AllocState Global/PP  GttOffset (PID: handle count: user virt addrs)\n");
 		spin_lock(&file->table_lock);
 		ret = idr_for_each(&file->object_idr,
 				&i915_drm_gem_obj_info, &obj_stat_buf);
