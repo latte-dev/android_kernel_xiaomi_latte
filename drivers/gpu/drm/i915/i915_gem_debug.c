@@ -153,7 +153,6 @@ struct pid_stat_entry {
 	struct drm_open_hash namelist;
 	struct per_file_obj_mem_info stats;
 	struct pid *tgid;
-	struct i915_gem_file_attr_priv *attr_priv;
 	int pid_num;
 };
 
@@ -260,23 +259,6 @@ static unsigned long i915_obj_get_shmem_pages_alloced(struct drm_i915_gem_object
 		return ret;
 	}
 	return 0;
-}
-
-static void i915_update_task_mm_stats(struct pid_stat_entry *pid_entry)
-{
-	long new_size, old_size;
-
-	new_size =
-		(pid_entry->stats.phys_space_shared_proportion +
-		 pid_entry->stats.phys_space_allocated_priv) / PAGE_SIZE;
-
-	old_size = pid_entry->attr_priv->rss_size;
-
-	/* Update task mm stats */
-	if(pid_entry->attr_priv->mm)
-		add_mm_counter(pid_entry->attr_priv->mm, MM_FILEPAGES, new_size - old_size);
-
-	pid_entry->attr_priv->rss_size = new_size;
 }
 
 int i915_gem_obj_insert_pid(struct drm_i915_gem_object *obj)
@@ -853,7 +835,6 @@ __i915_get_drm_clients_info(struct drm_i915_error_state_buf *m,
 			list_add_tail(&new_entry->head, &per_pid_stats);
 			INIT_LIST_HEAD(&new_entry->namefree);
 			new_entry->stats.process_name = file_priv->process_name;
-			new_entry->attr_priv = file_priv->obj_attr->private;
 			pid_entry = new_entry;
 		}
 
@@ -918,8 +899,6 @@ __i915_get_drm_clients_info(struct drm_i915_error_state_buf *m,
 			err_puts(m, "*\n");
 		else
 			err_puts(m, "\n");
-
-		i915_update_task_mm_stats(pid_entry);
 
 		total_shared_prop_space +=
 			pid_entry->stats.phys_space_shared_proportion/1024;
@@ -997,7 +976,6 @@ __i915_gem_get_obj_info(struct drm_i915_error_state_buf *m,
 		if (file_priv->tgid != tgid)
 			continue;
 
-		pid_entry.attr_priv = file_priv->obj_attr->private;
 		file_priv_reqd = file_priv;
 		err_puts(m,
 			"\n Obj Identifier   Obj-Size Resident-Size Pin Tiling Dirty Shared Vmap Stolen Mappable  AllocState Global/PP  GttOffset (PID: handle count: user virt addrs)\n");
@@ -1011,8 +989,6 @@ __i915_gem_get_obj_info(struct drm_i915_error_state_buf *m,
 
 	if (file_priv_reqd) {
 		int space_remaining;
-
-		i915_update_task_mm_stats(&pid_entry);
 
 		/* Reset the bytes counter to buffer beginning */
 		bytes_copy = m->bytes;

@@ -6365,19 +6365,6 @@ static int num_vma_bound(struct drm_i915_gem_object *obj)
 }
 #endif
 
-static void i915_gem_update_gfx_stats(struct drm_device *dev)
-{
-	if (!mutex_is_locked_by(&dev->struct_mutex, current) &&
-		!mutex_is_locked_by(&drm_global_mutex, current)) {
-		struct drm_i915_error_state_buf error_str;
-
-		error_str.bytes = 0;
-		error_str.size = 0;
-		error_str.err = -ENOSPC;
-		i915_get_drm_clients_info(&error_str, dev);
-	}
-}
-
 static unsigned long
 i915_gem_shrinker_count(struct shrinker *shrinker, struct shrink_control *sc)
 {
@@ -6404,8 +6391,6 @@ i915_gem_shrinker_count(struct shrinker *shrinker, struct shrink_control *sc)
 
 	if (unlock)
 		mutex_unlock(&dev->struct_mutex);
-
-	i915_gem_update_gfx_stats(dev);
 
 	return count;
 }

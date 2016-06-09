@@ -1553,6 +1553,12 @@ out:
 #define GEM_OBJ_STAT_BUF_SIZE (4*1024) /* 4KB */
 #define GEM_OBJ_STAT_BUF_SIZE_MAX (1024*1024) /* 1MB */
 
+struct i915_gem_file_attr_priv {
+	char tgid_str[16];
+	struct pid *tgid;
+	struct drm_i915_error_state_buf buf;
+};
+
 static ssize_t i915_gem_read_objects(struct file *filp,
 				struct kobject *memtrack_kobj,
 				struct bin_attribute *attr,
@@ -1715,9 +1721,6 @@ int i915_gem_create_sysfs_file_entry(struct drm_device *dev,
 	obj_attr->read = i915_gem_read_objects;
 
 	attr_priv->tgid = file_priv->tgid;
-	attr_priv->rss_size = 0;
-	attr_priv->mm = current->mm;
-	atomic_inc(&current->mm->mm_count);
 	obj_attr->private = attr_priv;
 
 	ret = sysfs_create_bin_file(&dev_priv->memtrack_kobj,
@@ -1773,12 +1776,6 @@ void i915_gem_remove_sysfs_file_entry(struct drm_device *dev,
 		if (WARN_ON(file_priv->obj_attr == NULL))
 			return;
 		attr_priv = file_priv->obj_attr->private;
-
-		if(attr_priv->mm) {
-			add_mm_counter(attr_priv->mm, MM_FILEPAGES,
-						-attr_priv->rss_size);
-			mmdrop(attr_priv->mm);
-		}
 
 		sysfs_remove_bin_file(&dev_priv->memtrack_kobj,
 				file_priv->obj_attr);
