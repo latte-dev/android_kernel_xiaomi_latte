@@ -46,8 +46,6 @@ static bool int_handler_enabled;
 
 
 static void activate_irq_handler(void);
-static void set_wake_locked(int wake);
-
 
 struct bluetooth_low_power_mode {
 #ifndef DBG_DISABLE_BT_LOW_POWER
@@ -70,7 +68,6 @@ struct bluetooth_low_power_mode {
 
 	struct device *tty_dev;
 #ifndef DBG_DISABLE_BT_LOW_POWER
-	int wake_lock_status;
 	struct wake_lock wake_lock;
 	char wake_lock_name[100];
 #endif /* !DBG_DISABLE_BT_LOW_POWER */
@@ -80,27 +77,15 @@ struct bluetooth_low_power_mode {
 #ifndef DBG_DISABLE_BT_LOW_POWER
 static void uart_enable(struct device *tty)
 {
-	if (wake_uart_enabled) {
-		pr_debug("%s: uart already enabled\n", __func__);
-		return;
-	}
-
 	pr_debug("%s: runtime get\n", __func__);
 	/* Tell PM runtime to power on the tty device and block s0i3 */
-	wake_uart_enabled = true;
 	pm_runtime_get(tty);
 }
 
 static void uart_disable(struct device *tty)
 {
-	if (!wake_uart_enabled) {
-		pr_debug("%s: uart already disabled\n", __func__);
-		return;
-	}
-
 	pr_debug("%s: runtime put\n", __func__);
 	/* Tell PM runtime to release tty device and allow s0i3 */
-	wake_uart_enabled = false;
 	pm_runtime_put(tty);
 }
 #endif /* !DBG_DISABLE_BT_LOW_POWER */
@@ -115,7 +100,7 @@ static int bt_lpm_acpi_probe(struct platform_device *pdev)
 	 */
 	dev_dbg(&pdev->dev, "ACPI specific probe\n");
 
-	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, "enable_bt",
+	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, NULL,
 						gpio_enable_bt_acpi_idx);
 	bt_lpm.gpio_enable_bt = desc_to_gpio(bt_lpm_gpiod);
 	if (!gpio_is_valid(bt_lpm.gpio_enable_bt)) {
@@ -125,7 +110,7 @@ static int bt_lpm_acpi_probe(struct platform_device *pdev)
 	}
 
 #ifndef DBG_DISABLE_BT_LOW_POWER
-	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, "host_wake_bt",
+	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, NULL,
 						gpio_wake_acpi_idx);
 	bt_lpm.gpio_wake = desc_to_gpio(bt_lpm_gpiod);
 	if (!gpio_is_valid(bt_lpm.gpio_wake)) {
@@ -134,7 +119,7 @@ static int bt_lpm_acpi_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, "bt_wake_host",
+	bt_lpm_gpiod = gpiod_get_index(&pdev->dev, NULL,
 						host_wake_acpi_idx);
 	bt_lpm.gpio_host_wake = desc_to_gpio(bt_lpm_gpiod);
 	if (!gpio_is_valid(bt_lpm.gpio_host_wake)) {
@@ -189,7 +174,6 @@ static int bt_lpm_rfkill_set_power(void *data, bool blocked)
 		gpio_set_value(bt_lpm.gpio_reset, 1);
 #else
 		gpio_set_value(bt_lpm.gpio_enable_bt, 1);
-
 #endif
 		pr_debug("%s: turn BT on\n", __func__);
 	} else {
@@ -216,24 +200,21 @@ static void set_wake_locked(int wake)
 {
 	bt_lpm.wake = wake;
 
-	if (!wake) {
-		if (bt_lpm.wake_lock_status != wake) {
-			wake_unlock(&bt_lpm.wake_lock);
-			bt_lpm.wake_lock_status = wake;
-		}
-	}
+	if (!wake)
+		wake_unlock(&bt_lpm.wake_lock);
 
-	if (wake) {
+	if (!wake_uart_enabled && wake) {
 		WARN_ON(!bt_lpm.tty_dev);
 		uart_enable(bt_lpm.tty_dev);
 	}
 
 	gpio_set_value(bt_lpm.gpio_wake, wake);
 
-	if (!wake) {
+	if (wake_uart_enabled && !wake) {
 		WARN_ON(!bt_lpm.tty_dev);
 		uart_disable(bt_lpm.tty_dev);
 	}
+	wake_uart_enabled = wake;
 }
 
 static enum hrtimer_restart enter_lpm(struct hrtimer *timer)
@@ -254,10 +235,7 @@ static void update_host_wake_locked(int host_wake)
 	bt_lpm.host_wake = host_wake;
 
 	if (host_wake) {
-		if (host_wake != bt_lpm.wake_lock_status) {
-			bt_lpm.wake_lock_status = host_wake;
-			wake_lock(&bt_lpm.wake_lock);
-		}
+		wake_lock(&bt_lpm.wake_lock);
 		if (!host_wake_uart_enabled) {
 			WARN_ON(!bt_lpm.tty_dev);
 			uart_enable(bt_lpm.tty_dev);
@@ -271,11 +249,8 @@ static void update_host_wake_locked(int host_wake)
 		 * Take a timed wakelock, so that upper layers can take it.
 		 * The chipset deasserts the hostwake lock, when there is no
 		 * more data to send.
-		*/
-		if (host_wake != bt_lpm.wake_lock_status) {
-			bt_lpm.wake_lock_status = host_wake;
-			wake_lock_timeout(&bt_lpm.wake_lock, HZ/2);
-		}
+		 */
+		wake_lock_timeout(&bt_lpm.wake_lock, HZ/2);
 	}
 
 	host_wake_uart_enabled = host_wake;
@@ -294,11 +269,6 @@ static irqreturn_t host_wake_isr(int irq, void *dev)
 							IRQF_TRIGGER_RISING);
 
 	if (!bt_lpm.tty_dev) {
-		bt_lpm.host_wake = host_wake;
-		return IRQ_HANDLED;
-	}
-
-	if (!bt_enabled) {
 		bt_lpm.host_wake = host_wake;
 		return IRQ_HANDLED;
 	}
@@ -387,11 +357,8 @@ static int bluetooth_lpm_init(struct platform_device *pdev)
 			"BTLowPower");
 	wake_lock_init(&bt_lpm.wake_lock, WAKE_LOCK_SUSPEND,
 			 bt_lpm.wake_lock_name);
-	bt_lpm.wake_lock_status = 0;
 
 	bt_lpm_wake_peer(tty_dev);
-	set_wake_locked(0);
-
 	return 0;
 }
 #endif /* !DBG_DISABLE_BT_LOW_POWER */
@@ -551,7 +518,6 @@ static int bt_lpm_remove(struct platform_device *pdev)
 	gpio_free(bt_lpm.gpio_wake);
 	gpio_free(bt_lpm.gpio_host_wake);
 	wake_lock_destroy(&bt_lpm.wake_lock);
-	bt_lpm.wake_lock_status = 0;
 #endif /* !DBG_DISABLE_BT_LOW_POWER */
 	gpiod_put(bt_lpm_gpiod);
 	return 0;
