@@ -29,11 +29,11 @@
 #define _I915_GEM_USERDATA_H_
 
 #include <drm/drmP.h>
-#include <linux/spinlock.h>
+#include <linux/rwsem.h>
 #include <drm/i915_drm.h>
 
 struct i915_gem_userdata {
-	rwlock_t lock;
+	struct rw_semaphore rwsem;
 	u16      flags;
 	u16      length; /* In bytes */
 	u8       data[0];

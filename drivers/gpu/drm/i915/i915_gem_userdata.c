@@ -26,7 +26,6 @@
  */
 #include <drm/drmP.h>
 #include <drm/i915_drm.h>
-#include <linux/spinlock.h>
 #include "i915_drv.h"
 
 static int
@@ -110,7 +109,7 @@ i915_gem_userdata(struct drm_device *dev,
 
 		userdata_blk->length = (u16)bytes;
 		userdata_blk->flags  = flags;
-		rwlock_init(&userdata_blk->lock);
+		init_rwsem(&userdata_blk->rwsem);
 
 		if (data) {
 			ret = copy_from_user(userdata_blk->data, data, bytes);
@@ -173,13 +172,13 @@ i915_gem_userdata(struct drm_device *dev,
 
 		stored_data = userdata_blk->data + offset;
 		if (set) {
-			write_lock(&userdata_blk->lock);
+			down_write(&userdata_blk->rwsem);
 			ret = copy_from_user(stored_data, data, bytes);
-			write_unlock(&userdata_blk->lock);
+			up_write(&userdata_blk->rwsem);
 		} else {
-			read_lock(&userdata_blk->lock);
+			down_read(&userdata_blk->rwsem);
 			ret = copy_to_user(data, stored_data, bytes);
-			read_unlock(&userdata_blk->lock);
+			up_read(&userdata_blk->rwsem);
 		}
 
 		if (ret != 0)
