@@ -1,5 +1,6 @@
 /*
  * Copyright © 2013 Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -545,7 +546,7 @@ void wait_for_dpi_dbi_fifo_empty(struct intel_dsi *intel_dsi)
 	do {
 		if (wait_for((I915_READ(MIPI_GEN_FIFO_STAT(pipe)) & mask)
 								== mask, 100))
-			DRM_ERROR("DPI/DBI FIFO empty wait timed out\n");
+			DRM_ERROR("DPI or DBI FIFOs are not empty\n");
 
 		/* For Port C for dual link */
 		if (intel_dsi->dual_link)

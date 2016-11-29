@@ -2,6 +2,7 @@
  * hsu_plat.c: driver for Intel High Speed UART device
  *
  * (C) Copyright 2013 Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -93,7 +94,7 @@ static int cht_hsu_hw_suspend(struct uart_hsu_port *up)
 		break;
 	case cts_wake:
 		if (!pin_cfg->cts_gpio) {
-			pin_cfg->cts_gpio =gpiod_get_index(up->dev, "hsu_cts",
+			pin_cfg->cts_gpio = gpiod_get_index(up->dev, "hsu_cts",
 					hsu_cts_idx);
 			if (IS_ERR(pin_cfg->cts_gpio))
 				pin_cfg->cts_gpio = NULL;
@@ -199,10 +200,8 @@ static void hsu_set_termios(struct uart_port *p, struct ktermios *termios,
 	/* DesignWare UART CTS is auto controlled by HW IP,
 	 * ignore sw-assisted CTS flow control
 	 */
-	if (termios->c_cflag & CRTSCTS) {
+	if (termios->c_cflag & CRTSCTS)
 		clear_bit(ASYNCB_CTS_FLOW, &tport->flags);
-		p->flags |= UPF_HARD_FLOW;
-	}
 
 	serial_hsu_do_set_termios(p, termios, old);
 }

@@ -2,6 +2,7 @@
  * PCI glue for HECI provider device (ISS) driver
  *
  * Copyright (c) 2014-2015, Intel Corporation.
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -341,6 +342,9 @@ void	g_ish_print_log(char *fmt, ...)
 		return;
 
 	dev = pci_get_drvdata(heci_pci_device);
+	if (!dev)
+		return;
+
 	va_start(args, fmt);
 	vsnprintf(tmp_buf, sizeof(tmp_buf), fmt, args);
 	va_end(args);
@@ -801,7 +805,7 @@ struct my_work_t {
 
 struct my_work_t *work;
 
-static void workqueue_init_function(struct work_struct *work)
+void workqueue_init_function(struct work_struct *work)
 {
 	struct heci_device *dev = ((struct my_work_t *)work)->dev;
 	int err;
@@ -810,7 +814,6 @@ static void workqueue_init_function(struct work_struct *work)
 		"[pci driver] %s() in workqueue func, continue initialization process\n",
 		__func__);
 
-	pci_set_drvdata(dev->pdev, dev);
 /*	dev_dbg(&dev->pdev->dev, "heci: after pci_set_drvdata\n");*/
 
 	device_create_file(&dev->pdev->dev, &heci_dev_state_attr);
@@ -852,6 +855,8 @@ static void workqueue_init_function(struct work_struct *work)
 #endif /*ISH_LOG*/
 
 	init_waitqueue_head(&suspend_wait);
+
+	pci_set_drvdata(dev->pdev, dev);
 
 	mutex_lock(&heci_mutex);
 	if (heci_start(dev)) {
@@ -1104,6 +1109,37 @@ static void ish_remove(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 }
 
+/**
+ * ish_shutdown - Device shutdown Routine
+ *
+ * @pdev: PCI device structure
+ *
+ */
+static void ish_shutdown(struct pci_dev *pdev)
+{
+	struct heci_device *dev;
+
+	/*
+	 * This happens during power-off/reboot and may be at the same time as
+	 * a lot of bi-directional communication happens
+	 */
+	if (heci_pci_device != pdev) {
+		dev_err(&pdev->dev, "heci: heci_pci_device != pdev\n");
+		return;
+	}
+
+	dev = pci_get_drvdata(pdev);
+	if (!dev) {
+		dev_err(&pdev->dev, "heci: dev =NULL\n");
+		return;
+	}
+
+	heci_stop(dev);
+
+	pci_disable_msi(pdev);
+	free_irq(pdev->irq, dev);
+}
+
 int ish_suspend(struct device *device)
 {
 	struct pci_dev *pdev = to_pci_dev(device);
@@ -1155,7 +1191,7 @@ static struct pci_driver ish_driver = {
 	.id_table = ish_pci_tbl,
 	.probe = ish_probe,
 	.remove = ish_remove,
-	.shutdown = ish_remove,
+	.shutdown = ish_shutdown,
 	.driver.pm = HECI_ISH_PM_OPS,
 };
 

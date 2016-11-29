@@ -310,12 +310,12 @@ DECLARE_EVENT_CLASS(i915_page_table_entry,
 	),
 
 	TP_printk("vm=%p, pde=%d (0x%llx-0x%llx)",
-		  __entry->vm, __entry->pde, __entry->start, __entry->end)
+		__entry->vm, __entry->pde, __entry->start, __entry->end)
 );
 
 DEFINE_EVENT(i915_page_table_entry, i915_page_table_entry_alloc,
-	     TP_PROTO(struct i915_address_space *vm, u32 pde, u64 start, u64 pde_shift),
-	     TP_ARGS(vm, pde, start, pde_shift)
+	TP_PROTO(struct i915_address_space *vm, u32 pde, u64 start, u64 pde_shift),
+	TP_ARGS(vm, pde, start, pde_shift)
 );
 
 /* Avoid extra math because we only support two sizes. The format is defined by

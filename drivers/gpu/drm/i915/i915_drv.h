@@ -3,6 +3,7 @@
 /*
  *
  * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright (C) 2016 XiaoMi, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -1435,6 +1436,7 @@ struct i915_gpu_error {
 	u32 stop_rings;
 #define I915_STOP_RING_ALLOW_BAN       (1 << 31)
 #define I915_STOP_RING_ALLOW_WARN      (1 << 30)
+	u32 faked_lost_ctx_event_irq;
 
 	/*
 	 * Bit mask for simulation of lost context event IRQs on each

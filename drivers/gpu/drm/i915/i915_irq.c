@@ -2,6 +2,7 @@
  */
 /*
  * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright (C) 2016 XiaoMi, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -3762,7 +3763,8 @@ static bool i915_hangcheck_hung(struct intel_ring_hangcheck *hc, u32 seqno)
 				i915_gem_context_get_current_context(ring, NULL);
 
 			if (status == CONTEXT_SUBMISSION_STATUS_SUBMITTED) {
-				DRM_DEBUG_TDR("Inconsistent context state. Faking interrupt on %s!\n", ring->name);
+				DRM_DEBUG_TDR("Inconsistent context state. Faking interrupt on %s!", ring->name);
+
 				if (!intel_execlists_TDR_force_CSB_check(dev_priv, hc->ringid)) {
 					if (i915.enable_inconsistency_reset) {
 						WARN(1, "Inconsistency rectification failed! Falling back to full GPU reset!\n");
@@ -3781,7 +3783,6 @@ static bool i915_hangcheck_hung(struct intel_ring_hangcheck *hc, u32 seqno)
 						 */
 						force_full_GPU_reset = false;
 					}
-
 				} else {
 					/*
 					 * Hang was apparently due to inconsistent HW/driver state.

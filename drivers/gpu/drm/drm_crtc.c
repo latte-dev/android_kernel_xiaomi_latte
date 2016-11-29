@@ -2,6 +2,7 @@
  * Copyright (c) 2006-2008 Intel Corporation
  * Copyright (c) 2007 Dave Airlie <airlied@linux.ie>
  * Copyright (c) 2008 Red Hat Inc.
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * DRM core CRTC related functions
  *
@@ -4197,15 +4198,15 @@ int drm_mode_obj_set_property_ioctl(struct drm_device *dev, void *data,
 	case DRM_MODE_OBJECT_CONNECTOR:
 		crtc = drm_crtc_from_connector(obj_to_connector(arg_obj));
 		if (crtc) {
-			DRM_DEBUG_KMS("CRTC from connector,{id=%d props=%d}\n",
-					crtc->base.id, crtc->base.properties ?
+			DRM_DEBUG_DRIVER("CRTC from connector,CRTC={id=%d props=%d}\n",
+				crtc->base.id, crtc->base.properties ?
 					crtc->base.properties->count : 0);
 			mutex_lock(&config->mutex);
 			drm_modeset_lock(&crtc->mutex, NULL);
 			ret = drm_mode_connector_set_obj_prop(arg_obj, property,
 							arg->value);
 		} else {
-			DRM_DEBUG_KMS("No crtc from connector, lock all\n");
+			DRM_ERROR("No crtc from connector, lock all\n");
 			drm_modeset_lock_all(dev);
 			ret = drm_mode_connector_set_obj_prop(arg_obj, property,
 							arg->value);
@@ -4230,8 +4231,7 @@ int drm_mode_obj_set_property_ioctl(struct drm_device *dev, void *data,
 		drm_modeset_unlock(&crtc->mutex);
 		if (arg_obj->type == DRM_MODE_OBJECT_CONNECTOR)
 			mutex_unlock(&config->mutex);
-	}
-	else
+	} else
 		drm_modeset_unlock_all(dev);
 out:
 	return ret;

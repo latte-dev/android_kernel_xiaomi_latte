@@ -4,6 +4,7 @@
  * Refer pxa.c, 8250.c and some other drivers in drivers/serial/
  *
  * (C) Copyright 2010-2014 Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -1588,7 +1589,8 @@ int serial_hsu_do_suspend(struct uart_hsu_port *up)
 
 	/* Should check the RX FIFO is not empty */
 	if (test_bit(flag_startup, &up->flags) && (up->hw_type == hsu_dw)
-			&& serial_in(up, UART_DW_USR) & UART_DW_USR_RFNE)
+			&& ((serial_in(up, UART_DW_USR) & UART_DW_USR_RFNE)
+			|| test_bit(flag_rx_on, &up->flags)))
 			goto busy;
 
 	if (cfg->hw_set_rts)

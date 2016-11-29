@@ -655,7 +655,7 @@ static void announce_cpu(int cpu, int apicid)
 		node_width = num_digits(num_possible_nodes()) + 1; /* + '#' */
 
 	if (cpu == 1)
-		printk(KERN_INFO "x86: Booting SMP configuration:\n");
+		pr_debug("x86: Booting SMP configuration:\n");
 
 	if (system_state == SYSTEM_BOOTING) {
 		if (node != current_node) {
@@ -674,7 +674,7 @@ static void announce_cpu(int cpu, int apicid)
 		pr_cont("%*s#%d", width - num_digits(cpu), " ", cpu);
 
 	} else
-		pr_info("Booting Node %d Processor %d APIC 0x%x\n",
+		pr_debug("Booting Node %d Processor %d APIC 0x%x\n",
 			node, cpu, apicid);
 }
 

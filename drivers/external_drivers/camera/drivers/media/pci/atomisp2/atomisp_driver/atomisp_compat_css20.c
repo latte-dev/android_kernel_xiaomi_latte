@@ -2,6 +2,7 @@
  * Support for Clovertrail PNW Camera Imaging ISP subsystem.
  *
  * Copyright (c) 2013 Intel Corporation. All Rights Reserved.
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License version

@@ -2,6 +2,7 @@
  * PXA2xx SPI DMA engine support.
  *
  * Copyright (C) 2013, Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  * Author: Mika Westerberg <mika.westerberg@linux.intel.com>
  *
  * This program is free software; you can redistribute it and/or modify

@@ -4,6 +4,7 @@
  * Copyright (C) 2007-2008 Atmel Corporation
  * Copyright (C) 2010-2011 ST Microelectronics
  * Copyright (C) 2013 Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -1455,6 +1456,7 @@ EXPORT_SYMBOL(dw_dma_cyclic_free);
 
 static void dw_dma_off(struct dw_dma *dw)
 {
+	int retry = 100;
 	dma_writel(dw, CFG, 0);
 
 	channel_clear_bit(dw, MASK.XFER, dw->all_chan_mask);
@@ -1462,8 +1464,11 @@ static void dw_dma_off(struct dw_dma *dw)
 	channel_clear_bit(dw, MASK.DST_TRAN, dw->all_chan_mask);
 	channel_clear_bit(dw, MASK.ERROR, dw->all_chan_mask);
 
-	while (dma_readl(dw, CFG) & DW_CFG_DMA_EN)
-		cpu_relax();
+	while (dma_readl(dw, CFG) & DW_CFG_DMA_EN && retry--) {
+		udelay(100);
+		if (retry == 0)
+			dev_err(&dw->dma.dev, "%s timeout error\n", __func__);
+	}
 }
 
 int dw_dma_probe(struct dw_dma_chip *chip, struct dw_dma_platform_data *pdata)

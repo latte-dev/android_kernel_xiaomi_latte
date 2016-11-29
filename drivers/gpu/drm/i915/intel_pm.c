@@ -1,5 +1,6 @@
 /*
  * Copyright © 2012 Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1516,14 +1517,13 @@ void vlv_update_dsparb(struct intel_crtc *intel_crtc)
 		sr = 0;
 	}
 
-	if ((I915_READ(DSPFW1) & VLV_FW_SR_MASK) != (sr << FW1_SR_WM))
-		I915_WRITE_BITS(DSPFW1, (sr << FW1_SR_WM), VLV_FW_SR_MASK);
+	if ((I915_READ(DSPFW1) & VLV_FW_SR_MASK) != (sr << 23))
+		I915_WRITE_BITS(DSPFW1, (sr << 23), VLV_FW_SR_MASK);
 
-	if ((I915_READ(DSPHOWM) & VLV_DSPHOWM_SR_MASK) !=
-		((sr >> NUM_SR_BITS) << SHOWM_SR_WM_HO))
-			I915_WRITE(DSPHOWM, (I915_READ(DSPHOWM) &
-				~(VLV_DSPHOWM_SR_MASK)) |
-				((sr >> NUM_SR_BITS) << SHOWM_SR_WM_HO));
+	if ((I915_READ(DSPHOWM) & VLV_DSPHOWM_SR_MASK) != ((sr >> 9) << 24))
+		I915_WRITE(DSPHOWM, (I915_READ(DSPHOWM) &
+						~(VLV_DSPHOWM_SR_MASK)) |
+					((sr >> 9) << 24));
 
 	switch (pipe) {
 	case PIPE_A:
@@ -1545,11 +1545,8 @@ void vlv_update_dsparb(struct intel_crtc *intel_crtc)
 							VLV_FW_PIPEA_SB_MASK);
 
 
-		dsphowm = (pa >> NIBBLE_HIGH) |
-				((sa >> NIBBLE_HIGH) <<
-					VLV_DSPHOWM_PIPEA_SA_SHIFT) |
-				((sb >> NIBBLE_HIGH) <<
-					VLV_DSPHOWM_PIPEA_SB_SHIFT);
+		dsphowm = (pa >> 8) | ((sa >> 8) << VLV_DSPHOWM_PIPEA_SA_SHIFT)
+				| ((sb >> 8) << VLV_DSPHOWM_PIPEA_SB_SHIFT);
 
 		if ((I915_READ(DSPHOWM) & VLV_DSPHOWM_PIPEA_MASK) !=  dsphowm)
 			I915_WRITE(DSPHOWM, (I915_READ(DSPHOWM) &
@@ -1579,12 +1576,9 @@ void vlv_update_dsparb(struct intel_crtc *intel_crtc)
 			I915_WRITE_BITS(DSPFW7, (sb << VLV_FW_PIPEB_SD_SHIFT),
 							VLV_FW_PIPEB_SD_MASK);
 
-		dsphowm = ((pa >> NIBBLE_HIGH) <<
-					VLV_DSPHOWM_PIPEB_PB_SHIFT) |
-				((sa >> NIBBLE_HIGH) <<
-					VLV_DSPHOWM_PIPEB_SC_SHIFT) |
-				((sb >> NIBBLE_HIGH) <<
-					VLV_DSPHOWM_PIPEB_SD_SHIFT);
+		dsphowm = ((pa >> 8) << VLV_DSPHOWM_PIPEB_PB_SHIFT) |
+				((sa >> 8) << VLV_DSPHOWM_PIPEB_SC_SHIFT) |
+				((sb >> 8) << VLV_DSPHOWM_PIPEB_SD_SHIFT);
 
 		if ((I915_READ(DSPHOWM) & VLV_DSPHOWM_PIPEB_MASK) !=  dsphowm)
 			I915_WRITE(DSPHOWM, (I915_READ(DSPHOWM) &
@@ -1611,9 +1605,9 @@ void vlv_update_dsparb(struct intel_crtc *intel_crtc)
 			I915_WRITE_BITS(DSPFW8, (sb << VLV_FW_PIPEC_SF_SHIFT),
 							VLV_FW_PIPEC_SF_MASK);
 
-		dsphowm = ((pa >> NIBBLE_HIGH) << VLV_DSPHOWM_PIPEC_PC_SHIFT) |
-			((sa >> NIBBLE_HIGH) << VLV_DSPHOWM_PIPEC_SE_SHIFT) |
-			((sb >> NIBBLE_HIGH) << VLV_DSPHOWM_PIPEC_SF_SHIFT);
+		dsphowm = ((pa >> 8) << VLV_DSPHOWM_PIPEC_PC_SHIFT) |
+			((sa >> 8) << VLV_DSPHOWM_PIPEC_SE_SHIFT) |
+			((sb >> 8) << VLV_DSPHOWM_PIPEC_SF_SHIFT);
 		if ((I915_READ(DSPHOWM) & VLV_DSPHOWM_PIPEC_MASK) != dsphowm)
 			I915_WRITE(DSPHOWM, (I915_READ(DSPHOWM) &
 					~(VLV_DSPHOWM_PIPEC_MASK)) | dsphowm);
@@ -1648,7 +1642,7 @@ void vlv_set_ddr_dvfs(struct drm_i915_private *dev_priv,
 		config = &((to_intel_crtc(crtc))->config);
 
 		/* DDR freq should be high for resolution greater than 19x12 */
-		if ((config->pipe_src_w * config->pipe_src_h) > (1920 * 1200))
+		if ((config->pipe_src_w * config->pipe_src_h) > (1536 * 2048))
 			val = CHV_FORCE_DDR_HIGH_FREQ;
 	}
 
@@ -1737,6 +1731,19 @@ vlv_force_ddr_low_frequency(struct drm_i915_private *dev_priv, bool mode)
 	if (mode != dev_priv->force_low_ddr_freq) {
 		dev_priv->force_low_ddr_freq = mode;
 		vlv_set_ddr_dvfs(dev_priv, mode);
+	}
+}
+
+void
+vlv_force_ddr_low_frequency(struct drm_i915_private *dev_priv, bool mode)
+{
+	if (mode != dev_priv->force_low_ddr_freq) {
+		dev_priv->force_low_ddr_freq = mode;
+
+		/* Change DVFS frequency directly only if higher DVFS is being
+		 * set. Low DVFS will be set only from maxfifo function */
+		if (!dev_priv->force_low_ddr_freq)
+			vlv_set_ddr_dvfs(dev_priv, mode);
 	}
 }
 

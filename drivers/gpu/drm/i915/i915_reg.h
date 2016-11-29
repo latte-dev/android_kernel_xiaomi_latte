@@ -1,4 +1,5 @@
 /* Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright (C) 2016 XiaoMi, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -945,10 +946,10 @@ enum punit_power_well {
 #define   DPIO_PCS_SWING_DEEMPH_CALC_MASK	(0xcf0f << DPIO_PCS_SWING_DEEMPH_CALC_SHIFT)
 #define   DPIO_PCS_SWING_CALC_TX0_TX2	(1<<30)
 #define   DPIO_PCS_SWING_CALC_TX1_TX3	(1<<31)
-#define	  DPIO_PCS_DEEMPH_CALC_TX0_TX2	(2<<24)
-#define	  DPIO_PCS_DEEMPH_CALC_TX1_TX3	(2<<16)
-#define	  DPIO_PCS_DEEMPH_4K_CALC_TX0_TX2	(6<<28)
-#define	  DPIO_PCS_DEEMPH_4K_CALC_TX1_TX3	(6<<20)
+#define   DPIO_PCS_DEEMPH_CALC_TX0_TX2	(2<<24)
+#define   DPIO_PCS_DEEMPH_CALC_TX1_TX3	(2<<16)
+#define   DPIO_PCS_DEEMPH_4K_CALC_TX0_TX2	(6<<28)
+#define   DPIO_PCS_DEEMPH_4K_CALC_TX1_TX3	(6<<20)
 #define   DPIO_PCS_TX2DEEMP_MASK	(0xf<<24)
 #define   DPIO_PCS_TX2DEEMP_9P5		(0<<24)
 #define   DPIO_PCS_TX2DEEMP_6P0		(2<<24)
@@ -978,6 +979,13 @@ enum punit_power_well {
 #define _VLV_PCS23_DW11_CH1		0x282c
 #define VLV_PCS01_DW11(ch) _PORT(ch, _VLV_PCS01_DW11_CH0, _VLV_PCS01_DW11_CH1)
 #define VLV_PCS23_DW11(ch) _PORT(ch, _VLV_PCS23_DW11_CH0, _VLV_PCS23_DW11_CH1)
+
+#define _VLV_PCS01_DW12_CH0		0x0230
+#define _VLV_PCS23_DW12_CH0		0x0430
+#define _VLV_PCS01_DW12_CH1		0x2630
+#define _VLV_PCS23_DW12_CH1		0x2830
+#define VLV_PCS01_DW12(ch) _PORT(ch, _VLV_PCS01_DW12_CH0, _VLV_PCS01_DW12_CH1)
+#define VLV_PCS23_DW12(ch) _PORT(ch, _VLV_PCS23_DW12_CH0, _VLV_PCS23_DW12_CH1)
 
 #define _VLV_PCS01_DW12_CH0		0x0230
 #define _VLV_PCS23_DW12_CH0		0x0430

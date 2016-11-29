@@ -1,5 +1,6 @@
 /*
  * Copyright © 2013 Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -213,8 +214,7 @@ static void intel_dsi_device_ready(struct intel_encoder *encoder)
 		val |= pipe ? DELAY_180_PHASE_SHIFT_MIPIC :
 				DELAY_180_PHASE_SHIFT_MIPIA;
 
-	intel_dsi_write_dev_rdy_on_A_and_C(encoder, ULPS_STATE_ENTER,
-			ULPS_STATE_MASK);
+	intel_dsi_write_dev_rdy_on_A_and_C(encoder, ULPS_STATE_ENTER);
 
 	/* wait for LP state to go 00 */
 	usleep_range(2500, 3000);
@@ -226,8 +226,7 @@ static void intel_dsi_device_ready(struct intel_encoder *encoder)
 
 	I915_WRITE(MIPI_PORT_CTRL(0), val | LP_OUTPUT_HOLD);
 	usleep_range(1000, 1500);
-	intel_dsi_write_dev_rdy_on_A_and_C(encoder, ULPS_STATE_EXIT,
-			ULPS_STATE_MASK);
+	intel_dsi_write_dev_rdy_on_A_and_C(encoder, ULPS_STATE_EXIT);
 
 	/* wait for LP state to goto 11 */
 	usleep_range(2500, 3000);
@@ -472,7 +471,11 @@ err_unref_2:
 	if (intel_dsi->dev.dev_ops->power_on)
 		intel_dsi->dev.dev_ops->power_on(&intel_dsi->dev);
 
-	msleep(intel_dsi->panel_on_delay);
+	/*
+	 *  delay after power on is already done in sequence
+	 *  execution, unnecessary here
+	 */
+	/* msleep(intel_dsi->panel_on_delay); */
 
 	/* Disable DPOunit clock gating, can stall pipe
 	 * and we need DPLL REFA always enabled */
@@ -583,31 +586,22 @@ err_unref_cursor:
 
 static void intel_dsi_enable(struct intel_encoder *encoder)
 {
-	struct drm_device *dev = encoder->base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
-	struct intel_connector *intel_connector = intel_dsi->attached_connector;
 
 	DRM_DEBUG_KMS("\n");
 
 	intel_dsi_port_enable(encoder);
-
-	if (intel_dsi->backlight_on_delay >= 20)
-		msleep(intel_dsi->backlight_on_delay);
-	else
-		usleep_range(intel_dsi->backlight_on_delay * 1000,
-				(intel_dsi->backlight_on_delay * 1000) + 500);
-
-	if (dev_priv->display.enable_backlight)
-		dev_priv->display.enable_backlight(intel_connector);
+	/*
+	 *Backlight work is done in lp855x_bl.c, unnecessary here
+	 *remove the code to save power on time
+	 */
 }
 
 static void intel_dsi_pre_disable(struct intel_encoder *encoder)
 {
 	struct drm_device *dev = encoder->base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
+
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
-	struct intel_connector *intel_connector = intel_dsi->attached_connector;
+
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
 	int pipe = intel_crtc->pipe;
 
@@ -624,14 +618,10 @@ static void intel_dsi_pre_disable(struct intel_encoder *encoder)
 		mdelay(40);
 	}
 
-	if (dev_priv->display.disable_backlight)
-		dev_priv->display.disable_backlight(intel_connector);
-
-	if (intel_dsi->backlight_off_delay >= 20)
-		msleep(intel_dsi->backlight_off_delay);
-	else
-		usleep_range(intel_dsi->backlight_off_delay * 1000,
-				(intel_dsi->backlight_off_delay * 1000) + 500);
+	/*
+	 * Backlight work is done in lp855x_bl.c for A3, unnecessary here
+	 * remove the action here to avoid conflict.
+	 */
 
 	if (is_vid_mode(intel_dsi)) {
 		/* Send Shutdown command to the panel in LP mode */
@@ -739,26 +729,22 @@ static void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
 
 	DRM_DEBUG_KMS("\n");
 
-	intel_dsi_write_dev_rdy_on_A_and_C(encoder, DEVICE_READY,
-			DEVICE_READY);
+	intel_dsi_write_dev_rdy_on_A_and_C(encoder, CLEAR_DEVICE_READY);
 
 	/* wait for dsi controller to be off */
 	usleep_range(2000, 2500);
 
-	intel_dsi_write_dev_rdy_on_A_and_C(encoder, ULPS_STATE_ENTER,
-			ULPS_STATE_MASK);
+	intel_dsi_write_dev_rdy_on_A_and_C(encoder, ULPS_STATE_ENTER);
 
 	/* wait for LP state to go 00 */
 	usleep_range(2000, 2500);
 
-	intel_dsi_write_dev_rdy_on_A_and_C(encoder, ULPS_STATE_EXIT,
-			ULPS_STATE_MASK);
+	intel_dsi_write_dev_rdy_on_A_and_C(encoder, ULPS_STATE_EXIT);
 
 	/* wait for LP state to goto 11 */
 	usleep_range(2000, 2500);
 
-	intel_dsi_write_dev_rdy_on_A_and_C(encoder, ULPS_STATE_ENTER,
-			ULPS_STATE_MASK);
+	intel_dsi_write_dev_rdy_on_A_and_C(encoder, ULPS_STATE_ENTER);
 
 	/* wait for LP state to go 00 */
 	usleep_range(2000, 2500);

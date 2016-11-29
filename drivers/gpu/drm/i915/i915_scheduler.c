@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2014 Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -646,11 +647,14 @@ int i915_scheduler_handle_irq(struct intel_engine_cs *ring)
 	trace_i915_scheduler_irq(scheduler, ring, seqno,
 			i915.scheduler_override & i915_so_direct_submit);
 
-	if (i915.scheduler_override & i915_so_direct_submit)
+	if (i915.scheduler_override & i915_so_direct_submit) {
+		trace_printk("i915_so_direct_submit, return \n");
 		return 0;
+	}
 
 	if (seqno == scheduler->last_irq_seqno[ring->id]) {
 		/* Why are there sometimes multiple interrupts per seqno? */
+		trace_printk("irq with same seqno = %u, return \n", seqno);
 		return 0;
 	}
 	scheduler->last_irq_seqno[ring->id] = seqno;
@@ -1274,8 +1278,18 @@ static void i915_scheduler_wait_fence_signaled(struct sync_fence *fence,
 	 * NB: The callback is executed at interrupt time, thus it can not
 	 * call _submit() directly. It must go via the delayed work handler.
 	 */
-	if (dev_priv)
+	if (dev_priv) {
+		struct i915_scheduler   *scheduler;
+		unsigned long           flags;
+
+		scheduler = dev_priv->scheduler;
+
+		spin_lock_irqsave(&scheduler->lock, flags);
+		i915_waiter->node->flags &= ~i915_qef_fence_waiting;
+		spin_unlock_irqrestore(&scheduler->lock, flags);
+
 		queue_work(dev_priv->wq, &dev_priv->mm.scheduler_work);
+	}
 
 	kfree(waiter);
 }
@@ -1290,13 +1304,10 @@ static bool i915_scheduler_async_fence_wait(struct drm_device *dev,
 	int				signaled;
 	bool				success = true;
 
-	if ((node->flags & i915_qef_fence_waiting) == 0) {
+	if ((node->flags & i915_qef_fence_waiting) == 0)
 		node->flags |= i915_qef_fence_waiting;
-		scheduler->stats[node->params.ring->id].fence_wait++;
-	} else {
-		scheduler->stats[node->params.ring->id].fence_again++;
+	else
 		return true;
-	}
 
 	if (fence == NULL)
 		return false;

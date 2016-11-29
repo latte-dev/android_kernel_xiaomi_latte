@@ -3,6 +3,7 @@
  *  sst.c - Intel SST Driver for audio engine
  *
  *  Copyright (C) 2008-10	Intel Corp
+ *  Copyright (C) 2016 XiaoMi, Inc.
  *  Authors:	Vinod Koul <vinod.koul@intel.com>
  *		Harsha Priya <priya.harsha@intel.com>
  *		Dharageswari R <dharageswari.r@intel.com>
@@ -616,7 +617,7 @@ static const struct dmi_system_id dmi_machine_table[] = {
 };
 
 static struct platform_device cht_t_mach_dev = {
-	.name           = "cht_rt5672",
+	.name           = "cht_rt5659",
 	.id             = -1,
 	.num_resources  = 0,
 };
@@ -697,6 +698,7 @@ int sst_request_firmware_async(struct intel_sst_drv *ctx)
 				return -ENOENT;
 			}
 		} else if ((strcmp(board_name, "Cherry Trail Tablet") == 0) ||
+				(strcmp(board_name, "Mipad") == 0) ||
 				(strcmp(board_name, "Cherry Trail FFD") == 0)) {
 			pr_info("Registering machine device %s\n",
 						cht_t_mach_dev.name);
@@ -1335,15 +1337,6 @@ static int intel_sst_suspend(struct device *dev)
 	mutex_lock(&ctx->sst_lock);
 	sst_drv_ctx->sst_suspend_state = true;
 	mutex_unlock(&ctx->sst_lock);
-
-	ret = intel_sst_runtime_suspend(dev);
-	if (ret){
-		dev_err(dev, "can't suspend, ret[%d]\n", ret);
-		mutex_lock(&ctx->sst_lock);
-		sst_drv_ctx->sst_suspend_state = false;
-		mutex_unlock(&ctx->sst_lock);
-		return ret;
-	}
 
 	if (ctx->pdata->start_recovery_timer)
 		sst_set_timer(&ctx->monitor_lpe, false);

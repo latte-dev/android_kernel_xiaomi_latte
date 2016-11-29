@@ -1,5 +1,6 @@
 /*
  * Copyright © 2008 Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -5043,23 +5044,23 @@ static ssize_t i915_connector_reset_read(struct file *filp, char __user *ubuf,
 
 	list_for_each_entry(connector, &dev->mode_config.connector_list,
 				base.head) {
-	    switch (connector->encoder->type) {
-	    case INTEL_OUTPUT_DSI:
-		snprintf(&tmpbuf[ret_count], max - ret_count,
-			"\tID=%d; Active:%d; Type=DSI\n",
-			connector->base.base.id,
-			connector->encoder->connectors_active);
-		break;
-	    case INTEL_OUTPUT_EDP:
-		snprintf(&tmpbuf[ret_count], max - ret_count,
-			"\tID=%d; Active:%d; Type=EDP\n",
-			connector->base.base.id,
-			connector->encoder->connectors_active);
-		break;
-	    default:
-		break;
-	    }
-	    ret_count = strlen(tmpbuf);
+		switch (connector->encoder->type) {
+		case INTEL_OUTPUT_DSI:
+			snprintf(&tmpbuf[ret_count], max - ret_count,
+				"\tID=%d; Active:%d; Type=DSI\n",
+				connector->base.base.id,
+				connector->encoder->connectors_active);
+			break;
+		case INTEL_OUTPUT_EDP:
+			snprintf(&tmpbuf[ret_count], max - ret_count,
+				"\tID=%d; Active:%d; Type=EDP\n",
+				connector->base.base.id,
+				connector->encoder->connectors_active);
+			break;
+		default:
+			break;
+		}
+		ret_count = strlen(tmpbuf);
 	}
 	ret_count = simple_read_from_buffer(ubuf, max, ppos,
 		(const void *)tmpbuf, ret_count);

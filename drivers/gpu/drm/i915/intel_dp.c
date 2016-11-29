@@ -1,5 +1,6 @@
 /*
  * Copyright © 2008 Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1170,12 +1171,6 @@ found:
 			       adjusted_mode->crtc_clock,
 			       pipe_config->port_clock,
 			       &pipe_config->dp_m_n);
-
-	if (intel_connector->panel.downclock_mode)
-		intel_link_compute_m_n(bpp, lane_count,
-			       intel_connector->panel.downclock_mode->clock,
-			       pipe_config->port_clock,
-			       &pipe_config->dp_m2_n2);
 
 	intel_dp_set_clock(encoder, pipe_config, intel_dp->link_bw);
 
@@ -4839,8 +4834,7 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	u8 sink_irq_vector;
 	enum intel_display_power_domain power_domain;
 	struct edid *edid = NULL;
-	struct intel_crtc *intel_crtc = crtc ? to_intel_crtc(crtc) : NULL;
-	struct intel_connector *intel_connector = to_intel_connector(connector);
+	struct intel_crtc *intel_crtc = NULL;
 
 	intel_runtime_pm_get(dev_priv);
 
@@ -4868,6 +4862,11 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 
 		intel_dp->has_audio =  false;
 		pm_qos_update_request(&dev_priv->pm_qos, PM_QOS_DEFAULT_VALUE);
+		goto out;
+	}
+
+	if (connector->status == connector_status_connected) {
+		DRM_DEBUG_KMS("Connector status is already connected\n");
 		goto out;
 	}
 

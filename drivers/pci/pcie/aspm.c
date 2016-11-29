@@ -5,6 +5,7 @@
  * Copyright (C) 2007 Intel
  * Copyright (C) Zhang Yanmin (yanmin.zhang@intel.com)
  * Copyright (C) Shaohua Li (shaohua.li@intel.com)
+ * Copyright (C) 2016 XiaoMi, Inc.
  */
 
 #include <linux/kernel.h>
@@ -258,70 +259,53 @@ static void pcie_aspm_l1ss_cfg(struct pcie_link_state *link, u32 state)
 	pr_debug("%s: state %d, old state %d\n",
 		__func__, l1ss_state, link->l1ss_enabled);
 
+	if (link->l1ss_enabled == l1ss_state)
+		return;
+
+	if (!(state & ASPM_STATE_L1) || (!l1ss_state))
+		return;
+
 	/* Restore the LTR values */
 	child = list_entry(linkbus->devices.next, struct pci_dev, bus_list);
 	pcie_write_ltr(child, link->dw_max_snoop_ltr,
 		link->dw_max_no_snoop_ltr);
 
-	if (link->l1ss_enabled == l1ss_state)
-		return;
+	/*
+	* Quote from Spec 3.1, 5.5.4, , If setting either or both of
+	* the enable bits for ASPM L1 PM Substates, both ports must
+	* be configured as described in this section while ASPM L1 is
+	* disabled. So disable the ASPM L1 first.
+	*/
+	list_for_each_entry(child, &linkbus->devices, bus_list)
+		pcie_config_aspm_dev(child, 0);
+	pcie_config_aspm_dev(parent, 0);
 
-	/* Clear L1SS enable bits if L1 is going to be disabled
-	* or l1ss is disabled */
-	if (!(state & ASPM_STATE_L1) || (!l1ss_state)) {
-		pcie_aspm_l1ss_clear_and_set(parent, PCI_LNKSUB_CTRL1,
-			PCI_LNKSUB_ASPM_L11_EN | PCI_LNKSUB_ASPM_L12_EN, 0);
+	/*
+	* Reset the SW state, so the ASPM Link state will be configured
+	* again for restore purpose in the pcie_config_aspm_link.
+	*/
+	link->aspm_enabled = 0;
 
-		list_for_each_entry(child, &linkbus->devices, bus_list)
-			pcie_aspm_l1ss_clear_and_set(child, PCI_LNKSUB_CTRL1,
-				PCI_LNKSUB_ASPM_L11_EN
-					| PCI_LNKSUB_ASPM_L12_EN, 0);
-		link->l1ss_enabled = 0;
-	} else {
+	if (parent->current_state != PCI_D0)
+		pcipm_restore = false;
+
+
+	list_for_each_entry(child, &linkbus->devices, bus_list) {
+		struct pcie_l1ss_timing *timing =
+			&link->dw_l1ss_timing[PCI_FUNC(child->devfn)];
 		/*
-		* Quote from Spec 3.1, 5.5.4, , If setting either or both of
-		* the enable bits for ASPM L1 PM Substates, both ports must
-		* be configured as described in this section while ASPM L1 is
-		* disabled. So disable the ASPM L1 first.
+		* Per the Spec, clear the EN bits first before
+		* handling the timing values setting.
 		*/
-		list_for_each_entry(child, &linkbus->devices, bus_list)
-			pcie_config_aspm_dev(child, 0);
-		pcie_config_aspm_dev(parent, 0);
+		pcie_aspm_l1ss_clear_and_set(child, PCI_LNKSUB_CTRL1,
+			PCI_LINKSUB_EN_MASK, 0);
 
-		/*
-		* Reset the SW state, so the ASPM Link state will be configured
-		* again for restore purpose in the pcie_config_aspm_link.
-		*/
-		link->aspm_enabled = 0;
-
-		if (l1ss_state & ASPM_LNKSUB_L11)
-			upctrl1 |= PCI_LNKSUB_ASPM_L11_EN;
-		if (l1ss_state & ASPM_LNKSUB_L12)
-			upctrl1 |= PCI_LNKSUB_ASPM_L12_EN;
-
-		if (parent->current_state != PCI_D0)
-			pcipm_restore = false;
-
-
-		list_for_each_entry(child, &linkbus->devices, bus_list) {
-			struct pcie_l1ss_timing *timing =
-				&link->dw_l1ss_timing[PCI_FUNC(child->devfn)];
-			/*
-			* Per the Spec, clear the EN bits first before
-			* handling the timing values setting.
-			*/
-			pcie_aspm_l1ss_clear_and_set(child, PCI_LNKSUB_CTRL1,
-				PCI_LNKSUB_ASPM_L11_EN
-					| PCI_LNKSUB_ASPM_L12_EN, 0);
-
-			if (l1ss_state & ASPM_LNKSUB_L11) {
-				dwctrl1 |= timing->cm_mode_restore_time;
-				dwctrl2 |= timing->pwr_on_scal
-						| timing->pwr_on_val;
-			}
-			if (l1ss_state & ASPM_LNKSUB_L12)
-				dwctrl1 |= timing->ltr_l12_threshold_val
-					| timing->ltr_l12_threshold_scal;
+		if (l1ss_state & (ASPM_LNKSUB_L12|PCIPM_LNKSUB_L12)) {
+			dwctrl1 |= timing->ltr_l12_threshold_val
+				| timing->ltr_l12_threshold_scal;
+			dwctrl1 |= timing->cm_mode_restore_time;
+			dwctrl2 |= timing->pwr_on_scal
+					| timing->pwr_on_val;
 
 			/* Second to update the timing of down port */
 			pcie_aspm_l1ss_clear_and_set(child, PCI_LNKSUB_CTRL1,
@@ -332,44 +316,32 @@ static void pcie_aspm_l1ss_cfg(struct pcie_link_state *link, u32 state)
 			pcie_aspm_l1ss_clear_and_set(child, PCI_LNKSUB_CTRL2,
 				PCI_LNKSUB_PWR_ON_SCAL | PCI_LNKSUB_PWR_ON_VAL,
 				dwctrl2);
-
-			dwctrl1 = 0;
-			if (l1ss_state & ASPM_LNKSUB_L11)
-				dwctrl1 |= PCI_LNKSUB_ASPM_L11_EN;
-			if (l1ss_state & ASPM_LNKSUB_L12)
-				dwctrl1 |= PCI_LNKSUB_ASPM_L12_EN;
-
-			/*
-			* Restore L1 PCI-PM enable bits
-			* Both ports must be in D0 when setting the enable bits
-			*/
-			if (pcipm_restore && child->current_state == PCI_D0) {
-				if (l1ss_state & PCIPM_LNKSUB_L11)
-					dwctrl1 |= PCI_LNKSUB_PCI_PM_L11_EN;
-				if (l1ss_state & PCIPM_LNKSUB_L12)
-					dwctrl1 |= PCI_LNKSUB_PCI_PM_L12_EN;
-			} else
-				pcipm_restore = false;
-
-			/* Third, update the enable bits */
-			pcie_aspm_l1ss_clear_and_set(child, PCI_LNKSUB_CTRL1,
-				PCI_LNKSUB_ASPM_L11_EN | PCI_LNKSUB_ASPM_L12_EN,
-				dwctrl1);
 		}
 
-		if (pcipm_restore) {
+		dwctrl1 = 0;
+		if (l1ss_state & ASPM_LNKSUB_L11)
+			dwctrl1 |= PCI_LNKSUB_ASPM_L11_EN;
+		if (l1ss_state & ASPM_LNKSUB_L12)
+			dwctrl1 |= PCI_LNKSUB_ASPM_L12_EN;
+
+		/*
+		* Restore L1 PCI-PM enable bits
+		* Both ports must be in D0 when setting the enable bits
+		*/
+		if (pcipm_restore && child->current_state == PCI_D0) {
 			if (l1ss_state & PCIPM_LNKSUB_L11)
-				upctrl1 |= PCI_LNKSUB_PCI_PM_L11_EN;
+				dwctrl1 |= PCI_LNKSUB_PCI_PM_L11_EN;
 			if (l1ss_state & PCIPM_LNKSUB_L12)
-				upctrl1 |= PCI_LNKSUB_PCI_PM_L12_EN;
-		}
+				dwctrl1 |= PCI_LNKSUB_PCI_PM_L12_EN;
+		} else
+			pcipm_restore = false;
 
-		/* Last, enable the parent accordingly */
-		pcie_aspm_l1ss_clear_and_set(parent, PCI_LNKSUB_CTRL1,
-			PCI_LNKSUB_ASPM_L11_EN
-				| PCI_LNKSUB_ASPM_L12_EN, upctrl1);
-		link->l1ss_enabled = l1ss_state;
+		/* Third, update the enable bits */
+		pcie_aspm_l1ss_clear_and_set(child, PCI_LNKSUB_CTRL1,
+			PCI_LINKSUB_EN_MASK, dwctrl1);
 	}
+
+	link->l1ss_enabled = l1ss_state;
 }
 
 static void pcie_aspm_l1ss_init(struct pcie_link_state *link, int blacklist)
@@ -378,6 +350,9 @@ static void pcie_aspm_l1ss_init(struct pcie_link_state *link, int blacklist)
 	struct pci_dev *parent = link->pdev;
 	struct pci_bus *linkbus = link->pdev->subordinate;
 	struct aspm_l1ss_register_info upreg, dwreg;
+
+	/*Workaorund to disable ASPM L1.2 in default*/
+	link->l1ss_disable = ASPM_LNKSUB_L12;
 
 	if (blacklist) {
 		link->l1ss_disable = LNKSUB_ALL;

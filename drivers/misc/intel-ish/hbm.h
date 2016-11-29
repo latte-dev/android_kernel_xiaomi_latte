@@ -2,6 +2,7 @@
  * HECI bus layer messages handling
  *
  * Copyright (c) 2003-2015, Intel Corporation.
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,

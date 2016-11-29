@@ -1,5 +1,6 @@
 /*
  * Copyright © 2008 Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -319,8 +320,8 @@ i915_gem_get_aperture_ioctl2(struct drm_device *dev, void *data,
 			if (vma_in_mappable_region(vma, map_limit)) {
 				vma_list_entry = i915_vma_list_entry_create(vma);
 				if (IS_ERR(vma_list_entry)) {
-					DRM_ERROR("No vma in active list\n");
 					mutex_unlock(&dev->struct_mutex);
+					printk("i915_gem_get_aperture_ioctl2 failed\n");
 					return PTR_ERR(vma_list_entry);
 				}
 				list_add(&vma_list_entry->vma_ap_link, &map_list);
@@ -335,8 +336,8 @@ i915_gem_get_aperture_ioctl2(struct drm_device *dev, void *data,
 			if (vma_in_mappable_region(vma, map_limit)) {
 				vma_list_entry = i915_vma_list_entry_create(vma);
 				if (IS_ERR(vma_list_entry)) {
-					DRM_ERROR("No vma in inactive list\n");
 					mutex_unlock(&dev->struct_mutex);
+					printk("i915_gem_get_aperture_ioctl2 failed\n");
 					return PTR_ERR(vma_list_entry);
 				}
 				list_add(&vma_list_entry->vma_ap_link, &map_list);
@@ -2733,6 +2734,7 @@ static void queue_retire_work(struct drm_i915_private *dev_priv,
 	 * work timer needs to fire at least as frequently as that.
 	 */
 	unsigned long time = min(delay, DRM_I915_HANGCHECK_JIFFIES);
+	trace_printk("[%d][%lu] queue retire work (time=%lu)\n", __LINE__, jiffies, time);
 
 	if (queue_delayed_work(dev_priv->wq,
 			   &dev_priv->mm.retire_work,
@@ -2748,9 +2750,15 @@ static void queue_retire_work(struct drm_i915_private *dev_priv,
 		 * scheduling more.
 		 */
 		dev_priv->mm.retire_work_timestamp = jiffies;
-		trace_queue_retire_work(time, true);
-	} else {
-		trace_queue_retire_work(time, false);
+		trace_printk("[%d] queue retire work ok: %lu\n", __LINE__, dev_priv->mm.retire_work_timestamp);
+	} else
+		trace_printk("[%d][%lu] queue retire work NOT ok: %lu\n", __LINE__, jiffies, dev_priv->mm.retire_work_timestamp);
+
+
+	{
+		unsigned long time_left = dev_priv->mm.retire_work.timer.expires - jiffies;
+
+		trace_printk("[%d][%lu] queue retire work pending: %lu, time left=%lu [%d]\n", __LINE__, jiffies, dev_priv->mm.retire_work_timestamp, time_left, jiffies_to_msecs(time_left));
 	}
 }
 
@@ -2765,6 +2773,7 @@ int __i915_add_request(struct intel_engine_cs *ring,
 	u32 request_ring_position, request_start;
 	int ret = 0;
 
+	trace_printk("add request begin\n ");
 	request = ring->outstanding_lazy_request;
 	if (WARN_ON(request == NULL))
 		return -ENOMEM;
@@ -3124,12 +3133,24 @@ void i915_gem_complete_requests_ring(struct intel_engine_cs *ring,
 	u32 seqno;
 
 	seqno = ring->get_seqno(ring, lazy_coherency);
-	trace_i915_gem_request_complete_begin(ring, seqno);
-	if (!seqno)
-		return;
+	{
+		trace_printk("get_seqno = %u\n", seqno);
+		spin_lock_irqsave(&ring->reqlist_lock, flags);
+		list_for_each_entry(req, &ring->request_list, list) {
+			trace_printk("--check_loop_seqno = %u[complete = %d], req = %p\n", req->seqno, req->complete, req);
+		}
+		spin_unlock_irqrestore(&ring->reqlist_lock, flags);
+	}
 
-	if (seqno == ring->last_read_seqno)
+	if (!seqno) {
+		trace_printk("seqno = 0, return\n");
 		return;
+	}
+
+	if (seqno == ring->last_read_seqno) {
+		trace_printk("seqno = %u. same seqno with ring->last_read_seqno, return\n", seqno);
+		return;
+	}
 	ring->last_read_seqno = seqno;
 
 	spin_lock_irqsave(&ring->reqlist_lock, flags);
@@ -3146,7 +3167,7 @@ void i915_gem_complete_requests_ring(struct intel_engine_cs *ring,
 				trace_i915_gem_request_complete(req);
 				i915_sync_timeline_advance(req->ctx, req->ring, req->sync_value);
 			}
-
+			trace_printk("request is tracked, get req->complete = %d\n", req->complete);
 			continue;
 		}
 
@@ -3156,6 +3177,7 @@ void i915_gem_complete_requests_ring(struct intel_engine_cs *ring,
 
 			i915_sync_timeline_advance(req->ctx, req->ring, req->sync_value);
 		}
+		trace_printk("seqno was pass check, req->seqno = %d, req->complete = %d\n", req->seqno, req->complete);
 	}
 	spin_unlock_irqrestore(&ring->reqlist_lock, flags);
 
@@ -3337,6 +3359,7 @@ i915_gem_retire_work_handler(struct work_struct *work)
 	unsigned i;
 	bool idle;
 	unsigned long ts = dev_priv->mm.retire_work_timestamp;
+	trace_printk("[%lu][%lu][%p] RETIRE WORK HANDLER: enter\n", jiffies, ts, work);
 
 	/*
 	 * It is possible for i915_gem_retire_requests to get stuck
@@ -3351,12 +3374,27 @@ i915_gem_retire_work_handler(struct work_struct *work)
 	/* Come back later if the device is busy... */
 	idle = false;
 	if (mutex_trylock(&dev->struct_mutex)) {
+		trace_printk("RETIRE WORK HANDLER: retire\n");
 		idle = i915_gem_retire_requests(dev);
+		trace_printk("RETIRE WORK HANDLER: retire done (idle=%s)\n", idle?"true":"false");
 		mutex_unlock(&dev->struct_mutex);
-	}
-	trace_i915_gem_retire_work_handler(dev, idle);
-	if (!idle)
+	} else
+		trace_printk("RETIRE WORK HANDLER: lock contention\n");
+
+
+	if (!idle) {
+		struct intel_engine_cs *ring;
+		unsigned i;
+
 		queue_retire_work(dev_priv, round_jiffies_up_relative(HZ));
+
+		for_each_ring(ring, dev_priv, i) {
+			if (!list_empty(&ring->request_list)) {
+				trace_printk("RETIRE WORK HANDLER: hang check %u\n", i);
+				i915_queue_hangcheck(dev, i, ts);
+			}
+		}
+	}
 }
 
 static void
@@ -5760,7 +5798,7 @@ i915_gem_suspend(struct drm_device *dev)
 		goto err;
 
 	ret = i915_gpu_idle(dev);
-	if (ret)
+	if (ret && !dev_priv->shutdown_in_progress)
 		goto err;
 
 	i915_gem_retire_requests(dev);

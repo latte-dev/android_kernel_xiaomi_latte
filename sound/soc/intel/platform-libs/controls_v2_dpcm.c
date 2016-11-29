@@ -3,6 +3,7 @@
  *  controls_v2_dpcm.c - Intel MID Platform driver DPCM ALSA controls for Mrfld
  *
  *  Copyright (C) 2013 Intel Corp
+ *  Copyright (C) 2016 XiaoMi, Inc.
  *  Author: Omair Mohammed Abdullah <omair.m.abdullah@intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
@@ -33,6 +34,7 @@
 #include "controls_v2_dpcm.h"
 #include "sst_widgets.h"
 
+u16 speech_path_state;
 static inline void sst_fill_byte_control(char *param, u16 type,
 					 u8 ipc_msg, u8 block,
 					 u8 task_id, u8 pipe_id,
@@ -631,7 +633,7 @@ static int sst_voice_mode_put(struct snd_kcontrol *kcontrol,
 
 	/* disable and enable the voice path
 	   so that the mode change takes effect */
-	if (w->power) {
+	if (speech_path_state == SST_SWITCH_ON) {
 		sst_send_speech_path(sst, SST_SWITCH_OFF);
 		sst_send_speech_path(sst, SST_SWITCH_ON);
 
@@ -1369,6 +1371,8 @@ static int sst_send_speech_path(struct sst_data *sst, u16 switch_state)
 {
 	struct sst_cmd_set_speech_path cmd;
 	u8 is_wideband;
+
+	speech_path_state = switch_state;
 
 	SST_FILL_DEFAULT_DESTINATION(cmd.header.dst);
 
@@ -2867,7 +2871,6 @@ int sst_dsp_init_v2_dpcm(struct snd_soc_platform *platform)
 int sst_dsp_init_v2_dpcm_dfw(struct snd_soc_platform *platform)
 {
 	int i, ret = 0;
-	const struct firmware *fw;
 	struct sst_data *sst = snd_soc_platform_get_drvdata(platform);
 
 	sst->byte_stream = devm_kzalloc(platform->dev,
@@ -2892,13 +2895,13 @@ int sst_dsp_init_v2_dpcm_dfw(struct snd_soc_platform *platform)
 		return -ENOMEM;
 	}
 
-	ret = request_firmware(&fw, "dfw_sst.bin", platform->dev);
-	if (fw == NULL) {
+	ret = request_firmware(&(sst->fw), "dfw_sst.bin", platform->dev);
+	if (sst->fw == NULL) {
 		pr_err("config firmware request failed with %d\n", ret);
 		return ret;
 	}
 	/* Index is for each config load */
-	ret = snd_soc_fw_load_platform(platform, &soc_fw_ops, fw, 0);
+	ret = snd_soc_fw_load_platform(platform, &soc_fw_ops, sst->fw, 0);
 	if (ret < 0) {
 		pr_err("Control load failed%d\n", ret);
 		return -EINVAL;

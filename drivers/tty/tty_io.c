@@ -1,5 +1,6 @@
 /*
  *  Copyright (C) 1991, 1992  Linus Torvalds
+ *  Copyright (C) 2016 XiaoMi, Inc.
  */
 
 /*
@@ -731,8 +732,7 @@ void tty_hangup(struct tty_struct *tty)
 	printk(KERN_DEBUG "%s hangup...\n", tty_name(tty, buf));
 #endif
 	tty_kref_get(tty);
-	if (!schedule_work(&tty->hangup_work))
-		tty_kref_put(tty);
+	schedule_work(&tty->hangup_work);
 }
 
 EXPORT_SYMBOL(tty_hangup);

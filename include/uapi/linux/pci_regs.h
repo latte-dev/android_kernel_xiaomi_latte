@@ -914,6 +914,7 @@
 #define PCI_LNKSUB_PCI_PM_L11_EN	0x02	/* PCI-PM L1.1 enable */
 #define PCI_LNKSUB_ASPM_L12_EN		0x04	/* ASPM L1.2 enable */
 #define PCI_LNKSUB_ASPM_L11_EN		0x08	/* ASPM L1.1 enable */
+#define PCI_LINKSUB_EN_MASK			0xF		/* PCI Link Substatus enable mask */
 #define PCI_LNKSUB_RESTORE_TIME		0xFF00	/* common mode restore time */
 #define PCI_LNKSUB_RESTORE_TIME_SHIFT	8
 #define PCI_LNKSUB_L12_THRE_VAL		0x3FF0000	/* LTR L1.2 value */

@@ -1,5 +1,6 @@
 /*
  * Copyright © 2014 Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -312,20 +313,17 @@ struct i915_hw_ppgtt {
  * XXX: temp is not actually needed, but it saves doing the ALIGN operation.
  */
 #define gen6_for_each_pde(pt, pd, start, length, temp, iter) \
-	for (iter = gen6_pde_index(start); \
-	     pt = (length > 0 && iter < GEN6_PPGTT_PD_ENTRIES) ? \
-	     (pd)->page_tables[iter] : NULL, \
+	for (iter = gen6_pde_index(start), pt = (pd)->page_tables[iter]; \
 	     length > 0 && iter < GEN6_PPGTT_PD_ENTRIES; \
-	     iter++, \
+	     pt = (pd)->page_tables[++iter], \
 	     temp = ALIGN(start+1, 1 << GEN6_PDE_SHIFT) - start, \
 	     temp = min_t(unsigned, temp, length), \
 	     start += temp, length -= temp)
 
 #define gen6_for_all_pdes(pt, ppgtt, iter)  \
-	for (iter = 0;		\
-	     pt = (iter < GEN6_PPGTT_PD_ENTRIES) ? ppgtt->pd.page_tables[iter] : NULL, \
-	     iter < GEN6_PPGTT_PD_ENTRIES;	\
-	     iter++)
+	for (iter = 0, pt = ppgtt->pd.page_tables[iter];			\
+	     iter < gen6_pde_index(ppgtt->base.total);			\
+	     pt =  ppgtt->pd.page_tables[++iter])
 
 static inline uint32_t i915_pte_index(uint64_t address, uint32_t pde_shift)
 {
@@ -376,21 +374,17 @@ static inline uint32_t gen6_pde_index(uint32_t addr)
 }
 
 #define gen8_for_each_pde(pt, pd, start, length, temp, iter)		\
-	for (iter = gen8_pde_index(start); \
-	     pt = (length > 0 && iter < GEN8_PDES_PER_PAGE) ? \
-	     (pd)->page_tables[iter] : NULL, \
-	     length > 0 && iter < GEN8_PDES_PER_PAGE;	\
-	     iter++,				\
+	for (iter = gen8_pde_index(start), pt = (pd)->page_tables[iter]; \
+	     length > 0 && iter < GEN8_PDES_PER_PAGE;			\
+	     pt = (pd)->page_tables[++iter],				\
 	     temp = ALIGN(start+1, 1 << GEN8_PDE_SHIFT) - start,	\
 	     temp = min(temp, length),					\
 	     start += temp, length -= temp)
 
-#define gen8_for_each_pdpe(pd, pdp, start, length, temp, iter)	\
-	for (iter = gen8_pdpe_index(start); \
-	     pd = (length > 0 && iter < GEN8_LEGACY_PDPES) ? \
-	     (pdp)->page_directory[iter] : NULL, \
-	     length > 0 && iter < GEN8_LEGACY_PDPES;	\
-	     iter++,				\
+#define gen8_for_each_pdpe(pd, pdp, start, length, temp, iter)		\
+	for (iter = gen8_pdpe_index(start), pd = (pdp)->page_directory[iter];	\
+	     length > 0 && iter < GEN8_LEGACY_PDPES;			\
+	     pd = (pdp)->page_directory[++iter],				\
 	     temp = ALIGN(start+1, 1 << GEN8_PDPE_SHIFT) - start,	\
 	     temp = min(temp, length),					\
 	     start += temp, length -= temp)

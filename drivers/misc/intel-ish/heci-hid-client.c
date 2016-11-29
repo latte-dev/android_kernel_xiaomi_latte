@@ -2,6 +2,7 @@
  * HECI client driver for HID (ISS)
  *
  * Copyright (c) 2014-2015, Intel Corporation.
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -72,8 +73,8 @@ static void	report_bad_packet(void *recv_buf, size_t cur_pos, size_t payload_len
 	dev_err(&hid_heci_cl->device->dev, "total_bad=%u cur_pos=%u\n",
 		bad_recv_cnt, cur_pos);
 	dev_err(&hid_heci_cl->device->dev, "[%02X %02X %02X %02X]\n",
-		((unsigned char*)recv_msg)[0], ((unsigned char*)recv_msg)[1],
-		((unsigned char*)recv_msg)[2], ((unsigned char*)recv_msg)[3]);
+		((unsigned char *)recv_msg)[0], ((unsigned char *)recv_msg)[1],
+		((unsigned char *)recv_msg)[2], ((unsigned char *)recv_msg)[3]);
 	dev_err(&hid_heci_cl->device->dev, "[hid-ish]: payload_len=%u\n",
 		payload_len);
 	dev_err(&hid_heci_cl->device->dev, "[hid-ish]: multi_packet_cnt=%u\n",
@@ -143,7 +144,7 @@ static void	process_recv(void *recv_buf, size_t data_len)
 		case HOSTIF_DM_ENUM_DEVICES:
 			ISH_DBG_PRINT(KERN_ALERT
 				"[hid-ish]: %s(): HOSTIF_DM_ENUM_DEVICES [cur_pos=%u] [%02X %02X %02X %02X]\n",
-				__func__, cur_pos, ((unsigned char*)recv_msg)[0], ((unsigned char*)recv_msg)[1], ((unsigned char*)recv_msg)[2], ((unsigned char*)recv_msg)[3]);
+				__func__, cur_pos, ((unsigned char *)recv_msg)[0], ((unsigned char *)recv_msg)[1], ((unsigned char *)recv_msg)[2], ((unsigned char *)recv_msg)[3]);
 			if ((!(recv_msg->hdr.command & ~CMD_MASK) ||
 					init_done)) {
 				++bad_recv_cnt;
@@ -203,7 +204,7 @@ static void	process_recv(void *recv_buf, size_t data_len)
 		case HOSTIF_GET_HID_DESCRIPTOR:
 			ISH_DBG_PRINT(KERN_ALERT
 				"[hid-ish]: %s(): received HOSTIF_GET_HID_DESCRIPTOR [cur_pos=%u] [%02X %02X %02X %02X]\n",
-				__func__, cur_pos, ((unsigned char*)recv_msg)[0], ((unsigned char*)recv_msg)[1], ((unsigned char*)recv_msg)[2], ((unsigned char*)recv_msg)[3]);
+				__func__, cur_pos, ((unsigned char *)recv_msg)[0], ((unsigned char *)recv_msg)[1], ((unsigned char *)recv_msg)[2], ((unsigned char *)recv_msg)[3]);
 			ISH_DBG_PRINT(KERN_ALERT
 				"[hid-ish]: %s(): dump HID descriptor\n",
 				__func__);
@@ -232,6 +233,12 @@ static void	process_recv(void *recv_buf, size_t data_len)
 			break;
 
 		case HOSTIF_GET_REPORT_DESCRIPTOR:
+			ISH_DBG_PRINT(KERN_ALERT
+				"[hid-ish]: %s(): received HOSTIF_GET_REPORT_DESCRIPTOR [cur_pos=%u] [%02X %02X %02X %02X]\n",
+				__func__, cur_pos, ((unsigned char *)recv_msg)[0], ((unsigned char *)recv_msg)[1], ((unsigned char *)recv_msg)[2], ((unsigned char *)recv_msg)[3]);
+			ISH_DBG_PRINT(KERN_ALERT
+				"[hid-ish]: %s(): Length of report descriptor is %u\n",
+				__func__, (unsigned)payload_len);
 			if ((!(recv_msg->hdr.command & ~CMD_MASK) ||
 					init_done)) {
 				++bad_recv_cnt;
@@ -573,7 +580,7 @@ struct heci_cl_driver	hid_heci_cl_driver = {
 
 /****************************************************************/
 
-static void workqueue_init_function(struct work_struct *work)
+void workqueue_init_function(struct work_struct *work)
 {
 	int	rv;
 	static unsigned char	buf[4096];

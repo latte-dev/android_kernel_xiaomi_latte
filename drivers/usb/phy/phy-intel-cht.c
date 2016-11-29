@@ -2,6 +2,7 @@
  * Intel CherryTrail USB OTG transceiver driver
  *
  * Copyright (C) 2014, Intel Corporation.
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Author: Wu, Hao
  *
@@ -231,8 +232,6 @@ static int cht_otg_set_power(struct usb_phy *phy, unsigned mA)
 	/* Notify other drivers that device enumerated or not.
 	 * e.g It is needed by some charger driver, to set
 	 * charging current for SDP case */
-	atomic_notifier_call_chain(&cht_otg_dev->phy.notifier,
-					USB_EVENT_ENUMERATED, &mA);
 	dev_info(phy->dev, "Draw %d mA\n", mA);
 
 	dev_dbg(phy->dev, "%s <---\n", __func__);

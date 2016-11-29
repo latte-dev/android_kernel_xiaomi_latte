@@ -2,6 +2,7 @@
  * Most HECI provider device and HECI logic declarations
  *
  * Copyright (c) 2003-2015, Intel Corporation.
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -280,7 +281,7 @@ void heci_device_init(struct heci_device *dev);
 void heci_reset(struct heci_device *dev, int interrupts);
 int heci_start(struct heci_device *dev);
 void heci_stop(struct heci_device *dev);
-void	heci_device_disable(struct heci_device *dev);
+void heci_device_disable(struct heci_device *dev);
 
 static inline unsigned long heci_secs_to_jiffies(unsigned long sec)
 {

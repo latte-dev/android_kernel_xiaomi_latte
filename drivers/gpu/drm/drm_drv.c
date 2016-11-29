@@ -24,6 +24,7 @@
  *
  * Copyright 1999, 2000 Precision Insight, Inc., Cedar Park, Texas.
  * Copyright 2000 VA Linux Systems, Inc., Sunnyvale, California.
+ * Copyright (C) 2016 XiaoMi, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -330,6 +331,42 @@ int drm_ioctl_permit(u32 flags, struct drm_file *file_priv)
 
 	return 0;
 }
+
+/** Prevent new IOCTLs from starting.
+ */
+void drm_halt(struct drm_device *dev)
+{
+	DRM_DEBUG("Halt request\n");
+
+	/* Hold the mutex to prevent the ioctl_count incrementing
+	* while halt_count == 0 in drm_ioctl */
+	mutex_lock(&dev->halt_mutex);
+	atomic_inc(&dev->halt_count);
+	mutex_unlock(&dev->halt_mutex);
+}
+EXPORT_SYMBOL(drm_halt);
+
+/** Wait up to timeout milliseconds for active IOCTLs to complete.
+ * Note: drm_continue() must be called to allow new
+ *       IOCTLs even if this call timeout.
+ */
+int drm_wait_idle(struct drm_device *dev, unsigned timeout)
+{
+	int rc;
+
+	/* Wait for all active IOCTLs to exit */
+	rc = wait_event_interruptible_timeout(dev->halt_queue,
+		(atomic_read(&dev->ioctl_count) == 0),
+		msecs_to_jiffies(timeout));
+
+	if (rc == 0)
+		return -ETIMEDOUT;
+	else if (rc < 0)
+		return rc;
+
+	return 0;
+}
+EXPORT_SYMBOL(drm_wait_idle);
 
 /**
  * Prevent new IOCTLs from starting.

@@ -2,6 +2,7 @@
  * H/W layer of HECI provider device (ISS)
  *
  * Copyright (c) 2014-2015, Intel Corporation.
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -266,7 +267,7 @@ int write_ipc_from_queue(struct heci_device *dev)
 	ISH_DBG_PRINT(KERN_ALERT "%s(): +++\n", __func__);
 
 	if (dev->dev_state == HECI_DEV_DISABLED)
-		return	-EINVAL;
+		return -EINVAL;
 
 	spin_lock_irqsave(&dev->out_ipc_spinlock, out_ipc_flags);
 	if (out_ipc_locked) {
@@ -305,8 +306,8 @@ int write_ipc_from_queue(struct heci_device *dev)
 	if (IPC_HEADER_GET_PROTOCOL(doorbell_val) == IPC_PROTOCOL_MNG &&
 		IPC_HEADER_GET_MNG_CMD(doorbell_val) == MNG_SYNC_FW_CLOCK) {
 
-		struct timespec	ts;
-		uint64_t	usec;
+		struct timespec ts;
+		uint64_t usec;
 
 		get_monotonic_boottime(&ts);
 		usec = (uint64_t)ts.tv_sec * 1000000 +
@@ -494,6 +495,21 @@ static void	sync_fw_clock(struct heci_device *dev)
 }
 
 
+static void sync_fw_clock(struct heci_device *dev)
+{
+	static unsigned long prev_sync;
+	struct timespec ts;
+	uint64_t usec;
+
+	if (prev_sync && jiffies - prev_sync < 20 * HZ)
+		return;
+
+	prev_sync = jiffies;
+	get_monotonic_boottime(&ts);
+	usec = (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
+	ipc_send_mng_msg(dev, MNG_SYNC_FW_CLOCK, &usec, sizeof(uint64_t));
+}
+
 /*
  *	Receive and process IPC management messages
  *
@@ -583,7 +599,7 @@ irqreturn_t ish_irq_handler(int irq, void *dev_id)
 
 	/* CHECKME: double check this */
 	if (dev->dev_state == HECI_DEV_DISABLED)
-		return	IRQ_HANDLED;
+		return IRQ_HANDLED;
 
 	ish_intr_disable(dev);
 
@@ -741,14 +757,14 @@ static int ish_hw_reset(struct heci_device *dev)
 {
 	struct pci_dev *pdev = dev->pdev;
 	struct ish_hw *hw = to_ish_hw(dev);
-	int	rv;
+	int rv;
 	u16 csr;
 
-#define	MAX_DMA_DELAY	20
-	unsigned	dma_delay;
+#define MAX_DMA_DELAY	20
+	unsigned dma_delay;
 
 	if (!pdev)
-		return	-ENODEV;
+		return -ENODEV;
 
 	rv = pci_reset_function(pdev);
 	if (!rv)
@@ -756,22 +772,21 @@ static int ish_hw_reset(struct heci_device *dev)
 
 	if (!pdev->pm_cap) {
 		dev_err(&pdev->dev, "Can't reset - no PM caps\n");
-		return	-EINVAL;
+		return -EINVAL;
 	}
 
 	/* Now trigger reset to FW */
 	writel(0, hw->mem_addr + IPC_REG_ISH_RMP2);
 
 	for (dma_delay = 0; dma_delay < MAX_DMA_DELAY &&
-			ish_reg_read(dev, IPC_REG_ISH_HOST_FWSTS) &
-				(IPC_ISH_IN_DMA);
-			dma_delay += 5)
+			ish_reg_read(dev, IPC_REG_ISH_HOST_FWSTS) & (IPC_ISH_IN_DMA);
+			dma_delay += 5);
 		mdelay(5);
 
 	if (dma_delay >= MAX_DMA_DELAY) {
 		dev_err(&pdev->dev,
 			"Can't reset - stuck with DMA in-progress\n");
-		return	-EBUSY;
+		return -EBUSY;
 	}
 
 	pci_read_config_word(pdev, pdev->pm_cap + PCI_PM_CTRL, &csr);
@@ -792,7 +807,7 @@ static int ish_hw_reset(struct heci_device *dev)
 	 asleep */
 	writel(IPC_DRBL_BUSY_BIT, hw->mem_addr + IPC_REG_HOST2ISH_DRBL);
 
-	return	0;
+	return 0;
 }
 
 
@@ -968,8 +983,12 @@ struct heci_device *ish_dev_init(struct pci_dev *pdev)
 }
 
 
-void	heci_device_disable(struct heci_device *dev)
+void heci_device_disable(struct heci_device *dev)
 {
+	unsigned long flags;
+	struct wr_msg_ctl_info *ipc_link;
+	struct heci_cl *cl;
+
 	dev->dev_state = HECI_DEV_DISABLED;
 	ish_clr_host_rdy(dev);
 	ish_intr_disable(dev);

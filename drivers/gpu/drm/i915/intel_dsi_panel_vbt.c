@@ -1,5 +1,6 @@
 /*
  * Copyright © 2014 Intel Corporation
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -37,6 +38,7 @@
 #include "intel_drv.h"
 #include "intel_dsi.h"
 #include "intel_dsi_cmd.h"
+#include "linux/fb.h"
 
 #define MIPI_TRANSFER_MODE_SHIFT	0
 #define MIPI_VIRTUAL_CHANNEL_SHIFT	1
@@ -482,7 +484,16 @@ static u8 *mipi_exec_i2c(struct intel_dsi *intel_dsi, u8 *data)
 	data = data + 2;
 	reg_offset = *data++;
 	payload_size = *data++;
-
+	/*
+	 *  slave address 0x2c is lp8556 on Xiaomi A3,
+	 *  this function done in lp855x_bl.c
+	 */
+	if (slave_add == 0x2c) {
+		/*
+		DRM_INFO(" bypass the LP8556 backlight ic set, function done in seprate driver \n");
+		*/
+		goto out;
+	}
 	adapter = i2c_get_adapter(bus_number);
 
 	if (!adapter) {
@@ -494,7 +505,7 @@ static u8 *mipi_exec_i2c(struct intel_dsi *intel_dsi, u8 *data)
 	transmit_buffer = kmalloc(1 + payload_size, GFP_TEMPORARY);
 
 	if (!transmit_buffer)
-		goto out;
+		goto free;
 
 	transmit_buffer[0] = reg_offset;
 	memcpy(&transmit_buffer[1], data, (size_t)payload_size);
@@ -518,9 +529,9 @@ static u8 *mipi_exec_i2c(struct intel_dsi *intel_dsi, u8 *data)
 
 	if (retries == 0)
 		DRM_ERROR("i2c transfer failed, error code:%d", ret);
-out:
+free:
 	kfree(transmit_buffer);
-
+out:
 	data = data + payload_size;
 	return data;
 }
@@ -709,7 +720,7 @@ static bool generic_init(struct intel_dsi_device *dsi)
 	DRM_DEBUG_KMS("\n");
 
 	intel_dsi->eotp_pkt = mipi_config->eot_pkt_disabled ? 0 : 1;
-	intel_dsi->clock_stop = mipi_config->enable_clk_stop ? 1 : 0;
+	intel_dsi->clock_stop = 1;
 	intel_dsi->lane_count = mipi_config->lane_cnt + 1;
 	intel_dsi->pixel_format = mipi_config->videomode_color_format << 7;
 	intel_dsi->dual_link = mipi_config->dual_link;
@@ -988,6 +999,11 @@ static bool generic_init(struct intel_dsi_device *dsi)
 	intel_dsi->panel_on_delay = pps->panel_on_delay / 10;
 	intel_dsi->panel_off_delay = pps->panel_off_delay / 10;
 	intel_dsi->panel_pwr_cycle_delay = pps->panel_power_cycle_delay / 10;
+	printk(KERN_ERR"#### backlight_off_delay=%d -- \n", intel_dsi->backlight_off_delay);
+	printk(KERN_ERR"#### backlight_on_delay=%d -- \n", intel_dsi->backlight_on_delay);
+	printk(KERN_ERR"#### panel_on_delay =%d -- \n", intel_dsi->panel_on_delay);
+	printk(KERN_ERR"#### panel_off_delay =%d -- \n", intel_dsi->panel_off_delay);
+	printk(KERN_ERR"#### panel_pwr_cycle_delay =%d -- \n", intel_dsi->panel_pwr_cycle_delay);
 
 	return true;
 }
@@ -1065,8 +1081,12 @@ static void generic_enable(struct intel_dsi_device *dsi)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	char *sequence = dev_priv->vbt.dsi.sequence[MIPI_SEQ_DISPLAY_ON];
+	int blank;
 
 	generic_exec_sequence(intel_dsi, sequence);
+
+	blank = TP_POWER_RESUME;
+	tp_notifier_call_chain(TP_POWER_STATE_EVENT, &blank);
 }
 
 static void generic_disable(struct intel_dsi_device *dsi)
@@ -1076,6 +1096,10 @@ static void generic_disable(struct intel_dsi_device *dsi)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	char *sequence = dev_priv->vbt.dsi.sequence[MIPI_SEQ_DISPLAY_OFF];
+	int blank;
+
+	blank = TP_POWER_SUSPEND;
+	tp_notifier_call_chain(TP_POWER_STATE_EVENT, &blank);
 
 	generic_exec_sequence(intel_dsi, sequence);
 }
