@@ -2793,6 +2793,13 @@ CONFIG_VIDEO_OV2680=m
 CONFIG_VIDEO_OV5648=m
 
 #
+# Intel sensors
+#
+CONFIG_INTEL_ISS=y
+CONFIG_ISS_PATH_SENSCOL=y
+CONFIG_ISS_PATH_IIO=y
+
+#
 # Tools to develop new frontends
 #
 # CONFIG_DVB_DUMMY_FE is not set
