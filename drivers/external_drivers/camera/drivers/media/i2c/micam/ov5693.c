@@ -293,7 +293,7 @@ int ov5693_otp_save(u8 *pData, u32 size, const u8 *filp_name)
 }
 
 static int op_dump_otp;
-struct ov5693_device *global_dev;
+struct ov5693_device *ov5693_dev;
 
 
 static int ov5693_dump_otp(const char *val, struct kernel_param *kp);
@@ -304,8 +304,8 @@ module_param_call(dumpotp, ov5693_dump_otp, param_get_uint,
 static int ov5693_dump_otp(const char *val, struct kernel_param *kp)
 {
 	int ret;
-	if (NULL != global_dev->otp_data) {
-		ret = ov5693_otp_save(global_dev->otp_data,
+	if (NULL != ov5693_dev->otp_data) {
+		ret = ov5693_otp_save(ov5693_dev->otp_data,
 			OV5693_OTP_DATA_SIZE,
 			OV5693_SAVE_PARSED_OTP);
 
@@ -2312,7 +2312,7 @@ static int ov5693_probe(struct i2c_client *client,
 		ov5693_vendorid_procfs_uninit();
 	}
 
-	global_dev = dev;
+	ov5693_dev = dev;
 
 	return ret;
 out_free:

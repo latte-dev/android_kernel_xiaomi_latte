@@ -60,7 +60,7 @@ static const int t4ka3_bayer_order_mapping[2][2] = {
 };
 
 static int op_dump_otp;
-struct t4ka3_device *global_dev;
+struct t4ka3_device *t4ka3_dev;
 
 
 static int t4ka3_dump_otp(const char *val, struct kernel_param *kp);
@@ -73,16 +73,16 @@ static int t4ka3_detect(struct i2c_client *client, u16 *id);
 static int t4ka3_dump_otp(const char *val, struct kernel_param *kp)
 {
 	int ret;
-	if (NULL != global_dev->otp_raw_data) {
-		ret = dw9761_otp_save(global_dev->otp_raw_data,
+	if (NULL != t4ka3_dev->otp_raw_data) {
+		ret = dw9761_otp_save(t4ka3_dev->otp_raw_data,
 		DW9761_OTP_RAW_SIZE,
 		DW9761_SAVE_RAW_OTP);
 
 		if (ret != 0)
 			printk(KERN_ERR "Fail to save t4ka3 RAW OTP data\n");
 	}
-	if (NULL != global_dev->otp_data) {
-		ret = dw9761_otp_save(global_dev->otp_data,
+	if (NULL != t4ka3_dev->otp_data) {
+		ret = dw9761_otp_save(t4ka3_dev->otp_data,
 			DEFAULT_DW9761_OTP_SIZE,
 			DW9761_SAVE_PARSED_OTP);
 
@@ -2101,7 +2101,7 @@ static int t4ka3_probe(struct i2c_client *client,
 		t4ka3_vendorid_procfs_uninit();
 	}
 
-	global_dev = dev;
+	t4ka3_dev = dev;
 	v4l2_info(client, "%s: done!!\n", __func__);
 
 	return ret;
