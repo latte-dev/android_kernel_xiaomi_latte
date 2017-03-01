@@ -60,7 +60,7 @@ static const int s5k4h8yx_bayer_order_mapping[2][2] = {
 };
 
 static int op_dump_otp;
-struct s5k4h8yx_device *global_dev;
+struct s5k4h8yx_device *s5k4h8yx_dev;
 
 static struct s5k4h8yx_write_ctrl ctrl;
 
@@ -72,16 +72,16 @@ module_param_call(dumpotp, s5k4h8yx_dump_otp, param_get_uint,
 static int s5k4h8yx_dump_otp(const char *val, struct kernel_param *kp)
 {
 	int ret;
-	if (NULL != global_dev->otp_raw_data) {
-		ret = dw9761_otp_save(global_dev->otp_raw_data,
+	if (NULL != s5k4h8yx_dev->otp_raw_data) {
+		ret = dw9761_otp_save(s5k4h8yx_dev->otp_raw_data,
 		DW9761_OTP_RAW_SIZE,
 		DW9761_SAVE_RAW_OTP);
 
 		if (ret != 0)
 			printk(KERN_ERR "Fail to save s5k4h8 RAW OTP data\n");
 	}
-	if (NULL != global_dev->otp_data) {
-		ret = dw9761_otp_save(global_dev->otp_data,
+	if (NULL != s5k4h8yx_dev->otp_data) {
+		ret = dw9761_otp_save(s5k4h8yx_dev->otp_data,
 			DEFAULT_DW9761_OTP_SIZE,
 			DW9761_SAVE_PARSED_OTP);
 
@@ -2035,7 +2035,7 @@ static int s5k4h8yx_probe(struct i2c_client *client,
 		s5k4h8yx_vendorid_procfs_uninit();
 	}
 
-	global_dev = dev;
+	s5k4h8yx_dev = dev;
 	v4l2_info(client, "%s: done!!\n", __func__);
 
 	return ret;
