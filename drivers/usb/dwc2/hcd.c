@@ -1540,9 +1540,18 @@ static int dwc2_hcd_hub_control(struct dwc2_hsotg *hsotg, u16 typereq,
 			break;
 
 		case USB_PORT_FEAT_SUSPEND:
-			dev_dbg(hsotg->dev,
-				"ClearPortFeature USB_PORT_FEAT_SUSPEND\n");
-			dwc2_port_resume(hsotg);
+			dev_dbg(hsotg->dev,"ClearPortFeature USB_PORT_FEAT_SUSPEND\n");
+			writel(0, hsotg->regs + PCGCTL);
+			msleep(USB_RESUME_TIMEOUT);
+
+			hprt0 = dwc2_read_hprt0(hsotg);
+			hprt0 |= HPRT0_RES;
+			writel(hprt0, hsotg->regs + HPRT0);
+			hprt0 &= ~HPRT0_SUSP;
+			usleep_range(100000, 150000);
+
+			hprt0 &= ~HPRT0_RES;
+			writel(hprt0, hsotg->regs + HPRT0);
 			break;
 
 		case USB_PORT_FEAT_POWER:

@@ -2173,3 +2173,4 @@ void rt5640_config_ovcd_thld(struct snd_soc_codec *codec,
 						int base, int scale_factor);
 
 #endif /* __RT5640_H__ */
+
