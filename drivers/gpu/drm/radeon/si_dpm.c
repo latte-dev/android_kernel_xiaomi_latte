@@ -2907,6 +2907,28 @@ static int si_init_smc_spll_table(struct radeon_device *rdev)
 	return ret;
 }
 
+<<<<<<< HEAD
+=======
+struct si_dpm_quirk {
+	u32 chip_vendor;
+	u32 chip_device;
+	u32 subsys_vendor;
+	u32 subsys_device;
+	u32 max_sclk;
+	u32 max_mclk;
+};
+
+/* cards with dpm stability problems */
+static struct si_dpm_quirk si_dpm_quirk_list[] = {
+	/* PITCAIRN - https://bugs.freedesktop.org/show_bug.cgi?id=76490 */
+	{ PCI_VENDOR_ID_ATI, 0x6810, 0x1462, 0x3036, 0, 120000 },
+	{ PCI_VENDOR_ID_ATI, 0x6811, 0x174b, 0xe271, 0, 120000 },
+	{ PCI_VENDOR_ID_ATI, 0x6811, 0x174b, 0x2015, 0, 120000 },
+	{ PCI_VENDOR_ID_ATI, 0x6810, 0x174b, 0xe271, 85000, 90000 },
+	{ 0, 0, 0, 0 },
+};
+
+>>>>>>> b65f2f457c49b2cfd7967c34b7a0b04c25587f13
 static void si_apply_state_adjust_rules(struct radeon_device *rdev,
 					struct radeon_ps *rps)
 {
@@ -2972,6 +2994,10 @@ static void si_apply_state_adjust_rules(struct radeon_device *rdev,
 				ps->performance_levels[i].mclk = max_mclk_vddc;
 		}
 	}
+	/* limit mclk on all R7 370 parts for stability */
+	if (rdev->pdev->device == 0x6811 &&
+	    rdev->pdev->revision == 0x81)
+		max_mclk = 120000;
 
 	/* XXX validate the min clocks required for display */
 

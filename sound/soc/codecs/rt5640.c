@@ -3487,3 +3487,4 @@ module_exit(rt5640_modexit);
 MODULE_DESCRIPTION("ASoC RT5640 driver");
 MODULE_AUTHOR("Johnny Hsu <johnnyhsu@realtek.com>");
 MODULE_LICENSE("GPL");
+
