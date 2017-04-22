@@ -567,7 +567,7 @@ static int pwm_byt_suspend(struct device *dev)
 		return r;
 	}
 
-	if (adev->power.state) {
+	if (!adev->power.state) {
 		pr_info("Device %s is already in non D0 state\n",
 				dev_name(dev));
 		return r;
