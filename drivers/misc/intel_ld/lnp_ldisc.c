@@ -420,10 +420,8 @@ static inline int lbf_get_bt_fmr_state(void)
 static inline void lbf_serial_get(void)
 {
 	pr_debug("%s: resume UART driver\n", __func__);
-	if (intel_lbf_lpm.tty_dev)
-		pm_runtime_get_sync(intel_lbf_lpm.tty_dev);
-	else
-		pr_err("%s: no tty device\n", __func__);
+	WARN_ON(!intel_lbf_lpm.tty_dev);
+	pm_runtime_get_sync(intel_lbf_lpm.tty_dev);
 }
 
 static void lbf_host_enable_work(struct work_struct *work)
@@ -446,10 +444,8 @@ static void lbf_host_enable_work(struct work_struct *work)
 static inline void lbf_serial_put(void)
 {
 	pr_debug("%s: suspend UART Driver\n", __func__);
-	if (intel_lbf_lpm.tty_dev)
-		pm_runtime_put(intel_lbf_lpm.tty_dev);
-	else
-		pr_err("%s: no tty device\n", __func__);
+	WARN_ON(!intel_lbf_lpm.tty_dev);
+	pm_runtime_put(intel_lbf_lpm.tty_dev);
 }
 
 /* lbf_set_host_wake_state

@@ -44,6 +44,7 @@
 #include <linux/gpio.h>
 #include <linux/completion.h>
 #include <linux/thermal.h>
+#include "power_supply.h"
 
 #include <asm/intel_em_config.h>
 
@@ -224,11 +225,13 @@
 #define MAX_RESET_WDT_RETRY 8
 #define VBUS_DET_TIMEOUT msecs_to_jiffies(50) /* 50 msec */
 
-#define BQ_CHARGE_CUR_SDP	500
+#define BQ_CHARGE_CUR_SDP_100	100
+#define BQ_CHARGE_CUR_SDP_500	500
 #define BQ_CHARGE_CUR_DCP	2000
 
 #define BQ_GPIO_MUX_SEL_PMIC	0
-#define BQ_GPIO_MUX_SEL_SOC		1
+#define BQ_GPIO_MUX_SEL_SOC	1
+#define FPO0_USB_COMP_OFFSET	0x01
 
 static struct power_supply *fg_psy;
 
@@ -290,6 +293,7 @@ struct bq24192_chip {
 	bool boost_mode;
 	bool online;
 	bool present;
+	bool chrg_usb_compliance;
 };
 
 enum vbus_states {
@@ -353,32 +357,6 @@ static void *platform_byt_get_batt_charge_profile(void)
 	get_batt_prop(&byt_ps_batt_chrg_prof);
 
 	return &byt_ps_batt_chrg_prof;
-}
-
-static enum power_supply_type get_power_supply_type(
-		enum power_supply_charger_cable_type cable)
-{
-
-	switch (cable) {
-
-	case POWER_SUPPLY_CHARGER_TYPE_USB_DCP:
-		return POWER_SUPPLY_TYPE_USB_DCP;
-	case POWER_SUPPLY_CHARGER_TYPE_USB_CDP:
-		return POWER_SUPPLY_TYPE_USB_CDP;
-	case POWER_SUPPLY_CHARGER_TYPE_USB_ACA:
-	case POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK:
-		return POWER_SUPPLY_TYPE_USB_ACA;
-	case POWER_SUPPLY_CHARGER_TYPE_AC:
-		return POWER_SUPPLY_TYPE_MAINS;
-	case POWER_SUPPLY_CHARGER_TYPE_WIRELESS:
-		return POWER_SUPPLY_TYPE_WIRELESS;
-	case POWER_SUPPLY_CHARGER_TYPE_NONE:
-	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
-	default:
-		return POWER_SUPPLY_TYPE_USB;
-	}
-
-	return POWER_SUPPLY_TYPE_USB;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -1191,7 +1169,7 @@ static inline int bq24192_set_inlmt(struct bq24192_chip *chip, int inlmt)
 {
 	int regval, regval_prev, timeout, ret = 0;
 
-	dev_warn(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, inlmt);
+	dev_dbg(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, inlmt);
 	chip->inlmt = inlmt;
 
 	regval_prev = bq24192_read_reg(chip->client,
@@ -1354,7 +1332,7 @@ static inline int bq24192_enable_charger(
 #endif
 
 
-	dev_warn(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, val);
+	dev_dbg(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, val);
 
 	return ret;
 }
@@ -1363,7 +1341,7 @@ static inline int bq24192_set_cc(struct bq24192_chip *chip, int cc)
 {
 	u8 regval;
 
-	dev_warn(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, cc);
+	dev_dbg(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, cc);
 	regval = chrg_cur_to_reg(cc);
 
 	return bq24192_write_reg(chip->client, BQ24192_CHRG_CUR_CNTL_REG,
@@ -1374,7 +1352,7 @@ static inline int bq24192_set_cv(struct bq24192_chip *chip, int cv)
 {
 	u8 regval;
 
-	dev_warn(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, cv);
+	dev_dbg(&chip->client->dev, "%s:%d %d\n", __func__, __LINE__, cv);
 	regval = chrg_volt_to_reg(cv);
 
 	return bq24192_write_reg(chip->client, BQ24192_CHRG_VOLT_CNTL_REG,
@@ -1641,7 +1619,10 @@ static int check_cable_status(struct bq24192_chip *chip, int reg_stat)
 		vbus_mask = 1;
 		cable_props.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_CONNECT;
 		cable_props.chrg_type = POWER_SUPPLY_CHARGER_TYPE_USB_SDP;
-		cable_props.ma = BQ_CHARGE_CUR_SDP;
+		if (chip->chrg_usb_compliance)
+			cable_props.ma = BQ_CHARGE_CUR_SDP_100;
+		else
+			cable_props.ma = BQ_CHARGE_CUR_SDP_500;
 
 	} else if (reg_stat & SYSTEM_STAT_VBUS_ADP) {
 		/* AC Adapter or DCP connected */
@@ -1801,8 +1782,13 @@ static void bq24192_irq_worker(struct work_struct *work)
 			mutex_lock(&chip->event_lock);
 			bq24192_resume_charging(chip);
 			mutex_unlock(&chip->event_lock);
-		} else
-			dev_info(&chip->client->dev, "No charger connected\n");
+		} else {
+			mutex_lock(&chip->event_lock);
+			ret = bq24192_enable_charging(chip, false);
+			if (ret < 0)
+				dev_err(&chip->client->dev, "charging disable failed\n");
+			mutex_unlock(&chip->event_lock);
+		}
 	}
 	if ((reg_fault & FAULT_STAT_CHRG_TMR_FLT) == FAULT_STAT_CHRG_TMR_FLT) {
 		dev_info(&chip->client->dev, "Safety timer expired\n");
@@ -2218,7 +2204,7 @@ static int bq24192_probe(struct i2c_client *client,
 	struct device *dev;
 	struct gpio_desc *gpio;
 	int ret;
-
+	struct em_config_oem1_data em_config;
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA)) {
 		dev_err(&client->dev,
@@ -2266,6 +2252,17 @@ static int bq24192_probe(struct i2c_client *client,
 	chip->irq = -1;
 	chip->a_bus_enable = true;
 
+	chip->chrg_usb_compliance = true;
+#ifdef CONFIG_ACPI
+	ret = em_config_get_oem1_data(&em_config);
+	if (!ret)
+		dev_warn(&client->dev,
+			"Failed to fetch OEM1 table\n");
+	else
+		/* 0 - usb compliance, 1 - no usb compliance */
+		chip->chrg_usb_compliance =
+			!(em_config.fpo_0 & FPO0_USB_COMP_OFFSET);
+#endif
 	/*assigning default value for min and max temp*/
 	chip->max_temp = chip->pdata->max_temp;
 	chip->min_temp = chip->pdata->min_temp;
@@ -2329,11 +2326,11 @@ static int bq24192_probe(struct i2c_client *client,
 				bq24192_irq_isr, bq24192_irq_thread,
 				IRQF_TRIGGER_FALLING, "BQ24192", chip);
 		if (ret) {
-			dev_warn(&bq24192_client->dev,
+			dev_err(&bq24192_client->dev,
 				"failed to register irq for pin %d\n",
 				chip->irq);
 		} else {
-			dev_warn(&bq24192_client->dev,
+			dev_dbg(&bq24192_client->dev,
 				"registered charger irq for pin %d\n",
 				chip->irq);
 		}
@@ -2419,7 +2416,7 @@ static int bq24192_probe(struct i2c_client *client,
 		/* Register cooling device to control the vbus */
 		ret = register_cooling_device(chip);
 		if (ret) {
-			dev_warn(&chip->client->dev,
+			dev_err(&chip->client->dev,
 				"Register cooling device Failed (%d)\n", ret);
 		}
 	}
@@ -2437,7 +2434,7 @@ static int bq24192_probe(struct i2c_client *client,
 		ret = bq24192_reg_read_modify(chip->client,
 			BQ24192_MISC_OP_CNTL_REG, MISC_OP_CNTL_DPDM_EN, true);
 		if (ret < 0)
-			dev_warn(&chip->client->dev,
+			dev_err(&chip->client->dev,
 				"Failed to trigger DPDM detection during probe\n");
 	}
 
@@ -2447,7 +2444,7 @@ static int bq24192_probe(struct i2c_client *client,
 static int bq24192_remove(struct i2c_client *client)
 {
 	struct bq24192_chip *chip = i2c_get_clientdata(client);
-	int ret;
+	int ret = 0;
 
 	if (chip->chip_type == BQ24297) {
 		if (IS_ERR_OR_NULL(chip->vbus_cdev))
@@ -2474,10 +2471,24 @@ static int bq24192_remove(struct i2c_client *client)
 #ifdef CONFIG_PM
 static int bq24192_suspend(struct device *dev)
 {
+	int ret;
 	struct bq24192_chip *chip = dev_get_drvdata(dev);
 
 	dev_dbg(&chip->client->dev, "bq24192 suspend\n");
-	return 0;
+	if (chip->is_charging_enabled) {
+		mutex_lock(&chip->event_lock);
+		ret = bq24192_enable_charging(chip, true);
+		if (ret < 0)
+			dev_err(&chip->client->dev, "charging enable failed\n");
+		mutex_unlock(&chip->event_lock);
+	} else {
+		mutex_lock(&chip->event_lock);
+		ret = bq24192_enable_charging(chip, false);
+		if (ret < 0)
+			dev_err(&chip->client->dev, "charging disable failed\n");
+		mutex_unlock(&chip->event_lock);
+	}
+	return ret;
 }
 
 static int bq24192_resume(struct device *dev)

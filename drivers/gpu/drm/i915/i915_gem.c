@@ -36,6 +36,7 @@
 #include <linux/list_sort.h>
 #include <linux/oom.h>
 #include <linux/shmem_fs.h>
+#include <linux/migrate.h>
 #include <linux/slab.h>
 #include <linux/swap.h>
 #include <linux/pci.h>
@@ -2185,6 +2186,9 @@ i915_gem_object_put_pages_gtt(struct drm_i915_gem_object *obj)
 		if (obj->madv == I915_MADV_WILLNEED)
 			mark_page_accessed(page);
 
+#ifdef CONFIG_MIGRATION
+		set_page_private(page, 0);
+#endif
 		page_cache_release(page);
 	}
 	obj->dirty = 0;
@@ -2321,6 +2325,48 @@ i915_gem_shrink_all(struct drm_i915_private *dev_priv)
 }
 
 static int
+drop_pages(struct drm_i915_gem_object *obj)
+{
+	struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
+	struct i915_vma *vma;
+	int ret = 0;
+
+	/*
+	 * Unbinding of objects will require HW access so device has to be
+	 * kept runtime active. But a deadlock scenario can arise, if the
+	 * device is attempted to be resumed, when a suspend or a resume
+	 * operation is concurrently happening from some other path and
+	 * that only actually triggered the compaction.
+	 * A coarse check is good enough here, even if the check fails
+	 * and device suspend starts at the same time, that suspend will
+	 * get aborted as the struct_mutex is locked by us.
+	 */
+	if (i915_is_device_suspended(dev_priv->dev) ||
+	    i915_is_device_suspending(dev_priv->dev) ||
+	    i915_is_device_resuming(dev_priv->dev))
+		return -EBUSY;
+
+	/* We know device is runtime active here */
+	intel_runtime_pm_get_noresume(dev_priv);
+	drm_gem_object_reference(&obj->base);
+	while (!list_empty(&obj->vma_list)) {
+		vma = list_first_entry(&obj->vma_list,
+				       struct i915_vma, vma_link);
+		ret = i915_vma_unbind(vma);
+		if (ret)
+			break;
+	}
+
+	if (ret == 0)
+		ret = i915_gem_object_put_pages(obj);
+
+	drm_gem_object_unreference(&obj->base);
+	intel_runtime_pm_put(dev_priv);
+
+	return ret;
+}
+
+static int
 i915_gem_object_get_pages_gtt(struct drm_i915_gem_object *obj)
 {
 	struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
@@ -2398,6 +2444,9 @@ i915_gem_object_get_pages_gtt(struct drm_i915_gem_object *obj)
 			sg->length += PAGE_SIZE;
 		}
 		last_pfn = page_to_pfn(page);
+#ifdef CONFIG_MIGRATION
+		set_page_private(page, (unsigned long)obj);
+#endif
 
 		/* Check that the i965g/gm workaround works. */
 		WARN_ON((gfp & __GFP_DMA32) && (last_pfn >= 0x00100000UL));
@@ -2422,8 +2471,13 @@ i915_gem_object_get_pages_gtt(struct drm_i915_gem_object *obj)
 
 err_pages:
 	sg_mark_end(sg);
-	for_each_sg_page(st->sgl, &sg_iter, st->nents, 0)
-		page_cache_release(sg_page_iter_page(&sg_iter));
+	for_each_sg_page(st->sgl, &sg_iter, st->nents, 0) {
+		page = sg_page_iter_page(&sg_iter);
+#ifdef CONFIG_MIGRATION
+		set_page_private(page, 0);
+#endif
+		page_cache_release(page);
+	}
 	sg_free_table(st);
 	kfree(st);
 
@@ -2754,15 +2808,7 @@ int __i915_add_request(struct intel_engine_cs *ring,
 	 */
 	request->batch_obj = obj;
 
-	if (!i915.enable_execlists) {
-		/* Hold a reference to the current context so that we can inspect
-		 * it later in case a hangcheck error event fires.
-		 */
-		WARN_ON(request->ctx && (request->ctx != ring->last_context));
-		request->ctx = ring->last_context;
-		if (request->ctx)
-			i915_gem_context_reference(request->ctx);
-	}
+	WARN_ON(!i915.enable_execlists && (request->ctx != ring->last_context));
 
 	request->emitted_jiffies = jiffies;
 	list_add_tail(&request->list, &ring->request_list);
@@ -3110,6 +3156,27 @@ struct drm_i915_gem_request *i915_gem_request_find_by_seqno(struct intel_engine_
 			DRM_DEBUG_DRIVER("Searching for missing seqno!\n");
 			break;
 		}
+	}
+
+	if (&req->list == &ring->request_list)
+		req = NULL;
+
+	spin_unlock_irqrestore(&ring->reqlist_lock, flags);
+
+	return req;
+}
+
+struct drm_i915_gem_request *i915_gem_request_find_by_sync_value(struct intel_engine_cs *ring,
+								 uint32_t sync_value)
+{
+	struct drm_i915_gem_request *req = NULL;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ring->reqlist_lock, flags);
+
+	list_for_each_entry(req, &ring->request_list, list) {
+		if (req->sync_value == sync_value)
+			break;
 	}
 
 	if (&req->list == &ring->request_list)
@@ -5347,9 +5414,106 @@ static const struct drm_i915_gem_object_ops i915_gem_object_ops = {
 	.put_pages = i915_gem_object_put_pages_gtt,
 };
 
+#ifdef CONFIG_MIGRATION
+static int i915_migratepage(struct address_space *mapping,
+			    struct page *newpage, struct page *page,
+			    enum migrate_mode mode, void *dev_priv_data)
+{
+	struct drm_i915_private *dev_priv = dev_priv_data;
+	struct drm_device *dev = dev_priv->dev;
+	struct drm_i915_gem_object *obj;
+	unsigned long timeout = msecs_to_jiffies(10) + 1;
+	int ret = 0;
+
+	WARN((page_count(newpage) != 1), "Unexpected ref count for newpage\n");
+
+	/*
+	 * Clear the private field of the new target page as it could have a
+	 * stale value in the private field. Otherwise later on if this page
+	 * itself gets migrated, without getting referred by the Driver
+	 * in between, the stale value would cause the i915_migratepage
+	 * function to go for a toss as object pointer is derived from it.
+	 * This should be safe since at the time of migration, private field
+	 * of the new page (which is actually an independent free 4KB page now)
+	 * should be like a don't care for the kernel.
+	 */
+	set_page_private(newpage, 0);
+
+	/*
+	 * Check the page count, if Driver also has a reference then it should
+	 * be more than 2, as shmem will have one reference and one reference
+	 * would have been taken by the migration path itself. So if reference
+	 * is <=2, we can directly invoke the migration function.
+	 */
+	if (page_count(page) <= 2)
+		goto migrate;
+
+	/*
+	 * Use trylock here, with a timeout, for struct_mutex as
+	 * otherwise there is a possibility of deadlock due to lock
+	 * inversion. This path, which tries to migrate a particular
+	 * page after locking that page, can race with a path which
+	 * truncate/purge pages of the corresponding object (after
+	 * acquiring struct_mutex). Since page truncation will also
+	 * try to lock the page, a scenario of deadlock can arise.
+	 */
+	while (!mutex_trylock(&dev->struct_mutex) && --timeout)
+		schedule_timeout_killable(1);
+	if (timeout == 0) {
+		DRM_DEBUG_DRIVER("Unable to acquire device mutex.\n");
+		return -EBUSY;
+	}
+
+	obj = (struct drm_i915_gem_object *)page_private(page);
+
+	if (!PageSwapCache(page) && obj) {
+		/*
+		 * Avoid the migration of pages if they are being actively used
+		 * by GPU or pinned for Display.
+		 * Also skip the migration for purgeable objects otherwise there
+		 * will be a deadlock when shmem will try to lock the page for
+		 * truncation, which is already locked by the caller before
+		 * migration.
+		 */
+		if (obj->active || obj->pin_display ||
+		    obj->madv == I915_MADV_DONTNEED)
+			ret = -EBUSY;
+		else
+			ret = drop_pages(obj);
+
+		BUG_ON(!ret && page_private(page));
+	}
+
+	mutex_unlock(&dev->struct_mutex);
+	if (ret)
+		return ret;
+
+	/*
+	 * Ideally here we don't expect the page count to be > 2, as driver
+	 * would have dropped its reference, but occasionally it has been seen
+	 * coming as 3 & 4. This leads to a situation of unexpected page count,
+	 * causing migration failure, with -EGAIN error. This then leads to
+	 * multiple attempts by the kernel to migrate the same set of pages.
+	 * And sometimes the repeated attempts proves detrimental for stability.
+	 * Also since we don't know who is the other owner, and for how long its
+	 * gonna keep the reference, its better to return -EBUSY.
+	 */
+	if (page_count(page) > 2)
+		return -EBUSY;
+
+migrate:
+	ret = migrate_page(mapping, newpage, page, mode);
+	if (ret)
+		DRM_DEBUG_DRIVER("page=%p migration returned %d\n", page, ret);
+
+	return ret;
+}
+#endif
+
 struct drm_i915_gem_object *i915_gem_alloc_object(struct drm_device *dev,
 						  size_t size)
 {
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_gem_object *obj;
 	struct address_space *mapping;
 	gfp_t mask;
@@ -5363,7 +5527,12 @@ struct drm_i915_gem_object *i915_gem_alloc_object(struct drm_device *dev,
 		return NULL;
 	}
 
-	mask = GFP_HIGHUSER | __GFP_RECLAIMABLE;
+	/*
+	 * This marks the page as eligible for both migration & reclaiming.
+	 * If CONFIG_MIGRATION is not defined, then migration will not happen,
+	 * but page can still be reclaimed.
+	 */
+	mask = GFP_HIGHUSER_MOVABLE;
 	if (IS_CRESTLINE(dev) || IS_BROADWATER(dev)) {
 		/* 965gm cannot relocate objects above 4GiB. */
 		mask &= ~__GFP_HIGHMEM;
@@ -5372,6 +5541,10 @@ struct drm_i915_gem_object *i915_gem_alloc_object(struct drm_device *dev,
 
 	mapping = file_inode(obj->base.filp)->i_mapping;
 	mapping_set_gfp_mask(mapping, mask);
+
+#ifdef CONFIG_MIGRATION
+	mapping->private_data = &dev_priv->migrate_info;
+#endif
 
 	i915_gem_object_init(obj, &i915_gem_object_ops);
 
@@ -5851,6 +6024,11 @@ int i915_gem_init(struct drm_device *dev)
 
 	if (ret == 0)
 		intel_chv_huc_load(dev);
+
+#ifdef CONFIG_MIGRATION
+	dev_priv->migrate_info.dev_private_data = dev_priv;
+	dev_priv->migrate_info.dev_migratepage = i915_migratepage;
+#endif
 
 	/* Allow hardware batchbuffers unless told otherwise, but not for KMS. */
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))

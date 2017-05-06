@@ -214,6 +214,9 @@ int i915_scheduler_queue_execbuffer(struct i915_scheduler_queue_entry *qe)
 
 	BUG_ON(!scheduler);
 
+	if (qe->params.fence_wait)
+		scheduler->stats[ring->id].fence_got++;
+
 	if (i915.scheduler_override & i915_so_direct_submit) {
 		int ret;
 
@@ -222,10 +225,19 @@ int i915_scheduler_queue_execbuffer(struct i915_scheduler_queue_entry *qe)
 
 		trace_i915_scheduler_queue(qe->params.ring, qe);
 
+		WARN_ON(qe->params.fence_wait && (qe->params.fence_wait->status == 0));
+
 		scheduler->flags[qe->params.ring->id] |= i915_sf_submitting;
 		ret = dev_priv->gt.do_execfinal(&qe->params);
 		scheduler->stats[qe->params.ring->id].submitted++;
 		scheduler->flags[qe->params.ring->id] &= ~i915_sf_submitting;
+
+		/*
+		 * Don't do any clean up on failure because the caller will
+		 * do it all anyway.
+		 */
+		if (ret)
+			return ret;
 
 		/* Need to release the objects: */
 		for (i = 0; i < qe->num_objs; i++) {
@@ -323,8 +335,17 @@ int i915_scheduler_queue_execbuffer(struct i915_scheduler_queue_entry *qe)
 				if (I915_SQS_IS_COMPLETE(test))
 					continue;
 
-				found = (node->params.ctx == test->params.ctx);
+				/*
+				 * Batches on the same ring for the same
+				 * context must be kept in order.
+				 */
+				found = (node->params.ctx == test->params.ctx) &&
+					(node->params.ring == test->params.ring);
 
+				/*
+				 * Batches working on the same objects must
+				 * be kept in order.
+				 */
 				for (i = 0; (i < node->num_objs) && !found; i++) {
 					for (j = 0; j < test->num_objs; j++) {
 						if (node->saved_objects[i].obj !=
@@ -948,7 +969,7 @@ int i915_scheduler_dump_locked(struct intel_engine_cs *ring, const char *msg)
 					deps++;
 
 			DRM_DEBUG_DRIVER("<%s>   %c:%02d> index = %d, uniq = %d, seqno"
-					 " = %d/%s, deps = %d / %d, %s [pri = "
+					 " = %d/%s, deps = %d / %d, fence = %p/%d, %s [pri = "
 					 "%4d]\n", ring->name,
 					 i915_scheduler_queue_status_chr(node->status),
 					 count,
@@ -957,6 +978,8 @@ int i915_scheduler_dump_locked(struct intel_engine_cs *ring, const char *msg)
 					 node->params.request->seqno,
 					 node->params.ring->name,
 					 deps, node->num_deps,
+					 node->params.fence_wait,
+					 node->params.fence_wait ? node->params.fence_wait->status : 0,
 					 i915_qe_state_str(node),
 					 node->priority);
 
@@ -1230,18 +1253,8 @@ static void i915_scheduler_wait_fence_signaled(struct sync_fence *fence,
 	 * NB: The callback is executed at interrupt time, thus it can not
 	 * call _submit() directly. It must go via the delayed work handler.
 	 */
-	if (dev_priv) {
-		struct i915_scheduler   *scheduler;
-		unsigned long           flags;
-
-		scheduler = dev_priv->scheduler;
-
-		spin_lock_irqsave(&scheduler->lock, flags);
-		i915_waiter->node->flags &= ~i915_qef_fence_waiting;
-		spin_unlock_irqrestore(&scheduler->lock, flags);
-
+	if (dev_priv)
 		queue_work(dev_priv->wq, &dev_priv->mm.scheduler_work);
-	}
 
 	kfree(waiter);
 }
@@ -1249,15 +1262,20 @@ static void i915_scheduler_wait_fence_signaled(struct sync_fence *fence,
 static bool i915_scheduler_async_fence_wait(struct drm_device *dev,
 					    struct i915_scheduler_queue_entry *node)
 {
+	struct drm_i915_private         *dev_priv = node->params.ring->dev->dev_private;
+	struct i915_scheduler           *scheduler = dev_priv->scheduler;
 	struct i915_sync_fence_waiter	*fence_waiter;
 	struct sync_fence		*fence = node->params.fence_wait;
 	int				signaled;
 	bool				success = true;
 
-	if ((node->flags & i915_qef_fence_waiting) == 0)
+	if ((node->flags & i915_qef_fence_waiting) == 0) {
 		node->flags |= i915_qef_fence_waiting;
-	else
+		scheduler->stats[node->params.ring->id].fence_wait++;
+	} else {
+		scheduler->stats[node->params.ring->id].fence_again++;
 		return true;
+	}
 
 	if (fence == NULL)
 		return false;
@@ -1323,9 +1341,14 @@ static int i915_scheduler_pop_from_queue_locked(struct intel_engine_cs *ring,
 
 #ifdef CONFIG_SYNC
 		if (node->params.fence_wait)
-			signalled = node->params.fence_wait->status;
+			signalled = node->params.fence_wait->status != 0;
 		else
 			signalled = true;
+
+		if (!signalled) {
+			signalled = i915_safe_to_ignore_fence(ring, node->params.fence_wait);
+			scheduler->stats[node->params.ring->id].fence_ignore++;
+		}
 #endif
 
 		has_local  = false;
@@ -1416,8 +1439,6 @@ static int i915_scheduler_pop_from_queue_locked(struct intel_engine_cs *ring,
 		spin_unlock_irqrestore(&scheduler->lock, *flags);
 		i915_scheduler_async_fence_wait(ring->dev, fence_wait);
 		spin_lock_irqsave(&scheduler->lock, *flags);
-
-		scheduler->stats[ring->id].fence_wait++;
 #else
 		BUG_ON(true);
 #endif

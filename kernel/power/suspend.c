@@ -272,7 +272,8 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 			log_suspend_abort_reason(suspend_abort);
 		}
 		syscore_resume();
-	}
+	} else
+		clockevents_notify(CLOCK_EVT_NOTIFY_RESUME, NULL);
 
 	clockevents_notify(CLOCK_EVT_NOTIFY_RESUME, NULL);
 
@@ -281,6 +282,9 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 	iTCO_wdt_resume_early();
 
 	BUG_ON(irqs_disabled());
+
+	/* resume notification for quiesce timer, sched_timer etc */
+	clockevents_notify(CLOCK_EVT_NOTIFY_RESUME, NULL);
 
  Enable_cpus:
 	enable_nonboot_cpus();

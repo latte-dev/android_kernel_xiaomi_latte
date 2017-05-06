@@ -61,6 +61,8 @@
 
 #define I2C_LENGTH_FRAME_SIZE   5
 
+#define	MAX_NB_READ_FAILURE		20
+
 #define ENTER() \
 	pr_debug("%s\n", __func__)
 
@@ -82,6 +84,9 @@ enum custom_state {
 
 #define RST_RESET		0
 #define RST_NO_RESET		1
+
+#define REF_CLOCK_REQUEST		1
+#define REF_CLOCK_RELEASE		0
 
 /* Context variable */
 
@@ -195,46 +200,24 @@ static void fdp_reset(struct fdp_custom_device *p_device)
 }
 
 /**
-  *  Function used to initialize stack state management.
+  * Function used to request the reference clock from the platform
   *
-  *  Prefered method is to use REFIOH, fallback to RESET
-  *
+  * @return 0 on success, a negative value on failure.
   */
 
-static int fdp_initialize_stack_state(struct fdp_custom_device *p_device)
-{
-	int rc = 0;
-
-	ENTER();
-
-	if (!p_device) {
-		pr_err
-			("fdp_initialize_stack_state: p_device is missing\n");
-		return -1;
-	}
-
-	rc = gpiod_direction_output(p_device->rst_gpio, RST_NO_RESET);
-
-	return rc;
-}
-
-/**
-  *  Function used to update stack state.
-  *
-  *  Prefered method is to use REFIOH, fallback to RESET
-  *
-  */
-
-static void fdp_update_stack_state(struct fdp_custom_device *p_device,
-				   uint8_t active)
+static long fdp_clk_req(struct fdp_custom_device *p_device,
+				unsigned long enable)
 {
 	ENTER();
 
-	if (!p_device) {
-		pr_err
-			("fdp_update_stack_state: p_device is missing\n");
-		return;
+	if (ACPI_HANDLE(&p_device->i2c_client->dev)) {
+		acpi_bus_set_power(
+				ACPI_HANDLE(&p_device->i2c_client->dev),
+				enable ? ACPI_STATE_D0 : ACPI_STATE_D3_COLD);
+		return 0;
 	}
+
+	return  -ENODEV;
 }
 
 /**
@@ -276,14 +259,8 @@ int fdp_custom_open(struct inode *inode, struct file *filp)
 
 	p_device->state = CUSTOM_OPENED;
 
-	/* Inform the chip that the stack is active */
-	fdp_update_stack_state(p_device, 1);
-
-	if (ACPI_HANDLE(&p_device->i2c_client->dev)) {
-		acpi_bus_set_power(
-				ACPI_HANDLE(&p_device->i2c_client->dev),
-				ACPI_STATE_D0);
-	}
+	/* request clock */
+	fdp_clk_req(p_device, REF_CLOCK_REQUEST);
 
  end:
 	mutex_unlock(&p_device->mutex);
@@ -318,7 +295,7 @@ ssize_t fdp_custom_read(struct file *filp, char __user *buf, size_t count,
 	}
 
 	/* we have data to read in
-     *  p_device->rx_buffer[p_device->next_to_read] */
+	 *  p_device->rx_buffer[p_device->next_to_read] */
 
 	if (count < (p_device->rx_data_length[p_device->next_to_read] - 3)) {
 		/* supplied buffer is too small */
@@ -463,14 +440,7 @@ long fdp_custom_ioctl_clk_req(struct file *filp, unsigned int cmd,
 		return -ENODEV;
 	}
 
-	if (ACPI_HANDLE(&p_device->i2c_client->dev)) {
-		acpi_bus_set_power(
-				ACPI_HANDLE(&p_device->i2c_client->dev),
-				enable ? ACPI_STATE_D0 : ACPI_STATE_D3_COLD);
-		return 0;
-	}
-
-	return  -ENODEV;
+	return fdp_clk_req(p_device, enable);
 }
 
 /**
@@ -523,14 +493,8 @@ int fdp_custom_release(struct inode *inode, struct file *filp)
 
 	mutex_lock(&p_device->mutex);
 
-	/* Inform the chip the stack is no longer active */
-	fdp_update_stack_state(p_device, 0);
-
-	if (ACPI_HANDLE(&p_device->i2c_client->dev)) {
-		acpi_bus_set_power(
-				ACPI_HANDLE(&p_device->i2c_client->dev),
-				ACPI_STATE_D3_COLD);
-	}
+	/* release clock */
+	fdp_clk_req(p_device, REF_CLOCK_RELEASE);
 
 	/* Go back to PROBED state */
 	fdp_struct_cleanup(p_device);
@@ -549,6 +513,7 @@ static void fdp_irqout_read(struct fdp_custom_device *p_device)
 	int rc = 0, i;
 	uint8_t lrc;
 	uint8_t *p_buffer;
+	uint8_t nb_successive_read_failure = 0;
 
 	/* Do NOT interrupt an outgoing WRITE cycle */
 	mutex_lock(&p_device->mutex);
@@ -574,17 +539,25 @@ static void fdp_irqout_read(struct fdp_custom_device *p_device)
 
 		if (rc != p_device->next_receive_length) {
 			/* We did not received the amount of bytes expected.
-			 * This is very strange, since FDP should never
-			 * NAK on reception
-			 * A transmission error during I2C ACK bit
-			 * may explain this situation ... */
+			 * this is very strange... */
 
 			pr_err("%s: i2c_master_recv() failed(%d)\n",
 				 __func__, rc);
 
 			p_device->next_receive_length = 5;
+			nb_successive_read_failure++;
+
+			if (nb_successive_read_failure == MAX_NB_READ_FAILURE)
+			{
+				/* seems we enter in an unrecoverable error */
+				fdp_reset(p_device);
+				break;
+			}
+
 			continue;
 		}
+
+		nb_successive_read_failure = 0;
 
 		/* Check the received I2C paquet integrity */
 
@@ -710,9 +683,10 @@ static int fdp_acpi_probe(struct i2c_client *client,
 		return -ENODEV;
 	}
 
-	ret = gpiod_direction_output(gpio, 0);
+	ret = gpiod_direction_output(gpio, RST_NO_RESET);
 	if (ret)
 		return ret;
+
 	fdp_dev->rst_gpio = gpio;
 
 	status = acpi_evaluate_integer(ACPI_HANDLE(dev), "I2C_MTU",
@@ -780,15 +754,6 @@ static int fdp_probe(struct i2c_client *client, const struct i2c_device_id *idp)
 	/* Map IRQ nb to GPIO id */
 	client->irq = gpiod_to_irq(p_device->irq_gpio);
 	pr_info("fdp_probe: IRQ %d", client->irq);
-
-	/* Phone ON/OFF management */
-	rc = fdp_initialize_stack_state(p_device);
-
-	if (rc < 0) {
-		pr_err("fail to initialize stack state management\n");
-		goto unlock;
-	}
-
 	p_device->irqout = client->irq;
 
 	p_device->next_receive_length = I2C_LENGTH_FRAME_SIZE;
@@ -817,36 +782,44 @@ unlock:
 	return rc;
 }
 
-int fdp_suspend(struct i2c_client *client, pm_message_t mesg)
+int fdp_suspend(struct device *dev)
 {
 	struct fdp_custom_device *p_device = fdp_p_device;
 
-	pr_info("fdp_suspend\n");
+	ENTER();
 
 	if (!p_device) {
 		pr_err("fdp_suspend: p_device is missing\n");
 		return 0;
 	}
 
-	/* if (p_device->state == CUSTOM_OPENED)
-		disable_irq(p_device->irqout); */
+/*
+	if (p_device->state == CUSTOM_OPENED)
+		disable_irq(p_device->irqout);
+*/
+
+	fdp_clk_req(p_device, REF_CLOCK_RELEASE);
 
 	return 0;
 }
 
-int fdp_resume(struct i2c_client *client)
+int fdp_resume(struct device *dev)
 {
 	struct fdp_custom_device *p_device = fdp_p_device;
 
-	pr_info("fdp_resume\n");
+	ENTER();
 
 	if (!p_device) {
 		pr_err("fdp_resume: p_device is missing\n");
 		return 0;
 	}
 
-	/* if (p_device->state == CUSTOM_OPENED)
-		enable_irq(p_device->irqout); */
+/*
+	if (p_device->state == CUSTOM_OPENED)
+		enable_irq(p_device->irqout);
+*/
+
+	fdp_clk_req(p_device, REF_CLOCK_RELEASE);
 
 	return 0;
 }
@@ -863,6 +836,12 @@ static int fdp_remove(struct i2c_client *client)
 	ENTER();
 
 	p_device = fdp_p_device;
+
+	if (!p_device) {
+		pr_err
+			("fdp_remove: p_device is missing\n");
+		return -ENODEV;
+	}
 
 	/* disable to wake the device using this IRQ */
 	irq_set_irq_wake(p_device->irqout, 0);

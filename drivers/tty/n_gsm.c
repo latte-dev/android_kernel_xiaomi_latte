@@ -2102,79 +2102,21 @@ close_this_dlci:
 	}
 }
 
-/**
- *	gsm_cleanup_mux		-	generic GSM protocol cleanup
- *	@gsm: our mux
- *
- *	Clean up the bits of the mux which are the same for all framing
- *	protocols. Remove the mux from the mux table, stop all the timers
- *	and then shut down each device hanging up the channels as we go.
- *
- *	RRG: FIXME: need to validate if starting close of other
- *		dlci channels is really needed or can we revert to
- *		upstream code. Need full testing cycle.
- */
-
-void gsm_cleanup_mux(struct gsm_mux *gsm)
+static void gsm_remove_one_mux_entry(struct gsm_mux *gsm)
 {
-	int i;
-	struct gsm_msg *txq, *ntxq;
-	unsigned long flags;
-
-	gsm->dead = 1;
+	if (gsm->num >= MAX_MUX)
+		return;
 
 	spin_lock(&gsm_mux_lock);
-	gsm_mux[gsm->num] = NULL;
+	if (gsm_mux[gsm->num] == gsm)
+		gsm_mux[gsm->num] = NULL;
 	spin_unlock(&gsm_mux_lock);
-
-	del_timer_sync(&gsm->t2_timer);
-	/* Now we are sure T2 has stopped */
-
-	if (!gsm->tty_dead)
-		gsm_closeall_dlci(gsm);
-
-	mutex_lock(&gsm->mutex);
-	for (i = NUM_DLCI-1; i >= 0; i--)
-		if (gsm->dlci[i])
-			gsm_dlci_release(gsm->dlci[i]);
-	activated--;
-	mutex_unlock(&gsm->mutex);
-
-	spin_lock_irqsave(&gsm->tx_lock, flags);
-	/* Now wipe the queues */
-	list_for_each_entry_safe(txq, ntxq, &gsm->tx_list, list)
-		kfree(txq);
-	INIT_LIST_HEAD(&gsm->tx_list);
-	spin_unlock_irqrestore(&gsm->tx_lock, flags);
 }
 
-/**
- *	gsm_activate_mux	-	generic GSM setup
- *	@gsm: our mux
- *
- *	Set up the bits of the mux which are the same for all framing
- *	protocols. Add the mux to the mux table so it can be opened and
- *	finally kick off connecting to DLCI 0 on the modem.
- */
-
-static int gsm_activate_mux(struct gsm_mux *gsm)
+static int gsm_add_one_mux_entry(struct gsm_mux *gsm)
 {
-	struct gsm_dlci *dlci;
 	int i = 0;
 	char *p = NULL;
-
-	init_timer(&gsm->t2_timer);
-	gsm->t2_timer.function = gsm_control_retransmit;
-	gsm->t2_timer.data = (unsigned long)gsm;
-	init_waitqueue_head(&gsm->event);
-	spin_lock_init(&gsm->control_lock);
-	spin_lock_init(&gsm->tx_lock);
-
-	if (gsm->encoding == 0)
-		gsm->receive = gsm0_receive;
-	else
-		gsm->receive = gsm1_receive;
-	gsm->error = gsm_error;
 
 	/*XXX: might want to clean that up ... and prolly move some checks*/
 	/* in mux_base_conf_set*/
@@ -2184,7 +2126,8 @@ static int gsm_activate_mux(struct gsm_mux *gsm)
 		if (p != NULL) {
 			if (sscanf(p+strlen(gsm->tty->name)+1, "%d", &i) != 1) {
 				pr_err(DRVNAME": Config not correct, abort : %s - %s - %s\n",
-						gsm->tty->name, p,
+						gsm->tty->name,
+						p,
 						p+strlen(gsm->tty->name) + 1);
 				return -EINVAL;
 			}
@@ -2205,7 +2148,7 @@ static int gsm_activate_mux(struct gsm_mux *gsm)
 			spin_unlock(&gsm_mux_lock);
 		} else {
 			pr_err(DRVNAME": Config doesn't exists for tty: %s\n",
-					gsm->tty->name);
+			 gsm->tty->name);
 			return -EINVAL;
 		}
 	} else {
@@ -2222,13 +2165,110 @@ static int gsm_activate_mux(struct gsm_mux *gsm)
 	}
 	if (i == MAX_MUX)
 		return -EBUSY;
+	return 0;
+}
 
-	dlci = gsm_dlci_alloc(gsm, 0);
-	if (dlci == NULL)
-		return -ENOMEM;
+/**
+ *	gsm_cleanup_mux		-	generic GSM protocol cleanup
+ *	@gsm: our mux
+ *
+ *	Clean up the bits of the mux which are the same for all framing
+ *	protocols. Remove the mux from the mux table, stop all the timers
+ *	and then shut down each device hanging up the channels as we go.
+ *
+ *	RRG: FIXME: need to validate if starting close of other
+ *		dlci channels is really needed or can we revert to
+ *		upstream code. Need full testing cycle.
+ */
+
+void gsm_cleanup_mux(struct gsm_mux *gsm)
+{
+	int i;
+	struct gsm_msg *txq, *ntxq;
+	unsigned long flags;
+	struct gsm_dlci *dlci;
+
+	gsm->dead = 1;
+
+	del_timer_sync(&gsm->t2_timer);
+	/* Now we are sure T2 has stopped */
+
+	if (!gsm->tty_dead)
+		gsm_closeall_dlci(gsm);
+
+	mutex_lock(&gsm->mutex);
+	for (i = NUM_DLCI-1; i >= 0; i--) {
+		dlci = gsm->dlci[i];
+		if (dlci) {
+			if (!gsm->tty_dead) /*only put it when gsm close*/
+				dlci_get(dlci);
+			gsm_dlci_release(dlci);
+		}
+	}
+	activated--;
+	mutex_unlock(&gsm->mutex);
+
+	spin_lock_irqsave(&gsm->tx_lock, flags);
+	/* Now wipe the queues */
+	list_for_each_entry_safe(txq, ntxq, &gsm->tx_list, list)
+		kfree(txq);
+	INIT_LIST_HEAD(&gsm->tx_list);
+	spin_unlock_irqrestore(&gsm->tx_lock, flags);
+}
+
+static inline int __gsm_init_mux(struct gsm_mux *gsm)
+{
+	setup_timer(&gsm->t2_timer, gsm_control_retransmit, (unsigned long)gsm);
+	init_waitqueue_head(&gsm->event);
+	spin_lock_init(&gsm->control_lock);
+	spin_lock_init(&gsm->tx_lock);
+
+	return gsm_add_one_mux_entry(gsm);
+}
+
+static int __gsm_activate_mux(struct gsm_mux *gsm)
+{
+	struct gsm_dlci *dlci;
+
+	if (gsm->encoding == 0)
+		gsm->receive = gsm0_receive;
+	else
+		gsm->receive = gsm1_receive;
+	gsm->error = gsm_error;
+
+	mutex_lock(&gsm->mutex);
+	dlci = gsm->dlci[0];
+	if (dlci == NULL) {
+		dlci = gsm_dlci_alloc(gsm, 0);
+		if (dlci == NULL) {
+			mutex_unlock(&gsm->mutex);
+			return -ENOMEM;
+		}
+	}
+	dlci->dead = 0;
+	mutex_unlock(&gsm->mutex);
+
 	activated++;
 	gsm->dead = 0;		/* Tty opens are now permissible */
 	return 0;
+}
+
+/**
+ *	gsm_activate_mux	-	generic GSM setup
+ *	@gsm: our mux
+ *
+ *	Set up the bits of the mux which are the same for all framing
+ *	protocols. Add the mux to the mux table so it can be opened and
+ *	finally kick off connecting to DLCI 0 on the modem.
+ */
+static int gsm_activate_mux(struct gsm_mux *gsm)
+{
+	int ret;
+
+	ret = __gsm_init_mux(gsm);
+	if (ret != 0)
+		return ret;
+	return __gsm_activate_mux(gsm);
 }
 
 /**
@@ -2276,6 +2316,7 @@ static void gsm_free_mux(struct gsm_mux *gsm)
 		else
 			gsm_mux_buf_free(2 * gsm->mtu + 2, gsm->txframe);
 	}
+	gsm_remove_one_mux_entry(gsm);
 	kfree(gsm);
 }
 
@@ -2563,6 +2604,7 @@ static void gsmld_close(struct tty_struct *tty)
 static int gsmld_open(struct tty_struct *tty)
 {
 	struct gsm_mux *gsm;
+	int ret;
 
 	if (tty->ops->write == NULL)
 		return -EINVAL;
@@ -2578,7 +2620,11 @@ static int gsmld_open(struct tty_struct *tty)
 
 	/* Attach the initial passive connection */
 	gsm->encoding = 1;
-	return gsmld_attach_gsm(tty, gsm);
+
+	ret = gsmld_attach_gsm(tty, gsm);
+	if (ret != 0)
+		mux_put(gsm);
+	return ret;
 }
 
 /**
@@ -2762,8 +2808,10 @@ static int gsmld_config(struct tty_struct *tty, struct gsm_mux *gsm,
 		if (signal_pending(current))
 			return -EINTR;
 	}
-	if (need_restart)
+	if (need_restart) {
 		gsm_cleanup_mux(gsm);
+		wake_up(&gsm->event);
+	}
 
 	gsm->initiator = c->initiator;
 	gsm->mru = c->mru;
@@ -2784,10 +2832,8 @@ static int gsmld_config(struct tty_struct *tty, struct gsm_mux *gsm,
 	if (c->t2)
 		gsm->t2 = c->t2;
 
-	/* FIXME: We need to separate activation/deactivation from adding
-	   and removing from the mux array */
 	if (need_restart)
-		gsm_activate_mux(gsm);
+		__gsm_activate_mux(gsm);
 	if (gsm->initiator && need_close)
 		gsm_dlci_begin_open(gsm->dlci[0]);
 	return 0;
@@ -3526,8 +3572,10 @@ static void gsmtty_cleanup(struct tty_struct *tty)
 	struct gsm_dlci *dlci = tty->driver_data;
 	struct gsm_mux *gsm = dlci->gsm;
 
+	mutex_lock(&gsm->mutex);
 	dlci_put(dlci);
 	dlci_put(gsm->dlci[0]);
+	mutex_unlock(&gsm->mutex);
 	mux_put(gsm);
 }
 

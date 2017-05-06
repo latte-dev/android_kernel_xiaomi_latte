@@ -49,6 +49,7 @@
 #include <linux/kref.h>
 #include <linux/pm_qos.h>
 #include <linux/bitops.h>
+#include <linux/shmem_fs.h>
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 	#include "hdmi_audio_if.h"
 #endif
@@ -1938,6 +1939,10 @@ struct drm_i915_private {
 	uint32_t request_uniq;
 
 	bool shutdown_in_progress;
+
+#ifdef CONFIG_MIGRATION
+	struct shmem_migrate_info migrate_info;
+#endif
 	/*
 	 * NOTE: This is the dri1/ums dungeon, don't add stuff here. Your patch
 	 * will be rejected. Instead look for a better place.
@@ -2248,6 +2253,8 @@ static inline bool i915_gem_request_completed(struct drm_i915_gem_request *req)
 /* For use by TDR type facilities */
 struct drm_i915_gem_request *i915_gem_request_find_by_seqno(struct intel_engine_cs *ring,
 							    uint32_t seqno);
+struct drm_i915_gem_request *i915_gem_request_find_by_sync_value(struct intel_engine_cs *ring,
+								 uint32_t sync_value);
 
 struct drm_i915_file_private {
 	struct drm_i915_private *dev_priv;

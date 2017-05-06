@@ -1481,6 +1481,7 @@ static int pmic_check_initial_events(void)
 	u8 val, sreg_val = 0;
 	u16 *pmic_int, *pmic_int_stat, off;
 	u16 stat_reg = 0;
+	struct extcon_dev *edev;
 
 	evt = kzalloc(sizeof(struct pmic_event), GFP_KERNEL);
 	if (!evt)
@@ -1516,8 +1517,18 @@ static int pmic_check_initial_events(void)
 
 	INIT_LIST_HEAD(&evt->node);
 	list_add_tail(&evt->node, &chc.evt_queue);
-	schedule_delayed_work(&chc.evt_work, 0);
 
+	edev = extcon_get_extcon_dev("usb-typec");
+
+	if (!edev)
+		dev_err(chc.dev, "No edev found");
+	else {
+		chc.cable_state = extcon_get_cable_state(edev, "USB-Host");
+		if (chc.cable_state)
+			schedule_work(&chc.extcon_work);
+	}
+
+	schedule_delayed_work(&chc.evt_work, 0);
 	pmic_bat_zone_changed();
 
 	return ret;
@@ -1567,9 +1578,12 @@ static int vbus_set_cur_state(struct thermal_cooling_device *tcd,
 	/**
 	 * notify directly only when the ID_GND and want to change the state
 	 * from previous state (vbus enable/disable).
+	 * Otherwise, check cable_state to determine OTG connect/disconnect
+	 * status based on USB notification and enable/disable vbus.
 	 */
 	mutex_lock(&pmic_lock);
-	if ((pmic_get_usbid() == RID_GND) && (chc.vbus_state != new_state)) {
+	if (((pmic_get_usbid() == RID_GND) || chc.cable_state) &&
+		(chc.vbus_state != new_state)) {
 		if (!new_state) {
 			if (chc.otg->set_vbus)
 				chc.otg->set_vbus(chc.otg, true);
@@ -1776,14 +1790,14 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&chc.evt_work, pmic_event_worker);
 	INIT_LIST_HEAD(&chc.evt_queue);
 
-	ret = pmic_check_initial_events();
-	if (ret)
-		goto otg_req_failed;
-
 	INIT_WORK(&chc.extcon_work, pmic_ccsm_extcon_host_work);
 	chc.cable_nb.notifier_call = pmic_ccsm_usb_host_nb;
 	extcon_register_interest(&chc.host_cable, "usb-typec", "USB-Host",
 						&chc.cable_nb);
+
+	ret = pmic_check_initial_events();
+	if (ret)
+		goto otg_req_failed;
 
 	/* register interrupt */
 	for (i = 0; i < chc.irq_cnt; ++i) {
