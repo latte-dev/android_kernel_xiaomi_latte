@@ -549,53 +549,6 @@ static struct ov5693_reg const ov5693_654x496[] = {
 };
 
 /*
- * 1296x976 30fps 17ms VBlanking 2lane 10Bit (Scaling)
-*DS from 2592x1952
-*/
-static struct ov5693_reg const ov5693_1296x976[] = {
-	{OV5693_8BIT, 0x3501, 0x7b},
-	{OV5693_8BIT, 0x3502, 0x00},
-	{OV5693_8BIT, 0x3708, 0xe2},
-	{OV5693_8BIT, 0x3709, 0xc3},
-
-	{OV5693_8BIT, 0x3800, 0x00},
-	{OV5693_8BIT, 0x3801, 0x00},
-	{OV5693_8BIT, 0x3802, 0x00},
-	{OV5693_8BIT, 0x3803, 0x00},
-
-	{OV5693_8BIT, 0x3804, 0x0a},
-	{OV5693_8BIT, 0x3805, 0x3f},
-	{OV5693_8BIT, 0x3806, 0x07},
-	{OV5693_8BIT, 0x3807, 0xA3},
-
-	{OV5693_8BIT, 0x3808, 0x05},
-	{OV5693_8BIT, 0x3809, 0x10},
-	{OV5693_8BIT, 0x380a, 0x03},
-	{OV5693_8BIT, 0x380b, 0xD0},
-
-	{OV5693_8BIT, 0x380c, 0x0a},
-	{OV5693_8BIT, 0x380d, 0x80},
-	{OV5693_8BIT, 0x380e, 0x07},
-	{OV5693_8BIT, 0x380f, 0xc0},
-
-	{OV5693_8BIT, 0x3810, 0x00},
-	{OV5693_8BIT, 0x3811, 0x10},
-	{OV5693_8BIT, 0x3812, 0x00},
-	{OV5693_8BIT, 0x3813, 0x02},
-
-	{OV5693_8BIT, 0x3814, 0x11},	/*X subsample control*/
-	{OV5693_8BIT, 0x3815, 0x11},	/*Y subsample control*/
-	{OV5693_8BIT, 0x3820, 0x00},
-	{OV5693_8BIT, 0x3821, 0x1e},
-	{OV5693_8BIT, 0x5002, 0x00},
-	{OV5693_8BIT, 0x5041, 0x84}, /* scale is auto enabled */
-	{OV5693_8BIT, 0x0100, 0x01},
-	{OV5693_TOK_TERM, 0, 0}
-
-};
-
-
-/*
  * 336x256 30fps 17ms VBlanking 2lane 10Bit (Scaling)
  DS from 2564x1956
  */
@@ -653,7 +606,7 @@ static struct ov5693_reg const ov5693_368x304[] = {
 
 /*
  * ov5693_192x160 30fps 17ms VBlanking 2lane 10Bit (Scaling)
- DS from 2460x1956
+ DS from 2336x1944
  */
 static struct ov5693_reg const ov5693_192x160[] = {
 	{OV5693_8BIT, 0x3501, 0x7b},
@@ -672,8 +625,8 @@ static struct ov5693_reg const ov5693_192x160[] = {
 	{OV5693_8BIT, 0x380d, 0x80},
 	{OV5693_8BIT, 0x380e, 0x07},
 	{OV5693_8BIT, 0x380f, 0xc0},
-	{OV5693_8BIT, 0x3811, 0x40},
-	{OV5693_8BIT, 0x3813, 0x00},
+	{OV5693_8BIT, 0x3811, 0x90},
+	{OV5693_8BIT, 0x3813, 0x06},
 	{OV5693_8BIT, 0x3814, 0x31},
 	{OV5693_8BIT, 0x3815, 0x31},
 	{OV5693_8BIT, 0x3820, 0x04},
@@ -1306,20 +1259,6 @@ struct ov5693_resolution ov5693_res_video[] = {
 		.bin_factor_y = 2,
 		.bin_mode = 0,
 		.regs = ov5693_1296x736,
-	},
-	{
-		.desc = "ov5693_1296x976_30fps",
-		.width = 1296,
-		.height = 976,
-		.fps = 30,
-		.pix_clk_freq = 160,
-		.used = 0,
-		.pixels_per_line = 2688,
-		.lines_per_frame = 1984,
-		.bin_factor_x = 2,
-		.bin_factor_y = 2,
-		.bin_mode = 0,
-		.regs = ov5693_1296x976,
 	},
 	{
 		.desc = "ov5693_1636P_30fps",

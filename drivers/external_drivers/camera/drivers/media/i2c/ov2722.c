@@ -293,7 +293,7 @@ static int ov2722_get_intg_factor(struct i2c_client *client,
 				const struct ov2722_resolution *res)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
-	struct ov2722_device *dev = NULL;
+	struct ov2722_device *dev = to_ov2722_sensor(sd);
 	struct atomisp_sensor_mode_data *buf = &info->data;
 	const unsigned int ext_clk_freq_hz = 19200000;
 	const unsigned int pll_invariant_div = 10;
@@ -306,8 +306,6 @@ static int ov2722_get_intg_factor(struct i2c_client *client,
 
 	if (info == NULL)
 		return -EINVAL;
-
-	dev = to_ov2722_sensor(sd);
 
 	/* pixel clock calculattion */
 	ret =  ov2722_read_reg(client, OV2722_8BIT,
@@ -404,8 +402,6 @@ static long __ov2722_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 	u16 hts, vts;
 	int ret;
 
-	dev_dbg(&client->dev, "set_exposure without group hold\n");
-
 	/* clear VTS_DIFF on manual mode */
 	ret = ov2722_write_reg(client, OV2722_16BIT, OV2722_VTS_DIFF_H, 0);
 	if (ret)
@@ -419,6 +415,11 @@ static long __ov2722_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 
 	coarse_itg <<= 4;
 	digitgain <<= 2;
+
+	/* group hold start */
+	ret = ov2722_write_reg(client, OV2722_8BIT, OV2722_GROUP_ACCESS, 0);
+	if (ret)
+		return ret;
 
 	ret = ov2722_write_reg(client, OV2722_16BIT,
 				OV2722_VTS_H, vts);
@@ -462,6 +463,19 @@ static long __ov2722_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 
 	ret = ov2722_write_reg(client, OV2722_16BIT,
 				OV2722_MWB_GAIN_B_H, digitgain);
+	if (ret)
+		return ret;
+
+	/* group hold end */
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+					OV2722_GROUP_ACCESS, 0x10);
+	if (ret)
+		return ret;
+
+	/* group hold launch */
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+					OV2722_GROUP_ACCESS, 0xa0);
+
 	return ret;
 }
 
@@ -708,11 +722,11 @@ static int power_ctrl(struct v4l2_subdev *sd, bool flag)
 
 #ifdef CONFIG_GMIN_INTEL_MID
 	if (flag) {
-		ret = dev->platform_data->v1p8_ctrl(sd, 1);
+		ret = dev->platform_data->v2p8_ctrl(sd, 1);
 		if (ret == 0) {
-			ret = dev->platform_data->v2p8_ctrl(sd, 1);
+			ret = dev->platform_data->v1p8_ctrl(sd, 1);
 			if (ret)
-				dev->platform_data->v1p8_ctrl(sd, 0);
+				dev->platform_data->v2p8_ctrl(sd, 0);
 		}
 	} else {
 		ret = dev->platform_data->v1p8_ctrl(sd, 0);
@@ -986,30 +1000,8 @@ static int ov2722_s_mbus_fmt(struct v4l2_subdev *sd,
 
 	ret = startup(sd);
 	if (ret) {
-		int i = 0;
-		dev_err(&client->dev, "ov2722 startup err, retry to power up\n");
-		for (i = 0; i < OV2722_POWER_UP_RETRY_NUM; i++) {
-			dev_err(&client->dev,
-				"ov2722 retry to power up %d/%d times, result: ",
-				i+1, OV2722_POWER_UP_RETRY_NUM);
-			power_down(sd);
-			ret = power_up(sd);
-			if (ret) {
-				dev_err(&client->dev, "power up failed, continue\n");
-				continue;
-			}
-			ret = startup(sd);
-			if (ret) {
-				dev_err(&client->dev, " startup FAILED!\n");
-			} else {
-				dev_err(&client->dev, " startup SUCCESS!\n");
-				break;
-			}
-		}
-		if (ret) {
-			dev_err(&client->dev, "ov2722 startup err\n");
-			goto err;
-		}
+		dev_err(&client->dev, "ov2722 startup err\n");
+		goto err;
 	}
 
 	ret = ov2722_get_intg_factor(client, ov2722_info,

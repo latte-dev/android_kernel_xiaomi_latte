@@ -1,1 +1,0 @@
-../../../../../../css/isp/kernels/ipu2_io_ls/bayer_io_ls/ia_css_bayer_io_param.h

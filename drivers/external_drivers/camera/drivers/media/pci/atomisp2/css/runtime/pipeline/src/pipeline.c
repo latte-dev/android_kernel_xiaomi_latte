@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #include "ia_css_debug.h"
 #include "sw_event_global.h"		/* encode_sw_event */
@@ -21,7 +21,6 @@ more details.
 #include "ia_css_pipeline.h"
 #include "ia_css_isp_param.h"
 #include "ia_css_bufq.h"
-#include "ia_css_frame.h"
 
 #define PIPELINE_NUM_UNMAPPED                   (~0U)
 #define PIPELINE_SP_THREAD_EMPTY_TOKEN          (0x0)
@@ -48,14 +47,11 @@ static void pipeline_init_defaults(
 
 static void pipeline_stage_destroy(struct ia_css_pipeline_stage *stage);
 static enum ia_css_err pipeline_stage_create(
-	struct ia_css_pipeline *pipeline,
 	struct ia_css_pipeline_stage_desc *stage_desc,
 	struct ia_css_pipeline_stage **new_stage);
 static void ia_css_pipeline_set_zoom_stage(struct ia_css_pipeline *pipeline);
 static void ia_css_pipeline_configure_inout_port(struct ia_css_pipeline *me,
 	bool continuous);
-static unsigned int  get_shared_stage_buffer_size(
-	unsigned int width, unsigned int height, unsigned buf_idx);
 
 /*******************************************************
 *** Public functions
@@ -142,11 +138,11 @@ void ia_css_pipeline_start(enum ia_css_pipe_id pipe_id,
 	sh_css_sp_init_pipeline(pipeline, pipe_id, pipe_num,
 				false, false, false, true, SH_CSS_BDS_FACTOR_1_00,
 				SH_CSS_PIPE_CONFIG_OVRD_NO_OVRD,
-				IA_CSS_INPUT_MODE_MEMORY, NULL, NULL,
+				IA_CSS_INPUT_MODE_MEMORY, NULL, NULL
 #if !defined(HAS_NO_INPUT_SYSTEM)
-				(mipi_port_ID_t) 0,
+				, (mipi_port_ID_t) 0
 #endif
-				NULL, NULL);
+				);
 	ia_css_pipeline_get_sp_thread_id(pipe_num, &thread_id);
 	if (!sh_css_sp_is_running()) {
 		ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE,
@@ -240,7 +236,6 @@ enum ia_css_err ia_css_pipeline_request_stop(struct ia_css_pipeline *pipeline)
 void ia_css_pipeline_clean(struct ia_css_pipeline *pipeline)
 {
 	struct ia_css_pipeline_stage *s;
-	unsigned i, j;
 
 	assert(pipeline != NULL);
 	IA_CSS_ENTER_PRIVATE("pipeline = %p", pipeline);
@@ -250,16 +245,6 @@ void ia_css_pipeline_clean(struct ia_css_pipeline *pipeline)
 		IA_CSS_LEAVE_PRIVATE("void");
 		return;
 	}
-
-	for ( i = 0; i < IA_CSS_PIPE_MAX_OUTPUT_STAGE; i++) {
-		for ( j = 0; j < NUM_SHARED_STAGE_BUFFERS; j++) {
-			if (pipeline->shared_frame[i][j]) {
-				ia_css_frame_free(pipeline->shared_frame[i][j]);
-				pipeline->shared_frame[i][j] = NULL;
-			}
-		}
-	}
-
 	s = pipeline->stages;
 
 	while (s) {
@@ -328,7 +313,7 @@ enum ia_css_err ia_css_pipeline_create_and_add_stage(
 	}
 
 	/* Create the new stage */
-	err = pipeline_stage_create(pipeline, stage_desc, &new_stage);
+	err = pipeline_stage_create(stage_desc, &new_stage);
 	if (err != IA_CSS_SUCCESS) {
 		ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE,
 			      "ia_css_pipeline_create_and_add_stage() done:"
@@ -515,21 +500,11 @@ static void pipeline_stage_destroy(struct ia_css_pipeline_stage *stage)
 		if (stage->out_frame_allocated[i]) {
 			ia_css_frame_free(stage->args.out_frame[i]);
 			stage->args.out_frame[i] = NULL;
-		} else {
-			if (stage->out_frame_shared_buffer[i] && stage->args.out_frame[i]) {
-				sh_css_free(stage->args.out_frame[i]);
-				stage->args.out_frame[i] = NULL;
-			}
 		}
 	}
 	if (stage->vf_frame_allocated) {
 		ia_css_frame_free(stage->args.out_vf_frame);
 		stage->args.out_vf_frame = NULL;
-	} else {
-		if (stage->vf_frame_shared_buffer && stage->args.out_vf_frame) {
-			sh_css_free(stage->args.out_vf_frame);
-			stage->args.out_vf_frame = NULL;
-		}
 	}
 	sh_css_free(stage);
 }
@@ -586,7 +561,6 @@ static void pipeline_unmap_num_to_sp_thread(unsigned int pipe_num)
 }
 
 static enum ia_css_err pipeline_stage_create(
-	struct ia_css_pipeline *pipeline,
 	struct ia_css_pipeline_stage_desc *stage_desc,
 	struct ia_css_pipeline_stage **new_stage)
 {
@@ -597,7 +571,6 @@ static enum ia_css_err pipeline_stage_create(
 	struct ia_css_frame *out_frame[IA_CSS_BINARY_MAX_OUTPUT_PORTS];
 	const struct ia_css_fw_info *firmware;
 	unsigned int i;
-	bool share_stage_buffers = false;
 
 	/* Verify input parameters*/
 	if (!(stage_desc->in_frame) && !(stage_desc->firmware)
@@ -637,67 +610,20 @@ static enum ia_css_err pipeline_stage_create(
 	stage->sp_func = stage_desc->sp_func;
 	stage->max_input_width = stage_desc->max_input_width;
 	stage->mode = stage_desc->mode;
-	for (i = 0; i < IA_CSS_BINARY_MAX_OUTPUT_PORTS; i++) {
+	for (i = 0; i < IA_CSS_BINARY_MAX_OUTPUT_PORTS; i++)
 		stage->out_frame_allocated[i] = false;
-		stage->out_frame_shared_buffer[i] = false;
-	}
 	stage->vf_frame_allocated = false;
-	stage->vf_frame_shared_buffer = false;
 	stage->next = NULL;
 	sh_css_binary_args_reset(&stage->args);
 
-	/* Turn on shared_stage_buffers on ISP2.7 to save memory allocation */
-	share_stage_buffers = binary && (binary->info->sp.pipeline.isp_pipe_version == SH_CSS_ISP_PIPE_VERSION_2_7);
 	for (i = 0; i < IA_CSS_BINARY_MAX_OUTPUT_PORTS; i++) {
 		if (!(out_frame[i]) && (binary)
 			&& (binary->out_frame_info[i].res.width)) {
-
-			if (share_stage_buffers) {
-				unsigned shared_buf_idx = pipeline->shared_buf_idx[i];
-
-				if (pipeline->shared_frame[i][shared_buf_idx] == NULL) {
-					struct ia_css_frame_info myInfo = binary->out_frame_info[i];
-
-					unsigned stage_buf_size = get_shared_stage_buffer_size(
-									myInfo.padded_width, myInfo.res.height, shared_buf_idx);
-					if (!stage_buf_size) {
-						err = IA_CSS_ERR_INTERNAL_ERROR;
-						goto ERR;
-					}
-
-					err = ia_css_frame_allocate_with_buffer_size(
-							&pipeline->shared_frame[i][shared_buf_idx], stage_buf_size, false);
-
-					if (err != IA_CSS_SUCCESS)
-						goto ERR;
-				}
-
-				/* Create frame w/o allocating memory */
-				err = ia_css_frame_create_from_info(&out_frame[i], &binary->out_frame_info[i]);
-				if (err != IA_CSS_SUCCESS)
-					goto ERR;
-
-				/* Assign data from shared resource */
-				err = ia_css_frame_set_data(out_frame[i],
-						pipeline->shared_frame[i][shared_buf_idx]->data,
-						pipeline->shared_frame[i][shared_buf_idx]->data_bytes);
-				if (err != IA_CSS_SUCCESS) {
-					ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE,
-						"pipeline_stage_create() shared buffer too small! sz(%d) req(%d)\n",
-						pipeline->shared_frame[i][shared_buf_idx]->data_bytes,
-						out_frame[i]->data_bytes);
-					goto ERR;
-				}
-
-				stage->out_frame_shared_buffer[i] = true;
-				pipeline->shared_buf_idx[i] ^= 0x1;
-			} else {
-				err = ia_css_frame_allocate_from_info(&out_frame[i],
+			err = ia_css_frame_allocate_from_info(&out_frame[i],
 							&binary->out_frame_info[i]);
-				if (err != IA_CSS_SUCCESS)
-					goto ERR;
-				stage->out_frame_allocated[i] = true;
-			}
+			if (err != IA_CSS_SUCCESS)
+				goto ERR;
+			stage->out_frame_allocated[i] = true;
 		}
 	}
 	/* VF frame is not needed in case of need_pp
@@ -707,35 +633,11 @@ static enum ia_css_err pipeline_stage_create(
 		if ((binary && binary->vf_frame_info.res.width) ||
 		    (firmware && firmware->info.isp.sp.enable.vf_veceven)
 		    ) {
-			if (share_stage_buffers) {
-				unsigned port = 0;
-				/* Create vf_frame w/o allocating memory */
-				err = ia_css_frame_create_from_info(&vf_frame,
-						&binary->vf_frame_info);
-				if (err != IA_CSS_SUCCESS)
-					goto ERR;
-
-				/* Assign data from shared resource */
-				err = ia_css_frame_set_data(vf_frame,
-						pipeline->shared_frame[port][pipeline->shared_buf_idx[port]]->data,
-						pipeline->shared_frame[port][pipeline->shared_buf_idx[port]]->data_bytes);
-				if (err != IA_CSS_SUCCESS) {
-					ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE,
-						"pipeline_stage_create() vf shared buffer too small! sz(%d) req(%d)\n",
-						pipeline->shared_frame[port][pipeline->shared_buf_idx[port]]->data_bytes,
-						vf_frame->data_bytes);
-					goto ERR;
-				}
-
-				stage->vf_frame_shared_buffer = true;
-				pipeline->shared_buf_idx[port] ^= 0x1;
-			} else {
-				err = ia_css_frame_allocate_from_info(&vf_frame,
+			err = ia_css_frame_allocate_from_info(&vf_frame,
 							&binary->vf_frame_info);
-				if (err != IA_CSS_SUCCESS)
-					goto ERR;
-				stage->vf_frame_allocated = true;
-			}
+			if (err != IA_CSS_SUCCESS)
+				goto ERR;
+			stage->vf_frame_allocated = true;
 		}
 	} else if (vf_frame && binary && binary->vf_frame_info.res.width
 		&& !firmware) {
@@ -763,7 +665,7 @@ static void pipeline_init_defaults(
 	unsigned int dvs_frame_delay)
 {
 	struct ia_css_frame init_frame = DEFAULT_FRAME;
-	unsigned int i, j;
+	unsigned int i;
 
 	pipeline->pipe_id = pipe_id;
 	pipeline->stages = NULL;
@@ -774,14 +676,6 @@ static void pipeline_init_defaults(
 		pipeline->out_frame[i] = init_frame;
 		pipeline->vf_frame[i] = init_frame;
 	}
-
-	for (i = 0 ; i < IA_CSS_PIPE_MAX_OUTPUT_STAGE; i++) {
-		pipeline->shared_buf_idx[i] = 0;
-		for (j = 0; j < NUM_SHARED_STAGE_BUFFERS; j++) {
-			pipeline->shared_frame[i][j] = NULL;
-		}
-	}
-
 	pipeline->num_execs = -1;
 	pipeline->acquire_isp_each_stage = true;
 	pipeline->pipe_num = (uint8_t)pipe_num;
@@ -881,34 +775,4 @@ ia_css_pipeline_configure_inout_port(struct ia_css_pipeline *me, bool continuous
 	ia_css_debug_dtrace(IA_CSS_DEBUG_TRACE_PRIVATE,
 		"ia_css_pipeline_configure_inout_port() leave: inout_port_config(%x)\n",
 		me->inout_port_config);
-}
-
-static unsigned int
-get_shared_stage_buffer_size(unsigned int width, unsigned int height, unsigned buf_idx)
-{
-	unsigned int frame = width * height;
-
-	/* On ISP 2.7 capture Pipe stages are constructed with required memory size as following
-	 * PRE_DE #0 (RAW format):        2 frames (of padded input-res)
-	 *         frame * 2 raw_bit_depth
-	 * PRIMARY #0 (EED, YCgCo444_16): 6 frames (of padded inupt-res)
-	 *         frame * 3 YUV * 2 bytes/elem
-	 * PRIMARY #1 (IEFD, YUV420_16) : 3 frames (of padded input-res)
-	 *         frame * 1 Y * 2 bytes/elem + frame * 2 UV * 1/4 decimation * 2 bytes/elem
-	 * PRIMARY #2 (XNR3) :            1.5 frames (of effective-res)
-	 *         frame * 1 Y * 1 bytes/elem + frame * 2 UV * 1/4 decimation * 1 bytes/elem
-	 * PRIMARY #3 (CROP) :            1.5 frames (of output-res)
-	 *         frame * 1 Y * 1 bytes/elem + frame * 2 UV * 1/4 decimation * 1 bytes/elem
-	 * ...
-	 * To ensure shared_frames are sufficiently allocated for 2 largest of stage buffers,
-	 * we'll allocate
-	 *   buf_idx0 : 3 frames (PRE_DE, PRIM #1, PRIM #3)
-	 *   buf_idx1 : 6 frames (PRIM #0, PRIM #2 ..)
-	 */
-	switch (buf_idx) {
-		case 0:  return 3*frame;
-		case 1:  return 6*frame;
-		default: return 0;
-	}
-
 }

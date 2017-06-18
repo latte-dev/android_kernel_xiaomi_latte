@@ -458,10 +458,7 @@ static int __power_ctrl(struct v4l2_subdev *sd, int on)
 	struct ov680_device *dev = to_ov680_device(sd);
 	int ret = 0;
 
-	if (!dev)
-		return -ENODEV;
-
-	if (!dev->platform_data)
+	if (!dev || !dev->platform_data)
 		return -ENODEV;
 
 	/* Non-gmin platforms use the legacy callback */
@@ -504,10 +501,7 @@ static int __gpio_ctrl(struct v4l2_subdev *sd, int on)
 #endif
 	struct ov680_device *dev = to_ov680_device(sd);
 	int ret = 0;
-	if (!dev)
-		return -ENODEV;
-
-	if (!dev->platform_data)
+	if (!dev || !dev->platform_data)
 		return -ENODEV;
 
 	/* Non-gmin platforms use the legacy callback */
@@ -571,15 +565,9 @@ static int __flisclk_ctrl(struct v4l2_subdev *sd, int on)
 
 static int __ov680_s_power(struct v4l2_subdev *sd, int on, int load_fw)
 {
-	struct ov680_device *dev = NULL;
-	struct i2c_client *client = NULL;
+	struct ov680_device *dev = to_ov680_device(sd);
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
-
-	if (!sd)
-		return -ENODEV;
-
-	dev = to_ov680_device(sd);
-	client = v4l2_get_subdevdata(sd);
 
 	dev_info(&client->dev, "%s - on-%d.\n", __func__, on);
 

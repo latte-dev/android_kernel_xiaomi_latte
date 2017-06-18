@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #include "system_global.h"
 
@@ -29,6 +29,7 @@ more details.
  * Forwarded Declaration
  *
  *************************************************/
+
 static bool create_input_system_channel(
 	input_system_cfg_t	*cfg,
 	bool			metadata,
@@ -183,15 +184,6 @@ ia_css_isys_error_t ia_css_isys_stream_create(
 		destroy_input_system_input_port(&isys_stream->input_port);
 		return false;
 	}
-
-	/*
-	 * Early polling is required for timestamp accuracy in certain cause.
-	 * The ISYS HW polling is started on
-	 * ia_css_isys_stream_capture_indication() instead of
-	 * ia_css_pipeline_sp_wait_for_isys_stream_N() as isp processing of
-	 * capture takes longer than getting an ISYS frame
-	 */
-	isys_stream->polling_mode = isys_stream_descr->polling_mode;
 
 	/* create metadata channel */
 	if (isys_stream_descr->metadata.enable) {
@@ -753,6 +745,7 @@ static bool calculate_ibuf_ctrl_cfg(
 	cfg->ib_buffer.lines			= channel->ib_buffer.lines;
 
 	/*
+	 * zhengjie.lu@intel.com:
 	 * "dest_buf_cfg" should be part of the input system output
 	 * port configuration.
 	 *
@@ -778,6 +771,7 @@ static bool calculate_ibuf_ctrl_cfg(
 	}
 
 	/*
+	 * zhengjie.lu@intel.com:
 	 * "items_per_store" is hard coded as "1", which is ONLY valid
 	 * when the CSI-MIPI long packet is transferred.
 	 *

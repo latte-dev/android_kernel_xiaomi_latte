@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #ifndef __IA_CSS_PIPELINE_H__
 #define __IA_CSS_PIPELINE_H__
@@ -20,7 +20,7 @@ more details.
 #include "ia_css_pipeline_common.h"
 
 #define IA_CSS_PIPELINE_NUM_MAX		(20)
-#define NUM_SHARED_STAGE_BUFFERS	(2)
+
 
 /* Pipeline stage to be executed on SP/ISP */
 struct ia_css_pipeline_stage {
@@ -34,9 +34,7 @@ struct ia_css_pipeline_stage {
 	struct sh_css_binary_args args;
 	int mode;
 	bool out_frame_allocated[IA_CSS_BINARY_MAX_OUTPUT_PORTS];
-	bool out_frame_shared_buffer[IA_CSS_BINARY_MAX_OUTPUT_PORTS];
 	bool vf_frame_allocated;
-	bool vf_frame_shared_buffer;
 	struct ia_css_pipeline_stage *next;
 	bool enable_zoom;
 };
@@ -52,8 +50,6 @@ struct ia_css_pipeline {
 	struct ia_css_frame in_frame;
 	struct ia_css_frame out_frame[IA_CSS_PIPE_MAX_OUTPUT_STAGE];
 	struct ia_css_frame vf_frame[IA_CSS_PIPE_MAX_OUTPUT_STAGE];
-	struct ia_css_frame *shared_frame[IA_CSS_PIPE_MAX_OUTPUT_STAGE][NUM_SHARED_STAGE_BUFFERS]; /* share buffers between stages */
-	unsigned shared_buf_idx[IA_CSS_PIPE_MAX_OUTPUT_STAGE]; /* alternating buffer index between 2 shared_frame */
 	unsigned int dvs_frame_delay;
 	unsigned inout_port_config;
 	int num_execs;
@@ -72,8 +68,6 @@ struct ia_css_pipeline {
 	DEFAULT_FRAME,          /* in_frame */ \
 	{DEFAULT_FRAME},          /* out_frame */ \
 	{DEFAULT_FRAME},          /* vf_frame */ \
-	{{NULL, NULL}, {NULL, NULL}}, /* shared_frame */ \
-	{0, 0}, 		  /* shared_buf_idx */ \
 	IA_CSS_FRAME_DELAY_1,   /* frame_delay */ \
 	0,                      /* inout_port_config */ \
 	-1,                     /* num_execs */ \

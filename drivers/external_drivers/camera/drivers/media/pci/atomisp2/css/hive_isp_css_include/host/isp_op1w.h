@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #ifndef __ISP_OP1W_H_INCLUDED__
 #define __ISP_OP1W_H_INCLUDED__
@@ -165,21 +165,6 @@ STORAGE_CLASS_ISP_OP1W_FUNC_H tvector1w OP_1w_addsat(
 STORAGE_CLASS_ISP_OP1W_FUNC_H tvector1w OP_1w_subsat(
     const tvector1w     _a,
     const tvector1w     _b);
-
-/** @brief Unsigned saturated subtraction
- *
- * @param[in] _a	first argument
- * @param[in] _b	second argument
- *
- * @return		saturated subtraction of both input arguments
- *
- * This function will subtract _b from _a.
- * in case of overflow it will saturate.
- * result = CLIP(_a - _b, 0, MAX_RANGE);
- */
-STORAGE_CLASS_ISP_OP1W_FUNC_H tvector1w_unsigned OP_1w_subsat_u(
-    const tvector1w_unsigned _a,
-    const tvector1w_unsigned _b);
 
 /** @brief subtraction with shift right and rounding
  *
@@ -523,63 +508,6 @@ STORAGE_CLASS_ISP_OP1W_FUNC_H tvector1w OP_1w_lsl(
  * the shift amount is a cloned scalar input.
  */
 STORAGE_CLASS_ISP_OP1W_FUNC_H tvector1w OP_1w_lsr(
-    const tvector1w     _a,
-    const tvector1w     _b);
-
-/** @brief bidirectional saturating arithmetic shift
- *
- * @param[in] _a	input
- * @param[in] _b	shift amount
- *
- * @return		_a << |_b| if _b is positive
- *			_a >> |_b| if _b is negative
- *
- * If _b > 0, this function will shift _a with _b bits to the left,
- * saturating at MIN_RANGE/MAX_RANGE in case of overflow.
- * if _b < 0, this function will shift _a with _b bits to the right.
- * It asserts -MAX_SHIFT_1W <= _b <= MAX_SHIFT_1W.
- * If _b = 0, it returns _a.
- */
-STORAGE_CLASS_ISP_OP1W_FUNC_H tvector1w OP_1w_ashift_sat(
-    const tvector1w     _a,
-    const tvector1w     _b);
-
-/** @brief bidirectional non-saturating arithmetic shift
- *
- * @param[in] _a	input
- * @param[in] _b	shift amount
- *
- * @return		_a << |_b| if _b is positive
- *			_a >> |_b| if _b is negative
- *
- * If _b > 0, this function will shift _a with _b bits to the left,
- * no saturation is performed in case of overflow.
- * if _b < 0, this function will shift _a with _b bits to the right.
- * It asserts -MAX_SHIFT_1W <= _b <= MAX_SHIFT_1W.
- * If _b = 0, it returns _a.
- */
-STORAGE_CLASS_ISP_OP1W_FUNC_H tvector1w OP_1w_ashift(
-    const tvector1w     _a,
-    const tvector1w     _b);
-
-
-/** @brief bidirectional logical shift
- *
- * @param[in] _a	input
- * @param[in] _b	shift amount
- *
- * @return		_a << |_b| if _b is positive
- *			_a >> |_b| if _b is negative
- *
- * This function will shift _a with _b bits to the left if _b is positive.
- * This function will shift _a with _b bits to the right if _b is negative.
- * It asserts -MAX_SHIFT_1W <= _b <= MAX_SHIFT_1W.
- * It inserts zeros on the left or right depending on the shift direction: 
- * right or left.
- * The operation count for this function assumes that
- * the shift amount is a cloned scalar input.
- */
-STORAGE_CLASS_ISP_OP1W_FUNC_H tvector1w OP_1w_lshift(
     const tvector1w     _a,
     const tvector1w     _b);
 

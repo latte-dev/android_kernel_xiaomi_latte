@@ -34,9 +34,6 @@
 #include "atomisp_compat.h"
 #include "atomisp_internal.h"
 
-#define BTNS_CROP_PADDING_WIDTH     128
-#define BTNS_CROP_PADDING_HEIGHT     96
-
 const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[] = {
 	{ V4L2_MBUS_FMT_SBGGR8_1X8, 8, 8, ATOMISP_INPUT_FORMAT_RAW_8, CSS_BAYER_ORDER_BGGR, CSS_FORMAT_RAW_8 },
 	{ V4L2_MBUS_FMT_SGBRG8_1X8, 8, 8, ATOMISP_INPUT_FORMAT_RAW_8, CSS_BAYER_ORDER_GBRG, CSS_FORMAT_RAW_8 },
@@ -59,13 +56,6 @@ const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[] = {
 	{ V4L2_MBUS_FMT_CUSTOM_M10MO_RAW, 8, 8, CSS_FRAME_FORMAT_BINARY_8, 0, IA_CSS_STREAM_FORMAT_BINARY_8 },
 	/* no valid V4L2 MBUS code for metadata format, so leave it 0. */
 	{ 0, 0, 0, ATOMISP_INPUT_FORMAT_EMBEDDED, 0, IA_CSS_STREAM_FORMAT_EMBEDDED },
-	/* only for ISP2.7*/
-#ifdef V4L2_MBUS_FMT_CUSTOM_YCgCo444_16
-	{ V4L2_MBUS_FMT_CUSTOM_YCgCo444_16, 16, 16, CSS_FRAME_FORMAT_YCgCo444_16, 0, CSS_FRAME_FORMAT_YCgCo444_16 },
-#endif
-#ifdef V4L2_MBUS_FMT_CUSTOM_YUV420_16
-	{ V4L2_MBUS_FMT_CUSTOM_YUV420_16, 16, 16, CSS_FRAME_FORMAT_YUV420_16, 0, CSS_FRAME_FORMAT_YUV420_16 },
-#endif
 	{}
 };
 
@@ -140,6 +130,20 @@ bool atomisp_subdev_format_conversion(struct atomisp_sub_device *asd,
 
 	return atomisp_is_mbuscode_raw(sink->code)
 		&& !atomisp_is_mbuscode_raw(src->code);
+}
+
+bool atomisp_subdev_copy_format_conversion(struct atomisp_sub_device *asd,
+				      unsigned int source_pad)
+{
+	struct v4l2_mbus_framefmt *sink, *src;
+
+	sink = atomisp_subdev_get_ffmt(&asd->subdev, NULL,
+				       V4L2_SUBDEV_FORMAT_ACTIVE,
+				       ATOMISP_SUBDEV_PAD_SINK);
+	src = atomisp_subdev_get_ffmt(&asd->subdev, NULL,
+				      V4L2_SUBDEV_FORMAT_ACTIVE, source_pad);
+
+	return sink->code != src->code;
 }
 
 uint16_t atomisp_subdev_source_pad(struct video_device *vdev)
@@ -493,16 +497,6 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			crop[ATOMISP_SUBDEV_PAD_SINK]->width == 0 ||
 			crop[ATOMISP_SUBDEV_PAD_SINK]->height == 0)
 			break;
-		if ((isp27_crop_flag) &&
-				(pad == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE)) {
-			unsigned int t_w, t_h;
-			t_w = r->width + BTNS_CROP_PADDING_WIDTH;
-			t_h = r->height + BTNS_CROP_PADDING_HEIGHT;
-
-			atomisp_css_input_set_effective_resolution(isp_sd,
-					stream_id, t_w, t_h);
-			break;
-		}
 		/*
 		 * do cropping on sensor input if ratio of required resolution
 		 * is different with sensor output resolution ratio:
@@ -1053,45 +1047,6 @@ static const struct v4l2_ctrl_config ctrl_depth_mode = {
 	.def = 0,
 };
 
-/*
- * Control for selectting ISP version
- *
- * When enabled, that means ISP version will be used ISP2.7. when disable, the
- * isp will default to use ISP2.2.
- * Note: Make sure set this configuration before creating stream.
- */
-#ifdef V4L2_CID_ATOMISP_SELECT_ISP_VERSION
-static const struct v4l2_ctrl_config ctrl_select_isp_version = {
-	.ops = &ctrl_ops,
-	.id = V4L2_CID_ATOMISP_SELECT_ISP_VERSION,
-	.type = V4L2_CTRL_TYPE_BOOLEAN,
-	.name = "Select Isp version",
-	.min = 0,
-	.max = 1,
-	.step = 1,
-	.def = 0,
-};
-#endif
-
-#ifdef CONFIG_ION
-/*
- * Control for ISP ion device fd
- *
- * userspace will open ion device and pass the fd to kernel.
- * this fd will be used to map shared fd to buffer.
- */
-static const struct v4l2_ctrl_config ctrl_ion_dev_fd = {
-		.ops = &ctrl_ops,
-		.id = V4L2_CID_ATOMISP_ION_DEVICE_FD,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "Ion Device Fd",
-		.min = -1,
-		.max = 1024,
-		.step = 1,
-		.def = ION_FD_UNSET
-};
-#endif
-
 static void atomisp_init_subdev_pipe(struct atomisp_sub_device *asd,
 		struct atomisp_video_pipe *pipe, enum v4l2_buf_type buf_type)
 {
@@ -1264,18 +1219,6 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *asd)
 			v4l2_ctrl_new_custom(&asd->ctrl_handler,
 					     &ctrl_disable_dz,
 					     NULL);
-#ifdef V4L2_CID_ATOMISP_SELECT_ISP_VERSION
-	asd->select_isp_version =
-			v4l2_ctrl_new_custom(&asd->ctrl_handler,
-					     &ctrl_select_isp_version,
-					     NULL);
-#endif
-#ifdef CONFIG_ION
-	asd->ion_dev_fd =
-			v4l2_ctrl_new_custom(&asd->ctrl_handler,
-						&ctrl_ion_dev_fd,
-						 NULL);
-#endif
 
 	/* Make controls visible on subdev as well. */
 	asd->subdev.ctrl_handler = &asd->ctrl_handler;

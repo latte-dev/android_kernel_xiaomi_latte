@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #ifndef __IA_CSS_ENV_H
 #define __IA_CSS_ENV_H
@@ -48,14 +48,6 @@ struct ia_css_cpu_mem_env {
 	     a NULL argument, similar to C89 free(). */
 	void (*flush)(struct ia_css_acc_fw *fw);
 	/**< Flush function to flush the cache for given accelerator. */
-
-	#if !defined(__SVOS__)
-	/* a set of matching functions with additional debug params */
-	void * (*alloc_ex)(size_t bytes, bool zero_mem, const char *caller_func, int caller_line);
-	/**< same as alloc above, only with additional debug parameters */
-	void (*free_ex)(void *ptr, const char *caller_func, int caller_line);
-	/**< same as free above, only with additional debug parameters */
-	#endif
 };
 
 /** Environment with function pointers for allocation of memory for the CSS.
@@ -89,18 +81,6 @@ struct ia_css_css_mem_env {
 	ia_css_ptr (*mmap)(const void *ptr, const size_t size,
 			   uint16_t attribute, void *context);
 	/**< Map an pre-allocated memory region to an address. */
-
-	/* a set of matching functions with additional debug params */
-	ia_css_ptr(*alloc_ex)(size_t bytes, uint32_t attributes, const char *caller_func, int caller_line);
-	/**< same as alloc above, only with additional debug parameters */
-	void (*free_ex)(ia_css_ptr ptr, const char *caller_func, int caller_line);
-	/**< same as free above, only with additional debug parameters */
-	int (*load_ex)(ia_css_ptr ptr, void *data, size_t bytes, const char *caller_func, int caller_line);
-	/**< same as load above, only with additional debug parameters */
-	int (*store_ex)(ia_css_ptr ptr, const void *data, size_t bytes, const char *caller_func, int caller_line);
-	/**< same as store above, only with additional debug parameters */
-	int (*set_ex)(ia_css_ptr ptr, int c, size_t bytes, const char *caller_func, int caller_line);
-	/**< same as set above, only with additional debug parameters */
 };
 
 /** Environment with function pointers to access the CSS hardware. This includes

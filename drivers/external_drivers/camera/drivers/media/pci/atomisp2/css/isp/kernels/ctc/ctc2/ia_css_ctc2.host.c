@@ -1,25 +1,23 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #include "ia_css_types.h"
 #include "sh_css_defs.h"
 #include "assert_support.h"
 
 #include "ia_css_ctc2.host.h"
-#ifndef IA_CSS_NO_DEBUG
-#include "ia_css_debug.h"
-#endif
+#include <stdio.h>
 
 #define INEFFECTIVE_VAL 4096
 #define BASIC_VAL 819
@@ -161,28 +159,3 @@ void ia_css_ctc2_encode(struct ia_css_isp_ctc2_dmem_params *to,
 	to->uv_dydx = ctc2_slope(from->uv_y1, from->uv_y0,
 				  from->uv_x1, from->uv_x0);
 }
-#ifndef IA_CSS_NO_DEBUG
-void
-ia_css_ctc2_debug_dtrace(
-	const struct ia_css_ctc2_config *config,
-	unsigned level)
-{
-	ia_css_debug_dtrace(level,
-		"config.y_y0=%d, config.y_y1=%d, "
-		"config.y_y2=%d, config.y_y3=%d, "
-		"config.y_y4=%d,  config.y_y5=%d, \n",
-		config->y_y0, config->y_y1,
-		config->y_y2, config->y_y3,
-		config->y_y4, config->y_y5);
-	ia_css_debug_dtrace(level,
-		"config.y_x1=%d, config.y_x2=%d, "
-		"config.y_x3=%d,  config.y_x4=%d, \n",
-		config->y_x1, config->y_x2,
-		config->y_x3, config->y_x4);
-	ia_css_debug_dtrace(level,
-		"config.uv_y0=%d, config.uv_y1=%d, "
-		"config.uv_x0=%d,  config.uv_x1=%d, \n",
-		config->uv_y0, config->uv_y1,
-		config->uv_x0, config->uv_x1);
-}
-#endif

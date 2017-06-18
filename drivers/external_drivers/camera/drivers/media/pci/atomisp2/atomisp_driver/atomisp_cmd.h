@@ -44,8 +44,6 @@ struct atomisp_css_frame;
 #define MEMORY_SPACE_ENABLE	1
 #define INTR_IER		24
 #define INTR_IIR		16
-#define RUNMODE_MASK (ATOMISP_RUN_MODE_VIDEO | ATOMISP_RUN_MODE_STILL_CAPTURE \
-			| ATOMISP_RUN_MODE_PREVIEW)
 
 #ifdef CONFIG_GMIN_INTEL_MID
 extern int atomisp_punit_hpll_freq;
@@ -62,7 +60,7 @@ struct atomisp_acc_pipe *atomisp_to_acc_pipe(struct video_device *dev);
 int atomisp_reset(struct atomisp_device *isp);
 void atomisp_flush_bufs_and_wakeup(struct atomisp_sub_device *asd);
 void atomisp_clear_css_buffer_counters(struct atomisp_sub_device *asd);
-bool atomisp_buffers_queued_pipe(struct atomisp_video_pipe *pipe);
+bool atomisp_buffers_queued(struct atomisp_sub_device *asd);
 
 /* TODO:should be here instead of atomisp_helper.h
 extern void __iomem *atomisp_io_base;
@@ -83,7 +81,7 @@ void atomisp_kernel_free(void *ptr);
 void atomisp_msi_irq_init(struct atomisp_device *isp, struct pci_dev *dev);
 void atomisp_msi_irq_uninit(struct atomisp_device *isp, struct pci_dev *dev);
 void atomisp_wdt_work(struct work_struct *work);
-void atomisp_wdt(unsigned long pipe_addr);
+void atomisp_wdt(unsigned long isp_addr);
 void atomisp_setup_flash(struct atomisp_sub_device *asd);
 irqreturn_t atomisp_isr(int irq, void *dev);
 irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr);
@@ -104,12 +102,6 @@ bool atomisp_is_viewfinder_support(struct atomisp_device *isp);
  * ISP features control function
  */
 
-/*
- * Function to set sensor runmode by user when
- * ATOMISP_IOC_S_SENSOR_RUNMODE ioctl was called
- */
-int atomisp_set_sensor_runmode(struct atomisp_sub_device *asd,
-		struct atomisp_s_runmode *runmode);
 /*
  * Function to enable/disable lens geometry distortion correction (GDC) and
  * chromatic aberration correction (CAC)

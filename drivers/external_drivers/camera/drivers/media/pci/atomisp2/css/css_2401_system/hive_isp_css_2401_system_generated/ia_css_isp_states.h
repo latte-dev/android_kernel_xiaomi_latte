@@ -1,16 +1,17 @@
 /*
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
 #define IA_CSS_INCLUDE_STATES
 #include "ia_css_memory_access.h"
 #include "isp/kernels/aa/aa_2/ia_css_aa2.host.h"
@@ -36,8 +37,6 @@ enum ia_css_state_ids {
 	IA_CSS_CNR_STATE_ID,
 	IA_CSS_CNR2_STATE_ID,
 	IA_CSS_DP_STATE_ID,
-	IA_CSS_DPC2_STATE_ID,
-	IA_CSS_EED1_8_STATE_ID,
 	IA_CSS_DE_STATE_ID,
 	IA_CSS_TNR_STATE_ID,
 	IA_CSS_REF_STATE_ID,
@@ -53,8 +52,6 @@ struct ia_css_state_memory_offsets {
 		struct ia_css_isp_parameter cnr;
 		struct ia_css_isp_parameter cnr2;
 		struct ia_css_isp_parameter dp;
-		struct ia_css_isp_parameter dpc2;
-		struct ia_css_isp_parameter eed1_8;
 		struct ia_css_isp_parameter de;
 		struct ia_css_isp_parameter ynr;
 	} vmem;

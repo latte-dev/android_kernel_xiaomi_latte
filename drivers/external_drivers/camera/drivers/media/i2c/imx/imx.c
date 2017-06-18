@@ -62,10 +62,6 @@ static enum atomisp_bayer_order imx_bayer_order_mapping[] = {
 	atomisp_bayer_order_bggr
 };
 
-static const unsigned int
-IMX227_BRACKETING_LUT_FRAME_ENTRY[IMX_MAX_AE_LUT_LENGTH] = {
-	0x0E10, 0x0E1E, 0x0E2C, 0x0E3A, 0x0E48};
-
 static int
 imx_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 {
@@ -384,11 +380,9 @@ static int __imx_update_exposure_timing(struct i2c_client *client, u16 exposure,
 	struct imx_device *dev = to_imx_sensor(sd);
 	int ret = 0;
 
-	if (dev->sensor_id != IMX227_ID) {
-		/* Increase the VTS to match exposure + margin */
-		if (exposure > fll - IMX_INTEGRATION_TIME_MARGIN)
-			fll = exposure + IMX_INTEGRATION_TIME_MARGIN;
-	}
+	/* Increase the VTS to match exposure + margin */
+	if (exposure > fll - IMX_INTEGRATION_TIME_MARGIN)
+		fll = exposure + IMX_INTEGRATION_TIME_MARGIN;
 
 	ret = imx_write_reg(client, IMX_16BIT,
 		dev->reg_addr->line_length_pixels, llp);
@@ -437,8 +431,6 @@ static int __imx_update_digital_gain(struct i2c_client *client, u16 digitgain)
 
 	if (dev->sensor_id == IMX219_ID) {
 		return imx_i2c_write(client, IMX219_DGC_LEN, (u8 *)&digit_gain);
-	} else if (dev->sensor_id == IMX227_ID) {
-		return imx_i2c_write(client, IMX227_DGC_LEN, (u8 *)&digit_gain);
 	} else {
 		digit_gain.data[2] = (digitgain >> 8) & 0xFF;
 		digit_gain.data[3] = digitgain & 0xFF;
@@ -467,12 +459,6 @@ static int imx_set_exposure_gain(struct v4l2_subdev *sd, u16 coarse_itg,
 	gain = clamp_t(u16, gain, 0, IMX_MAX_GLOBAL_GAIN_SUPPORTED);
 
 	mutex_lock(&dev->input_lock);
-
-	if (dev->sensor_id == IMX227_ID) {
-		ret = imx_write_reg_array(client, imx_param_hold);
-		if (ret)
-			return ret;
-	}
 
 	/* For imx175, setting gain must be delayed by one */
 	if ((dev->sensor_id == IMX175_ID) && dev->digital_gain)
@@ -508,8 +494,6 @@ static int imx_set_exposure_gain(struct v4l2_subdev *sd, u16 coarse_itg,
 	dev->digital_gain = digitgain;
 
 out:
-	if (dev->sensor_id == IMX227_ID)
-		ret = imx_write_reg_array(client, imx_param_update);
 	mutex_unlock(&dev->input_lock);
 	return ret;
 }
@@ -832,11 +816,7 @@ static int imx_get_intg_factor(struct i2c_client *client,
 		dev->sensor_id == IMX219_ID)
 		read_mode = 0;
 	else {
-		if (dev->sensor_id == IMX227_ID)
-			ret = imx_read_reg(client, 1, IMX227_READ_MODE, data);
-		else
-			ret = imx_read_reg(client, 1, IMX_READ_MODE, data);
-
+		ret = imx_read_reg(client, 1, IMX_READ_MODE, data);
 		if (ret)
 			return ret;
 		read_mode = data[0] & IMX_MASK_2BIT;
@@ -848,12 +828,6 @@ static int imx_get_intg_factor(struct i2c_client *client,
 
 	if (dev->sensor_id == IMX132_ID || dev->sensor_id == IMX208_ID)
 		vt_pix_clk_freq_mhz = ext_clk_freq_hz / div;
-	else if (dev->sensor_id == IMX227_ID)
-		/* according to IMX227 datasheet:
-		 * vt_pix_freq_mhz = * num_of_vt_lanes(4) * ivt_pix_clk_freq_mhz
-		 */
-		vt_pix_clk_freq_mhz =
-			(u64)4 * ext_clk_freq_hz * pll_multiplier / div;
 	else
 		vt_pix_clk_freq_mhz = 2 * ext_clk_freq_hz / div;
 
@@ -880,23 +854,12 @@ static int imx_get_intg_factor(struct i2c_client *client,
 		buf->binning_factor_x = 1;
 		buf->binning_factor_y = 1;
 	} else {
-		if (dev->sensor_id == IMX227_ID)
-			ret = imx_read_reg(client, 1, IMX227_BINNING_ENABLE,
-				data);
-		else
-			ret = imx_read_reg(client, 1, IMX_BINNING_ENABLE, data);
-
+		ret = imx_read_reg(client, 1, IMX_BINNING_ENABLE, data);
 		if (ret)
 			return ret;
 		/* 1:binning enabled, 0:disabled */
 		if (data[0] == 1) {
-			if (dev->sensor_id == IMX227_ID)
-				ret = imx_read_reg(client, 1,
-					IMX227_BINNING_TYPE, data);
-			else
-				ret = imx_read_reg(client, 1,
-					IMX_BINNING_TYPE, data);
-
+			ret = imx_read_reg(client, 1, IMX_BINNING_TYPE, data);
 			if (ret)
 				return ret;
 			buf->binning_factor_x = data[0] >> 4 & 0x0f;
@@ -905,20 +868,6 @@ static int imx_get_intg_factor(struct i2c_client *client,
 			buf->binning_factor_y = data[0] & 0xf;
 			if (!buf->binning_factor_y)
 				buf->binning_factor_y = 1;
-			/* WOWRKAROUND, NHD setting for IMX227 should have 4x4
-			 * binning but the register setting does not reflect
-			 * this, I am asking vendor why this happens. this is
-			 * workaround for INTEL BZ 216560.
-			 */
-			if (dev->sensor_id == IMX227_ID) {
-				if (dev->curr_res_table[dev->fmt_idx].width ==
-					376 &&
-				    dev->curr_res_table[dev->fmt_idx].height ==
-					656) {
-					buf->binning_factor_x = 4;
-					buf->binning_factor_y = 4;
-				}
-			}
 		} else {
 			buf->binning_factor_x = 1;
 			buf->binning_factor_y = 1;
@@ -1625,7 +1574,7 @@ retry:
 
 	/*
 	 * FIXME!
-	 * only IMX135 for Saltbay and IMX227 use this algorithm
+	 * only IMX135 for Saltbay use this algorithm
 	 */
 	if (idx == -1 && again == true && dev->new_res_sel_method) {
 		again = false;
@@ -1825,25 +1774,6 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 				imx135_embedded_effective_size;
 
 		break;
-	case IMX227_ID:
-		ret = imx_read_reg(client, 2, IMX227_OUTPUT_DATA_FORMAT_REG,
-			&data);
-		if (ret)
-			goto out;
-		if (data == IMX227_OUTPUT_FORMAT_RAW10)
-			/* the data format is RAW10. */
-			imx_info->metadata_width = res->width * 10 / 8;
-		else
-			/* The data format is RAW6/8/12/14/ etc. */
-			imx_info->metadata_width = res->width;
-
-		imx_info->metadata_height = IMX227_EMBEDDED_DATA_LINE_NUM;
-
-		if (imx_info->metadata_effective_width == NULL)
-			imx_info->metadata_effective_width =
-				imx227_embedded_effective_size;
-
-		break;
 	default:
 		imx_info->metadata_width = 0;
 		imx_info->metadata_height = 0;
@@ -1891,11 +1821,11 @@ static int imx_detect(struct i2c_client *client, u16 *id, u8 *revision)
 		*id == IMX208_ID || *id == IMX219_ID)
 		goto found;
 
-	if (imx_read_reg(client, IMX_16BIT, IMX134_135_227_CHIP_ID, id)) {
+	if (imx_read_reg(client, IMX_16BIT, IMX134_135_CHIP_ID, id)) {
 		v4l2_err(client, "sensor_id = 0x%x\n", *id);
 		return -ENODEV;
 	}
-	if (*id != IMX134_ID && *id != IMX135_ID && *id != IMX227_ID) {
+	if (*id != IMX134_ID && *id != IMX135_ID) {
 		v4l2_err(client, "no imx sensor found\n");
 		return -ENODEV;
 	}
@@ -2095,12 +2025,6 @@ static int __update_imx_device_settings(struct imx_device *dev, u16 sensor_id)
 		dev->vcm_driver = &imx_vcms[IMX219_MFV0_PRH];
 		dev->otp_driver = &imx_otps[IMX219_MFV0_PRH];
 		break;
-	case IMX227_ID:
-		dev->mode_tables = &imx_sets[IMX227_SAND];
-		dev->vcm_driver = NULL;
-		dev->otp_driver = &imx_otps[IMX227_SAND];
-		dev->new_res_sel_method = true;
-		return 0;
 	case IMX132_ID:
 		dev->mode_tables = &imx_sets[IMX132_SALTBAY];
 		dev->otp_driver = &imx_otps[IMX132_SALTBAY];
@@ -2692,7 +2616,6 @@ static const struct i2c_device_id imx_ids[] = {
 	{IMX_NAME_132, IMX132_ID},
 	{IMX_NAME_208, IMX208_ID},
 	{IMX_NAME_219, IMX219_ID},
-	{IMX_NAME_227, IMX227_ID},
 	{}
 };
 

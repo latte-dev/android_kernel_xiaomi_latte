@@ -226,7 +226,7 @@ int atomisp_q_video_buffers_to_css(struct atomisp_sub_device *asd,
 	struct atomisp_css_dvs_grid_info *dvs_grid =
 		 atomisp_css_get_dvs_grid_info(&asd->params.curr_grid_info);
 	unsigned long irqflags;
-	int err = 0;
+	int err;
 
 	while (pipe->buffers_in_css < ATOMISP_CSS_Q_DEPTH) {
 		struct videobuf_buffer *vb;
@@ -267,8 +267,6 @@ int atomisp_q_video_buffers_to_css(struct atomisp_sub_device *asd,
 						vm_mem->vaddr);
 			atomisp_css_update_isp_params_on_pipe(asd,
 				asd->stream_env[stream_id].pipes[css_pipe_id]);
-			asd->params.dvs_6axis = (struct atomisp_css_dvs_6axis *)
-				param->params.dvs_6axis;
 
 			/*
 			 * WORKAROUND:
@@ -1286,7 +1284,6 @@ const struct v4l2_file_operations atomisp_fops = {
 	.release = atomisp_release,
 	.mmap = atomisp_mmap,
 	.ioctl = video_ioctl2,
-	.unlocked_ioctl = video_ioctl2,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl32 = atomisp_compat_ioctl32,
 #endif
@@ -1299,7 +1296,6 @@ const struct v4l2_file_operations atomisp_file_fops = {
 	.release = atomisp_release,
 	.mmap = atomisp_file_mmap,
 	.ioctl = video_ioctl2,
-	.unlocked_ioctl = video_ioctl2,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl32 = atomisp_compat_ioctl32,
 #endif

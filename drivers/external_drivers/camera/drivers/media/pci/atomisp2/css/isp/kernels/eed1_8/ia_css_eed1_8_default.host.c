@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #include "ia_css_eed1_8_types.h"
 
@@ -29,10 +29,10 @@ const struct ia_css_eed1_8_config default_eed1_8_config = {
 	.fc_coring_prm = 128,
 	.aerel_thres0 = 0,
 	.aerel_gain0 = 8191,
-	.derel_thres0 = 1229,
-	.derel_gain0 = 1,
 	.aerel_thres1 = 16,
 	.aerel_gain1 = 20,
+	.derel_thres0 = 1229,
+	.derel_gain0 = 1,
 	.derel_thres1 = 819,
 	.derel_gain1 = 1,
 	.coring_pos0 = 0,
@@ -40,10 +40,10 @@ const struct ia_css_eed1_8_config default_eed1_8_config = {
 	.coring_neg0 = 0,
 	.coring_neg1 = 0,
 	.gain_exp = 2,
-	.gain_pos0 = 4506,
-	.gain_pos1 = 2458,
-	.gain_neg0 = 2458,
-	.gain_neg1 = 4506,
+	.gain_pos0 = 6144,
+	.gain_pos1 = 2048,
+	.gain_neg0 = 2048,
+	.gain_neg1 = 6144,
 	.pos_margin0 = 1475,
 	.pos_margin1 = 1475,
 	.neg_margin0 = 1475,

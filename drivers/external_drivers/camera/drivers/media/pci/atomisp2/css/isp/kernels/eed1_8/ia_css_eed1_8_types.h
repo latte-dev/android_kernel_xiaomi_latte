@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #ifndef __IA_CSS_EED1_8_TYPES_H
 #define __IA_CSS_EED1_8_TYPES_H
@@ -52,11 +52,11 @@ struct ia_css_eed1_8_config {
 
 	int32_t aerel_thres0;	/**< Threshold for Non-Directional Reliability at dark region. */
 	int32_t aerel_gain0;	/**< Gain for Non-Directional Reliability at dark region. */
-	int32_t derel_thres0;	/**< Threshold for Directional Reliability at dark region. */
-	int32_t derel_gain0;	/**< Gain for Directional Reliability at dark region. */
-
 	int32_t aerel_thres1;	/**< Threshold for Non-Directional Reliability at bright region. */
 	int32_t aerel_gain1;	/**< Gain for Non-Directional Reliability at bright region. */
+
+	int32_t derel_thres0;	/**< Threshold for Directional Reliability at dark region. */
+	int32_t derel_gain0;	/**< Gain for Directional Reliability at dark region. */
 	int32_t derel_thres1;	/**< Threshold for Directional Reliability at bright region. */
 	int32_t derel_gain1;	/**< Gain for Directional Reliability at bright region. */
 

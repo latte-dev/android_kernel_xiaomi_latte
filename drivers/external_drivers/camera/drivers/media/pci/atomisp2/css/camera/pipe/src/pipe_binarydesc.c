@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #include "ia_css_pipe_binarydesc.h"
 #include "ia_css_frame_format.h"
@@ -56,8 +56,6 @@ static void pipe_binarydesc_get_offline(
 	descr->enable_dz = true;
 	descr->enable_xnr = false;
 	descr->enable_dpc = false;
-	descr->enable_luma_only = false;
-	descr->enable_tnr = false;
 	descr->enable_capture_pp_bli = false;
 	descr->enable_fractional_ds = false;
 	descr->dvs_env.width = 0;
@@ -308,48 +306,18 @@ enum ia_css_err ia_css_pipe_get_preview_binarydesc(
 	 * of downscale, so there is no DS needed in vf_veceven. Therefore,
 	 * out and vf infos will be the same. Otherwise, we set out resolution
 	 * equal to in resolution. */
-#if !defined(IS_ISP_2500_SYSTEM)
-	/* The easy way out for SkyCam. This "solves" the following issues:
-	 * a) In SkyCam the dvs envelope is inluded in bds out resolution. In 240x this evelope is not part of bds out
-	 *    todo - consider aligning to 240x
-	 * b) SkyCam preview binary can always do fractional scaling (part of Output System)
-	 *    There is no need to test the enable_fractional_ds flag.
-	 */
 	if (!pipe->extra_config.enable_fractional_ds) {
 		/* TODO: Change this when bds_out_info is available! */
 		out_info->res.width = bds_out_info->res.width;
 		out_info->res.height = bds_out_info->res.height;
 		out_info->padded_width = bds_out_info->padded_width;
 	}
-#endif
-
-#if defined(IS_ISP_2500_SYSTEM)
-	/* rvanimme: in SkyCam preview case we only use the out pin and never use the vf pin.
-	 * in case we have both pins defined, the ia_css_binary_find function tries to find a binary
-	 * that support vf_veceven. We don't have these in SkyCam. We need a way to:
-	 * a) Find out that we are in this use-case
-	 * b) Tell this to the ia_css_binary_find function
-	 *
-	 * Ad a)
-	 * The easy way out is using the above #if defined(IS_ISP_2500_SYSTEM). I stared too long at the code
-	 * for a more elegant solution. I gave up (suggestions are welcome)
-	 *
-	 * Ad b)
-	 * The current api of ia_css_pipe_get_preview_binarydesc function does not allow us to return NULL. We
-	 * Could ofcourse add another flag to the preview_descr struct but again I choose for the easy way out,
-	 * setting with and height of vf info to zero.
-	 */
-	preview_descr->vf_info->res.width = 0;
-	preview_descr->vf_info->res.height = 0;
-#endif
-
 	preview_descr->enable_fractional_ds =
 	    pipe->extra_config.enable_fractional_ds;
 
 	preview_descr->enable_dpc = pipe->config.enable_dpc;
 
 	preview_descr->isp_pipe_version = pipe->config.isp_pipe_version;
-
 	IA_CSS_LEAVE_ERR_PRIVATE(IA_CSS_SUCCESS);
 	return IA_CSS_SUCCESS;
 }
@@ -423,10 +391,6 @@ enum ia_css_err ia_css_pipe_get_video_binarydesc(
 		    pipe->extra_config.enable_fractional_ds;
 		video_descr->enable_dpc =
 			pipe->config.enable_dpc;
-		video_descr->enable_luma_only =
-			pipe->config.enable_luma_only;
-		video_descr->enable_tnr =
-			pipe->config.enable_tnr;
 
 #if defined(IS_ISP_2500_SYSTEM)
 /*
@@ -579,8 +543,7 @@ void ia_css_pipe_get_capturepp_binarydesc(
 		pipe->config.default_capture_config.enable_capture_pp_bli;
 	capture_pp_descr->enable_fractional_ds = true;
 	capture_pp_descr->enable_xnr =
-		(pipe->config.default_capture_config.enable_xnr != 0 &&
-		 pipe->config.isp_pipe_version != IA_CSS_PIPE_VERSION_2_7);
+		pipe->config.default_capture_config.enable_xnr != 0;
 	IA_CSS_LEAVE_PRIVATE("");
 }
 
@@ -611,12 +574,12 @@ void ia_css_pipe_get_primary_binarydesc(
 	assert(pipe != NULL);
 	assert(in_info != NULL);
 	assert(out_info != NULL);
-	assert(stage_idx < NUM_PRIMARY_HQ27_STAGES);
+	assert(stage_idx < NUM_PRIMARY_HQ_STAGES);
 	/* vf_info can be NULL - example video_binarydescr */
 	/*assert(vf_info != NULL);*/
 	IA_CSS_ENTER_PRIVATE("");
 
-	if (pipe_version == IA_CSS_PIPE_VERSION_2_7)
+	if (pipe_version == IA_CSS_PIPE_VERSION_2_6_1)
 		mode = primary_hq_binary_modes[stage_idx];
 	else
 		mode = IA_CSS_BINARY_MODE_PRIMARY;
@@ -632,7 +595,6 @@ void ia_css_pipe_get_primary_binarydesc(
 		in_info->format = IA_CSS_FRAME_FORMAT_RAW_PACKED;
 	else
 #endif
-	if (stage_idx == 0)
 		in_info->format = IA_CSS_FRAME_FORMAT_RAW;
 
 	in_info->raw_bit_depth = ia_css_pipe_util_pipe_input_format_bpp(pipe);
@@ -645,11 +607,7 @@ void ia_css_pipe_get_primary_binarydesc(
 
 	if (pipe->stream->config.online &&
 	    pipe->stream->config.mode != IA_CSS_INPUT_MODE_MEMORY) {
-		/* Primary binaries in ISP2.7 can be configured to be offline mode
-		 * since they read from the memory. Online mode execution
-		 * is taken care by pre_de binary. */
-		prim_descr->online =
-			(pipe_version == IA_CSS_PIPE_VERSION_2_7) ? false : true;
+		prim_descr->online = true;
 		prim_descr->two_ppc =
 		    (pipe->stream->config.pixels_per_clock == 2);
 		prim_descr->stream_format = pipe->stream->config.input_config.format;
@@ -658,23 +616,14 @@ void ia_css_pipe_get_primary_binarydesc(
 		prim_descr->isp_pipe_version = pipe->config.isp_pipe_version;
 		prim_descr->enable_fractional_ds =
 		    pipe->extra_config.enable_fractional_ds;
-		prim_descr->enable_luma_only =
-			pipe->config.enable_luma_only;
 		/* We have both striped and non-striped primary binaries,
 		 * if continuous viewfinder is required, then we must select
 		 * a striped one. Otherwise we prefer to use a non-striped
 		 * since it has better performance. */
-		/* NOTE: Need to check later if we can use striped primary
-		 * binaries for ISP 2.7 */
-		if (pipe_version == IA_CSS_PIPE_VERSION_2_6_1 ||
-		    pipe_version == IA_CSS_PIPE_VERSION_2_7)
+		if (pipe_version == IA_CSS_PIPE_VERSION_2_6_1)
 			prim_descr->striped = false;
 		else
-			prim_descr->striped = prim_descr->continuous && !pipe->stream->disable_cont_vf;
-
-		if ((pipe->config.default_capture_config.enable_xnr != 0) &&
-			(pipe->extra_config.enable_dvs_6axis == true))
-				prim_descr->enable_xnr = true;
+			prim_descr->striped = prim_descr->continuous && (!pipe->stream->stop_copy_preview || !pipe->stream->disable_cont_vf);
 	}
 	IA_CSS_LEAVE_PRIVATE("");
 }
@@ -775,19 +724,8 @@ void ia_css_pipe_get_pre_de_binarydesc(
 	assert(out_info != NULL);
 	IA_CSS_ENTER_PRIVATE("");
 
-	if (pipe->stream->config.continuous && 
-		pipe->stream->config.pack_raw_pixels) {
-		in_info->res = pipe->config.input_effective_res;
-		in_info->padded_width = in_info->res.width;
-		in_info->format = IA_CSS_FRAME_FORMAT_RAW_PACKED;
-	} else if (pipe->stream->config.continuous) {
-		in_info->res = pipe->config.input_effective_res;
-		in_info->padded_width = in_info->res.width;
-		in_info->format = IA_CSS_FRAME_FORMAT_RAW;
-	} else {
-		*in_info = *out_info;
-		in_info->format = IA_CSS_FRAME_FORMAT_RAW;
-	}
+	*in_info = *out_info;
+	in_info->format = IA_CSS_FRAME_FORMAT_RAW;
 	in_info->raw_bit_depth = ia_css_pipe_util_pipe_input_format_bpp(pipe);
 	out_infos[0] = out_info;
 	for (i = 1; i < IA_CSS_BINARY_MAX_OUTPUT_PORTS; i++)
@@ -796,8 +734,7 @@ void ia_css_pipe_get_pre_de_binarydesc(
 	if (pipe->config.isp_pipe_version == IA_CSS_PIPE_VERSION_1)
 		pipe_binarydesc_get_offline(pipe, IA_CSS_BINARY_MODE_PRE_ISP,
 				       pre_de_descr, in_info, out_infos, NULL);
-	else if ((pipe->config.isp_pipe_version == IA_CSS_PIPE_VERSION_2_2) ||
-		(pipe->config.isp_pipe_version == IA_CSS_PIPE_VERSION_2_7)) {
+	else if (pipe->config.isp_pipe_version == IA_CSS_PIPE_VERSION_2_2) {
 		pipe_binarydesc_get_offline(pipe, IA_CSS_BINARY_MODE_PRE_DE,
 				       pre_de_descr, in_info, out_infos, NULL);
 	}
@@ -919,10 +856,7 @@ void ia_css_pipe_get_ldc_binarydesc(
 	assert(out_info != NULL);
 	IA_CSS_ENTER_PRIVATE("");
 
-	if (pipe->out_yuv_ds_input_info.res.width)
-		*in_info = pipe->out_yuv_ds_input_info;
-	else
-		*in_info = *out_info;
+	*in_info = *out_info;
 	in_info->format = IA_CSS_FRAME_FORMAT_YUV420;
 	in_info->raw_bit_depth = 0;
 	ia_css_frame_info_set_width(in_info, in_info->res.width, 0);

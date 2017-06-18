@@ -1,23 +1,19 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #include "ia_css_dpc2.host.h"
 #include "assert_support.h"
-
-#ifndef IA_CSS_NO_DEBUG
-#include "ia_css_debug.h"
-#endif
 
 void
 ia_css_dpc2_encode(
@@ -57,17 +53,13 @@ ia_css_init_dpc2_state(
 }
 
 #ifndef IA_CSS_NO_DEBUG
+/* TODO: AM: This needs a proper implementation. */
 void
 ia_css_dpc2_debug_dtrace(
 	const struct ia_css_dpc2_config *config,
 	unsigned level)
 {
-	ia_css_debug_dtrace(level,
-		"metric1=%d, metric2=%d, metric3=%d, "
-		"wb_gain_gr=%d, wb_gain_r=%d, "
-		"wb_gain_b=%d, wb_gain_gb=%d\n",
-		config->metric1, config->metric2, config->metric3,
-		config->wb_gain_gr, config->wb_gain_r,
-		config->wb_gain_b, config->wb_gain_gb);
+	(void)config;
+	(void)level;
 }
 #endif

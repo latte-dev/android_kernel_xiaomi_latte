@@ -267,7 +267,7 @@ static int gc2235_get_intg_factor(struct i2c_client *client,
 		return -EINVAL;
 
 	/* pixel clock calculattion */
-	buf->vt_pix_clk_freq_mhz = dev->vt_pix_clk_freq_mhz = 30000000;
+	buf->vt_pix_clk_freq_mhz = dev->vt_pix_clk_freq_mhz = 43750000;
 
 	/* get integration time */
 	buf->coarse_integration_time_min = GC2235_COARSE_INTG_TIME_MIN;
@@ -337,10 +337,8 @@ static int gc2235_get_intg_factor(struct i2c_client *client,
 	ret = gc2235_read_reg(client, GC2235_8BIT,
 					GC2235_SH_DELAY_L, &reg_val);
 
-#if 0
 	buf->line_length_pck = buf->output_width + 16 + dummy +
 				(((u16)reg_val_h << 8) | (u16)reg_val) + 4;
-#endif
 	ret = gc2235_read_reg(client, GC2235_8BIT,
 					GC2235_VB_H, &reg_val_h);
 	ret = gc2235_read_reg(client, GC2235_8BIT,
@@ -348,10 +346,8 @@ static int gc2235_get_intg_factor(struct i2c_client *client,
 	if (ret)
 		return ret;
 
-#if 0
 	buf->frame_length_lines = buf->output_height + 32 +
 				(((u16)reg_val_h << 8) | (u16)reg_val);
-#endif
 	buf->binning_factor_x = res->bin_factor_x ?
 					res->bin_factor_x : 1;
 	buf->binning_factor_y = res->bin_factor_y ?
@@ -589,7 +585,7 @@ static int __gc2235_init(struct v4l2_subdev *sd)
 
 	return gc2235_write_reg_array(client, gc2235_init_settings);
 }
-static int is_init;
+
 static int gc2235_init(struct v4l2_subdev *sd)
 {
 	int ret = 0;
@@ -677,7 +673,8 @@ static int power_up(struct v4l2_subdev *sd)
 			goto fail_power;
 	}
 
-	msleep(5);
+	msleep(50);
+
 	return 0;
 
 fail_clk:
@@ -729,8 +726,7 @@ static int gc2235_s_power(struct v4l2_subdev *sd, int on)
 	else {
 		ret = power_up(sd);
 		if (!ret)
-			ret = gc2235_init(sd);
-		is_init = 1;
+			return gc2235_init(sd);
 	}
 	return ret;
 }
@@ -832,23 +828,19 @@ static int startup(struct v4l2_subdev *sd)
 	struct gc2235_device *dev = to_gc2235_sensor(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret = 0;
-	if (is_init == 0) {
-		/* force gc2235 to do a reset in res change, otherwise it
-		* can not output normal after switching res. and it is not
-		* necessary for first time run up after power on, for the sack
-		* of performance
-		*/
-		power_down(sd);
-		power_up(sd);
-		gc2235_write_reg_array(client, gc2235_init_settings);
-	}
 
+	/* force gc2235 to do a reset, otherwise it
+	* can not output normal after switching res
+	*/
+	power_down(sd);
+	power_up(sd);
+
+	gc2235_write_reg_array(client, gc2235_init_settings);
 	ret = gc2235_write_reg_array(client, gc2235_res[dev->fmt_idx].regs);
 	if (ret) {
 		dev_err(&client->dev, "gc2235 write register err.\n");
 		return ret;
 	}
-	is_init = 0;
 
 	return ret;
 }
@@ -944,6 +936,7 @@ static int gc2235_s_stream(struct v4l2_subdev *sd, int enable)
 	struct gc2235_device *dev = to_gc2235_sensor(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
+
 	mutex_lock(&dev->input_lock);
 
 	if (enable)

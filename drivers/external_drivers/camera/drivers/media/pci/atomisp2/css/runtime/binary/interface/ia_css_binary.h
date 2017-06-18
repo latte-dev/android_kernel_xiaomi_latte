@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #ifndef _IA_CSS_BINARY_H_
 #define _IA_CSS_BINARY_H_
@@ -36,19 +36,17 @@ more details.
 #define IA_CSS_BINARY_MODE_ANR        7
 #define IA_CSS_BINARY_MODE_CAPTURE_PP 8
 #define IA_CSS_BINARY_MODE_VF_PP      9
-#define IA_CSS_BINARY_MODE_PRE_DE		10
-#define IA_CSS_BINARY_MODE_PRE_DE_STAGE1	11
-#define IA_CSS_BINARY_MODE_PRIMARY_HQ_STAGE0    12
-#define IA_CSS_BINARY_MODE_PRIMARY_HQ_STAGE1    13
-#define IA_CSS_BINARY_MODE_PRIMARY_HQ_STAGE2    14
-#define IA_CSS_BINARY_MODE_PRIMARY_HQ_STAGE3    15
-#define IA_CSS_BINARY_MODE_PRIMARY_HQ_STAGE4    16
-#define IA_CSS_BINARY_MODE_PRIMARY_HQ_STAGE5    17
-#define IA_CSS_BINARY_NUM_MODES       18
+#define IA_CSS_BINARY_MODE_PRE_DE     10
+#define IA_CSS_BINARY_MODE_PRIMARY_HQ_STAGE0    11
+#define IA_CSS_BINARY_MODE_PRIMARY_HQ_STAGE1    12
+#define IA_CSS_BINARY_MODE_PRIMARY_HQ_STAGE2    13
+#define IA_CSS_BINARY_MODE_PRIMARY_HQ_STAGE3    14
+#define IA_CSS_BINARY_MODE_PRIMARY_HQ_STAGE4    15
+#define IA_CSS_BINARY_MODE_PRIMARY_HQ_STAGE5    16
+#define IA_CSS_BINARY_NUM_MODES       17
 
 #define MAX_NUM_PRIMARY_STAGES 6
 #define NUM_PRIMARY_HQ_STAGES  6  /* number of primary stages for ISP2.6.1 high quality pipe */
-#define NUM_PRIMARY_HQ27_STAGES 4 /* number of primary stages for ISP2.7 high quality pipe */
 #define NUM_PRIMARY_STAGES     1  /* number of primary satges for ISP1/ISP2.2 pipe */
 
 /* Indicate where binaries can read input from */
@@ -104,8 +102,6 @@ struct ia_css_binary_descr {
 	bool enable_xnr;
 	bool enable_fractional_ds;
 	bool enable_dpc;
-	bool enable_luma_only;
-	bool enable_tnr;
 	bool enable_capture_pp_bli;
 	struct ia_css_resolution dvs_env;
 	enum ia_css_stream_format stream_format;
@@ -140,8 +136,6 @@ struct ia_css_binary {
 	int                      sctbl_width_per_color;
 	int                      sctbl_aligned_width_per_color;
 	int                      sctbl_height;
-	int                      sctbl_legacy_width_per_color;
-	int                      sctbl_legacy_height;
 	struct ia_css_sdis_info	 dis;
 	struct ia_css_resolution dvs_envelope;
 	bool                     online;
@@ -175,8 +169,6 @@ struct ia_css_binary {
 	0,	/* sctbl_width_per_color */ \
 	0,	/* sctbl_aligned_width_per_color */ \
 	0,	/* sctbl_height */ \
-	0,	/* sctbl_legacy_width_per_color */ \
-	0,	/* sctbl_legacy_height */ \
 	IA_CSS_DEFAULT_SDIS_INFO, /* dis */ \
 	{ 0, 0},/* dvs_envelope_info */ \
 	false,	/* online */ \
@@ -218,12 +210,9 @@ ia_css_binary_find(struct ia_css_binary_descr *descr,
  * @param[in] type: The shading correction type.
  * @param[in] required_bds_factor: The bayer downscaling factor required in the pipe.
  * @param[in] stream_config: The stream configuration.
- * @param[out] shading_info: The shading information.
- *		The shading information necessary as API is stored in the shading_info.
+ * @param[out] info: The shading information.
  *		The driver needs to get this information to generate
- *		the shading table directly required from ISP.
- * @param[out] pipe_config: The pipe configuration.
- *		The shading information related to ISP (but, not necessary as API) is stored in the pipe_config.
+ *		the shading table directly required in the isp.
  * @return	IA_CSS_SUCCESS or error code upon error.
  *
  */
@@ -232,8 +221,7 @@ ia_css_binary_get_shading_info(const struct ia_css_binary *binary,
 			enum ia_css_shading_correction_type type,
 			unsigned int required_bds_factor,
 			const struct ia_css_stream_config *stream_config,
-			struct ia_css_shading_info *shading_info,
-			struct ia_css_pipe_config *pipe_config);
+			struct ia_css_shading_info *info);
 
 enum ia_css_err
 ia_css_binary_3a_grid_info(const struct ia_css_binary *binary,

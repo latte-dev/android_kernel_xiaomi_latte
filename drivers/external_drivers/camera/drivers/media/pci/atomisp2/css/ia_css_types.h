@@ -1,17 +1,17 @@
-/* Release Version: irci_ecr-master_20160125_1250 */
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/* Release Version: irci_stable_candrpv_0415_20150423_1753 */
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #ifndef _IA_CSS_TYPES_H
 #define _IA_CSS_TYPES_H
@@ -39,7 +39,6 @@ more details.
 #include "isp/kernels/cnr/cnr_2/ia_css_cnr2_types.h"
 #include "isp/kernels/csc/csc_1.0/ia_css_csc_types.h"
 #include "isp/kernels/ctc/ctc_1.0/ia_css_ctc_types.h"
-#include "isp/kernels/ctc/ctc2/ia_css_ctc2_types.h"
 #include "isp/kernels/dp/dp_1.0/ia_css_dp_types.h"
 #include "isp/kernels/de/de_1.0/ia_css_de_types.h"
 #include "isp/kernels/de/de_2/ia_css_de2_types.h"
@@ -48,11 +47,7 @@ more details.
 #include "isp/kernels/gc/gc_1.0/ia_css_gc_types.h"
 #include "isp/kernels/gc/gc_2/ia_css_gc2_types.h"
 #include "isp/kernels/macc/macc_1.0/ia_css_macc_types.h"
-#include "isp/kernels/macc/macc1_5/ia_css_macc1_5_types.h"
-#include "isp/kernels/dpc2/ia_css_dpc2_types.h"
-#include "isp/kernels/eed1_8/ia_css_eed1_8_types.h"
 #include "isp/kernels/ob/ob_1.0/ia_css_ob_types.h"
-#include "isp/kernels/ob/ob2/ia_css_ob2_types.h"
 #include "isp/kernels/s3a/s3a_1.0/ia_css_s3a_types.h"
 #include "isp/kernels/sc/sc_1.0/ia_css_sc_types.h"
 #include "isp/kernels/sdis/sdis_1.0/ia_css_sdis_types.h"
@@ -61,13 +56,9 @@ more details.
 #include "isp/kernels/wb/wb_1.0/ia_css_wb_types.h"
 #include "isp/kernels/xnr/xnr_1.0/ia_css_xnr_types.h"
 #include "isp/kernels/xnr/xnr_3.0/ia_css_xnr3_types.h"
-#include "isp/kernels/iefd2_6/ia_css_iefd2_6_types.h"
-#include "isp/kernels/xnr/xnr3_0_11/ia_css_xnr3_0_11_types.h"
-#include "isp/kernels/tnr/tnr3/ia_css_tnr3_types.h"
 #include "isp/kernels/ynr/ynr_1.0/ia_css_ynr_types.h"
 #include "isp/kernels/ynr/ynr_2/ia_css_ynr2_types.h"
 #include "isp/kernels/output/output_1.0/ia_css_output_types.h"
-#include "isp/kernels/ipu2_io_ls/plane_io_ls/ia_css_plane_io_types.h"
 
 #define IA_CSS_DVS_STAT_GRID_INFO_SUPPORTED
 /**< Should be removed after Driver adaptation will be done */
@@ -97,15 +88,8 @@ typedef uint32_t ia_css_ptr;
 /** Generic resolution structure.
  */
 struct ia_css_resolution {
-	uint32_t width;  /**< Width */
-	uint32_t height; /**< Height */
-};
-
-/** Generic coordinate structure.
- */
-struct ia_css_coordinate {
-	int32_t x;	/**< Value of a coordinate on the horizontal axis */
-	int32_t y;	/**< Value of a coordinate on the vertical axis */
+	unsigned int width;  /**< Width */
+	unsigned int height; /**< Height */
 };
 
 /** Vector with signed values. This is used to indicate motion for
@@ -140,8 +124,7 @@ struct ia_css_isp_data {
 
 /** Shading Correction types. */
 enum ia_css_shading_correction_type {
-	IA_CSS_SHADING_CORRECTION_NONE,	 /**< Shading Correction is not processed in the pipe. */
-	IA_CSS_SHADING_CORRECTION_TYPE_1 /**< Shading Correction 1.0 (pipe 1.0 on ISP2300, pipe 2.2 on ISP2400/2401) */
+	IA_CSS_SHADING_CORRECTION_TYPE_1 /**< Shading Correction 1.0 (pipe 1.0 on ISP2300, pipe 2.2 on ISP2400) */
 
 	/**< More shading correction types can be added in the future. */
 };
@@ -152,163 +135,69 @@ struct ia_css_shading_info {
 
 	union {	/** Shading Correction information of each Shading Correction types. */
 
-		/** Shading Correction information of IA_CSS_SHADING_CORRECTION_TYPE_1.
+		/** Shading Correction information of Shading Correction Type 1.
 		 *
 		 *  This structure contains the information necessary to generate
-		 *  the shading table directly required from ISP.
-		 *  This structure is filled in CSS, and the driver needs to get it to generate the shading table.
+		 *  the shading table required in the isp.
+		 *  This structure is filled in the css,
+		 *  and the driver needs to get it to generate the shading table.
 		 *
-		 *  The shading correction is applied to the bayer area which contains sensor data and padding data.
-		 *  The shading table should cover this bayer area.
+		 *  Before the shading correction is applied, NxN-filter and/or scaling
+		 *  are applied in the isp, depending on the isp binaries.
+		 *  Then, these should be considered in generating the shading table.
+		 *    - Bad pixels on left/top sides generated by NxN-filter
+		 *      (Bad pixels are NOT considered currently,
+		 *      because they are subtle.)
+		 *    - Down-scaling/Up-scaling factor
 		 *
-		 *  The shading table size directly required from ISP is expressed by these parameters.
-		 *    1. uint32_t num_hor_grids;
-		 *    2. uint32_t num_ver_grids;
-		 *    3. uint32_t bqs_per_grid_cell;
-		 *
-		 *  In some isp binaries, the bayer scaling is applied before the shading correction is applied.
-		 *  Then, this scaling factor should be considered in generating the shading table.
-		 *  The scaling factor is expressed by these parameters.
-		 *    4. uint32_t bayer_scale_hor_ratio_in;
-		 *    5. uint32_t bayer_scale_hor_ratio_out;
-		 *    6. uint32_t bayer_scale_ver_ratio_in;
-		 *    7. uint32_t bayer_scale_ver_ratio_out;
-		 *
-		 *  The sensor data size inputted to ISP is expressed by this parameter.
-		 *  This is the size BEFORE the bayer scaling is applied.
-		 *    8. struct ia_css_resolution isp_input_sensor_data_res_bqs;
-		 *
-		 *  The origin of the sensor data area positioned on the shading table at the shading correction
-		 *  is expressed by this parameter.
-		 *  The size of this area assumes the size AFTER the bayer scaling is applied
-		 *  to the isp_input_sensor_data_resolution_bqs.
-		 *    9. struct ia_css_coordinate sensor_data_origin_bqs_on_sctbl;
-		 *
-		 *  ****** Definitions of the shading table and the sensor data at the shading correction ******
-		 *
-		 * (0,0)--------------------- TW -------------------------------
-		 *   |                                            shading table |
-		 *   |      (ox,oy)---------- W --------------------------      |
-		 *   |        |                               sensor data |     |
-		 *   |        |                                           |     |
-		 *  TH        H             sensor data center            |     |
-		 *   |        |                  (cx,cy)                  |     |
-		 *   |        |                                           |     |
-		 *   |        |                                           |     |
-		 *   |        |                                           |     |
-		 *   |         -------------------------------------------      |
-		 *   |                                                          |
-		 *    ----------------------------------------------------------
-		 *
-		 *    Example of still mode for output 1080p:
-		 *
-		 *    num_hor_grids = 66
-		 *    num_ver_grids = 37
-		 *    bqs_per_grid_cell = 16
-		 *    bayer_scale_hor_ratio_in = 1
-		 *    bayer_scale_hor_ratio_out = 1
-		 *    bayer_scale_ver_ratio_in = 1
-		 *    bayer_scale_ver_ratio_out = 1
-		 *    isp_input_sensor_data_resolution_bqs = {966, 546}
-		 *    sensor_data_origin_bqs_on_sctbl = {61, 15}
-		 *
-		 *    TW, TH [bqs]: width and height of shading table
-		 *        TW = (num_hor_grids - 1) * bqs_per_grid_cell = (66 - 1) * 16 = 1040
-		 *        TH = (num_ver_grids - 1) * bqs_per_grid_cell = (37 - 1) * 16 = 576
-		 *
-		 *    W, H [bqs]: width and height of sensor data at shading correction
-		 *        W = sensor_data_res_bqs.width
-		 *          = isp_input_sensor_data_res_bqs.width
-		 *              * bayer_scale_hor_ratio_out / bayer_scale_hor_ratio_in + 0.5 = 966
-		 *        H = sensor_data_res_bqs.height
-		 *          = isp_input_sensor_data_res_bqs.height
-		 *               * bayer_scale_ver_ratio_out / bayer_scale_ver_ratio_in + 0.5 = 546
-		 *
-		 *    (ox, oy) [bqs]: origin of sensor data positioned on shading table at shading correction
-		 *        ox = sensor_data_origin_bqs_on_sctbl.x = 61
-		 *        oy = sensor_data_origin_bqs_on_sctbl.y = 15
-		 *
-		 *    (cx, cy) [bqs]: center of sensor data positioned on shading table at shading correction
-		 *        cx = ox + W/2 = 61 + 966/2 = 544
-		 *        cy = oy + H/2 = 15 + 546/2 = 288
-		 *
-		 *  ****** Relation between the shading table and the sensor data ******
-		 *
-		 *    The origin of the sensor data should be on the shading table.
-		 *        0 <= ox < TW,  0 <= oy < TH
-		 *
-		 *  ****** How to center the shading table on the sensor data ******
-		 *
-		 *    To center the shading table on the sensor data,
-		 *    CSS decides the shading table size so that a certain grid point is positioned
-		 *    on the center of the sensor data at the shading correction.
-		 *    CSS expects the shading center is set on this grid point
-		 *    when the shading table data is calculated in AIC.
-		 *
-		 *    W, H [bqs]: width and height of sensor data at shading correction
-		 *	W = sensor_data_res_bqs.width
-		 *	H = sensor_data_res_bqs.height
-		 *
-		 *    (cx, cy) [bqs]: center of sensor data positioned on shading table at shading correction
-		 *	cx = sensor_data_origin_bqs_on_sctbl.x + W/2
-		 *	cy = sensor_data_origin_bqs_on_sctbl.y + H/2
-		 *
-		 *    CSS decides the shading table size and the sensor data position
-		 *    so that the (cx, cy) satisfies this condition.
-		 *	mod(cx, bqs_per_grid_cell) = 0
-		 *	mod(cy, bqs_per_grid_cell) = 0
-		 *
-		 *  ****** How to change the sensor data size by processes in the driver and ISP ******
-		 *
-		 *    1. sensor data size: Physical sensor size
-		 *			   (The struct ia_css_shading_info does not have this information.)
-		 *    2. process:          Driver applies the sensor cropping/binning/scaling to physical sensor size.
-		 *    3. sensor data size: ISP input size (== shading_info.isp_input_sensor_data_res_bqs)
-		 *			   (ISP assumes the ISP input sensor data is centered on the physical sensor.)
-		 *    4. process:          ISP applies the bayer scaling by the factor of shading_info.bayer_scale_*.
-		 *    5. sensor data size: Scaling factor * ISP input size (== shading_info.sensor_data_res_bqs)
-		 *    6. process:          ISP applies the shading correction.
+		 *  Shading correction is applied to the area
+		 *  which has real sensor data and margin.
+		 *  Then, the shading table should cover the area including margin.
+		 *  This structure has this information.
+		 *    - Origin coordinate of bayer (real sensor data)
+		 *      on the shading table
 		 *
 		 *  ISP block: SC1
 		 *  ISP1: SC1 is used.
 		 *  ISP2: SC1 is used.
 		 */
 		struct {
-			uint32_t num_hor_grids;	/**< Number of data points per line per color on shading table. */
-			uint32_t num_ver_grids;	/**< Number of lines of data points per color on shading table. */
-			uint32_t bqs_per_grid_cell; /**< Grid cell size in BQ unit.
-							 NOTE: bqs = size in BQ(Bayer Quad) unit.
-							       1BQ means {Gr,R,B,Gb} (2x2 pixels).
-							       Horizontal 1 bqs corresponds to horizontal 2 pixels.
-							       Vertical 1 bqs corresponds to vertical 2 pixels. */
+			uint32_t enable;	/**< Shading correction enabled.
+						     0:disabled, 1:enabled */
+			uint32_t num_hor_grids;	/**< Number of data points per line
+						     per color on shading table. */
+			uint32_t num_ver_grids;	/**< Number of lines of data points
+						     per color on shading table. */
+			uint32_t bqs_per_grid_cell; /**< Grid cell size
+						in BQ(Bayer Quad) unit.
+						(1BQ means {Gr,R,B,Gb}(2x2 pixels).)
+						Valid values are 8,16,32,64. */
 			uint32_t bayer_scale_hor_ratio_in;
 			uint32_t bayer_scale_hor_ratio_out;
-				/**< Horizontal ratio of bayer scaling between input width and output width,
-				     for the scaling which should be done before shading correction.
-					output_width = input_width * bayer_scale_hor_ratio_out
-									/ bayer_scale_hor_ratio_in + 0.5 */
+			/**< Horizontal ratio of bayer scaling
+			between input width and output width, for the scaling
+			which should be done before shading correction.
+			  output_width = input_width * bayer_scale_hor_ratio_out
+						/ bayer_scale_hor_ratio_in */
 			uint32_t bayer_scale_ver_ratio_in;
 			uint32_t bayer_scale_ver_ratio_out;
-				/**< Vertical ratio of bayer scaling between input height and output height,
-				     for the scaling which should be done before shading correction.
-					output_height = input_height * bayer_scale_ver_ratio_out
-									/ bayer_scale_ver_ratio_in + 0.5 */
-			struct ia_css_resolution isp_input_sensor_data_res_bqs;
-				/**< Sensor data size (in bqs) inputted to ISP. This is the size BEFORE bayer scaling.
-				     NOTE: This is NOT the size of the physical sensor size.
-					   CSS requests the driver that ISP inputs sensor data
-					   by the size of isp_input_sensor_data_res_bqs.
-					   The driver sends the sensor data to ISP,
-					   after the adequate cropping/binning/scaling
-					   are applied to the physical sensor data area.
-					   ISP assumes the area of isp_input_sensor_data_res_bqs
-					   is centered on the physical sensor. */
-			struct ia_css_resolution sensor_data_res_bqs;
-				/**< Sensor data size (in bqs) at shading correction.
-				     This is the size AFTER bayer scaling. */
-			struct ia_css_coordinate sensor_data_origin_bqs_on_sctbl;
-				/**< Origin of sensor data area positioned on shading table at shading correction.
-				     The coordinate x,y should be positive values. */
+			/**< Vertical ratio of bayer scaling
+			between input height and output height, for the scaling
+			which should be done before shading correction.
+			  output_height = input_height * bayer_scale_ver_ratio_out
+						/ bayer_scale_ver_ratio_in */
+			uint32_t sc_bayer_origin_x_bqs_on_shading_table;
+			/**< X coordinate (in bqs) of bayer origin on shading table.
+			This indicates the left-most pixel of bayer
+			(not include margin) inputted to the shading correction.
+			This corresponds to the left-most pixel of bayer
+			inputted to isp from sensor. */
+			uint32_t sc_bayer_origin_y_bqs_on_shading_table;
+			/**< Y coordinate (in bqs) of bayer origin on shading table.
+			This indicates the top pixel of bayer
+			(not include margin) inputted to the shading correction.
+			This corresponds to the top pixel of bayer
+			inputted to isp from sensor. */
 		} type_1;
 
 		/**< More structures can be added here when more shading correction types will be added
@@ -316,28 +205,25 @@ struct ia_css_shading_info {
 	} info;
 };
 
-/** Default Shading Correction information of Shading Correction Type 1. */
-#define DEFAULT_SHADING_INFO_TYPE_1 \
+/** Default Shading Correction information. */
+#define DEFAULT_SHADING_INFO \
 { \
 	IA_CSS_SHADING_CORRECTION_TYPE_1,	/* type */ \
 	{					/* info */ \
 		{ \
-			0,			/* num_hor_grids */ \
-			0,			/* num_ver_grids */ \
-			0,			/* bqs_per_grid_cell */ \
-			1,			/* bayer_scale_hor_ratio_in */ \
-			1,			/* bayer_scale_hor_ratio_out */ \
-			1,			/* bayer_scale_ver_ratio_in */ \
-			1,			/* bayer_scale_ver_ratio_out */ \
-			{0, 0},			/* isp_input_sensor_data_res_bqs */ \
-			{0, 0},			/* sensor_data_res_bqs */ \
-			{0, 0}			/* sensor_data_origin_bqs_on_sctbl */ \
+			0,	/* enable */ \
+			0,	/* num_hor_grids */ \
+			0,	/* num_ver_grids */ \
+			0,	/* bqs_per_grid_cell */ \
+			1,	/* bayer_scale_hor_ratio_in */ \
+			1,	/* bayer_scale_hor_ratio_out */ \
+			1,	/* bayer_scale_ver_ratio_in */ \
+			1,	/* bayer_scale_ver_ratio_out */ \
+			0,	/* sc_bayer_origin_x_bqs_on_shading_table */ \
+			0	/* sc_bayer_origin_y_bqs_on_shading_table */ \
 		} \
 	} \
 }
-
-/** Default Shading Correction information. */
-#define DEFAULT_SHADING_INFO	DEFAULT_SHADING_INFO_TYPE_1
 
 /** structure that describes the 3A and DIS grids */
 struct ia_css_grid_info {
@@ -475,7 +361,6 @@ struct ia_css_capture_config {
  *    ["ISP block", 1&2]   : ISP block is used both for ISP1 and ISP2.
  *    ["ISP block", 1only] : ISP block is used only for ISP1.
  *    ["ISP block", 2only] : ISP block is used only for ISP2.
- *    ["ISP block", 2.7only] : ISP block is used only for ISP2.7.
  */
 struct ia_css_isp_config {
 	struct ia_css_wb_config   *wb_config;	/**< White Balance
@@ -497,7 +382,7 @@ struct ia_css_isp_config {
 	struct ia_css_macc_config *macc_config;	/**< MACC
 							[MACC2, 2only] */
 	struct ia_css_ctc_config  *ctc_config;	/**< Chroma Tone Control
-							[CTC, 2only] */
+							[CTC2, 2only] */
 	struct ia_css_aa_config   *aa_config;	/**< YUV Anti-Aliasing
 							[AA2, 2only]
 							(not used currently) */
@@ -509,7 +394,7 @@ struct ia_css_isp_config {
 	struct ia_css_ob_config   *ob_config;  /**< Objective Black
 							[OB1, 1&2] */
 	struct ia_css_dp_config   *dp_config;  /**< Defect Pixel Correction
-							[DPC1, 1&2] */
+							[DPC1/DPC2, 1&2] */
 	struct ia_css_nr_config   *nr_config;  /**< Noise Reduction
 							[BNR1&YNR1&CNR1, 1&2]*/
 	struct ia_css_ee_config   *ee_config;  /**< Edge Enhancement
@@ -559,22 +444,6 @@ struct ia_css_isp_config {
 	 *  the risk for regression is not in the individual blocks, but how they
 	 *  integrate together. */
 	struct ia_css_output_config   *output_config;	/**< Main Output Mirroring, flipping */
-	struct ia_css_dpc2_config    *dpc2_config;    /**< Defect Pixel Correction
-							[DPC2, 2.7] */
-	struct ia_css_eed1_8_config  *eed1_8_config;  /**<Edge Enhancement Demosaic
-							[EED1_8, 2.7] */
-	struct ia_css_ob2_config     *ob2_config;     /**< Objective Black
-							[OB2, 2.7only] */
-	struct ia_css_ctc2_config    *ctc2_config;    /**< Chroma Tone Control
-							[CTC2, 2.7] */
-	struct ia_css_iefd2_6_config *iefd2_6_config; /**<Image Enhancement Filter Directed
-							[IEFD2_6, 2.7] */
-	struct ia_css_macc1_5_config *macc1_5_config; /**< MACC
-							[MACC1.5, 2.7only] */
-	struct ia_css_macc1_5_table  *macc1_5_table;  /**< MACC
-							[MACC1.5, 2.7only]*/
-	struct ia_css_xnr3_0_11_config  *xnr3_0_11_config; /**< eXtra Noise Reduction
-								[XNR3_0_11] */
 
 	struct ia_css_2500_lin_kernel_config     *lin_2500_config;       /**< Skylake: Linearization config */
 	struct ia_css_2500_obgrid_kernel_config  *obgrid_2500_config;    /**< Skylake: OBGRID config */
@@ -587,8 +456,7 @@ struct ia_css_isp_config {
 	struct ia_css_2500_yuvp1_b0_kernel_config   *yuvp1_b0_2500_config;     /**< Skylake: yuvp1 config for B0*/
 	struct ia_css_2500_yuvp1_c0_kernel_config   *yuvp1_c0_2500_config;     /**< Skylake: yuvp1 config for C0*/
 	struct ia_css_2500_yuvp2_kernel_config   *yuvp2_2500_config;     /**< Skylake: yuvp2 config */
-	struct ia_css_2500_tnr_kernel_config     *tnr_2500_config;       /**< Skylake: TNR config -- To be deprecated */
-	struct ia_css_tnr3_kernel_config         *tnr3_config;           /**< TNR3 config */
+	struct ia_css_2500_tnr_kernel_config     *tnr_2500_config;       /**< Skylake: TNR config */
 	struct ia_css_2500_dpc_kernel_config     *dpc_2500_config;       /**< Skylake: DPC config */
 	struct ia_css_2500_awb_kernel_config     *awb_2500_config;       /**< Skylake: auto white balance config */
 	struct ia_css_2500_awb_fr_kernel_config  *awb_fr_2500_config;    /**< Skylake: auto white balance filter response config */
@@ -603,8 +471,7 @@ struct ia_css_isp_config {
 										[OSYS, n/a] */
 	struct ia_css_output_config              *output_config_display; /**< Viewfinder/display output mirroring, flipping (optional) */
 
-	struct ia_css_frame                      *output_frame;          /**< Output frame the config is to be applied to (optional) */
-	struct ia_css_2500_input_feeder_config   *input_feeder_2500_config;   /**< Input feeder cropping configuration (getters only) */
+	struct ia_css_frame	*output_frame;	/**< Output frame the config is to be applied to (optional) */
 	uint32_t			isp_config_id;	/**< Unique ID to track which config was actually applied to a particular frame */
 };
 

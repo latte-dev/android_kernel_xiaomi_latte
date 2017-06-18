@@ -1474,7 +1474,6 @@ static int power_up(struct v4l2_subdev *sd)
 		if (!ret)
 			return 0;
 
-
 		power_down(sd);
 	}
 	return ret;
@@ -1729,7 +1728,7 @@ static int ov5693_g_mbus_fmt(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int __ov5693_detect(struct i2c_client *client)
+static int ov5693_detect(struct i2c_client *client)
 {
 	struct i2c_adapter *adapter = client->adapter;
 	u16 high, low;
@@ -1762,34 +1761,6 @@ static int __ov5693_detect(struct i2c_client *client)
 	dev_dbg(&client->dev, "sensor_revision = 0x%x\n", revision);
 	dev_dbg(&client->dev, "detect ov5693 success\n");
 	return 0;
-}
-
-static int ov5693_detect(struct v4l2_subdev *sd)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int i, ret = 0;
-
-	for (i = 0; i < OV5693_POWER_UP_RETRY_NUM; i++) {
-		ret = __ov5693_detect(client);
-		if (!ret)
-			return 0;
-
-		dev_err(&client->dev, "ov5693 detect failure! Re-starting sensor.\n");
-		ret = power_down(sd);
-		if (ret) {
-			dev_err(&client->dev, "ov5693 power-off err.\n");
-			// Don't return, try to power-up anyway.
-		}
-
-		ret = power_up(sd);
-		if (ret) {
-			dev_err(&client->dev, "ov5693 power-up err.\n");
-			// No need to power it down here.
-			return ret;
-		}
-	}
-
-	return ret;
 }
 
 static int ov5693_s_stream(struct v4l2_subdev *sd, int enable)
@@ -1890,7 +1861,7 @@ static int ov5693_s_config(struct v4l2_subdev *sd,
 		goto fail_csi_cfg;
 
 	/* config & detect sensor */
-	ret = ov5693_detect(sd);
+	ret = ov5693_detect(client);
 	if (ret) {
 		dev_err(&client->dev, "ov5693_detect err s_config.\n");
 		goto fail_csi_cfg;

@@ -84,15 +84,6 @@
 #define atomisp_css_dvs_6axis_config	ia_css_dvs_6axis_config
 #define atomisp_css_fw_info	ia_css_fw_info
 #define atomisp_css_formats_config	ia_css_formats_config
-/*Only add parameters for ISP2.7*/
-#define atomisp_css_ob2_config		ia_css_ob2_config
-#define atomisp_css_dpc2_config	ia_css_dpc2_config
-#define atomisp_css_eed1_8_config	ia_css_eed1_8_config
-#define atomisp_css_ctc2_config		ia_css_ctc2_config
-#define atomisp_css_iefd2_6_config	ia_css_iefd2_6_config
-#define atomisp_css_macc1_5_config	ia_css_macc1_5_config
-#define atomisp_css_macc1_5_table	ia_css_macc1_5_table
-#define atomisp_css_xnr3_0_11_config	ia_css_xnr3_0_11_config
 
 #define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW
 #define CSS_PIPE_ID_COPY	IA_CSS_PIPE_ID_COPY
@@ -268,30 +259,6 @@ void atomisp_css_unload_firmware(struct atomisp_device *isp);
 
 void atomisp_css_set_dvs_6axis(struct atomisp_sub_device *asd,
 			struct atomisp_css_dvs_6axis *dvs_6axis);
-
-void atomisp_css_set_dpc2_config(struct atomisp_sub_device *asd,
-			struct atomisp_css_dpc2_config *dpc2_config);
-
-void atomisp_css_set_eed1_8_config(struct atomisp_sub_device *asd,
-			struct atomisp_css_eed1_8_config *eed1_8_config);
-
-void atomisp_css_set_ob2_config(struct atomisp_sub_device *asd,
-			struct atomisp_css_ob2_config *ob2_config);
-
-void atomisp_css_set_ctc2_config(struct atomisp_sub_device *asd,
-			struct atomisp_css_ctc2_config *ctc2_config);
-
-void atomisp_css_set_iefd2_6_config(struct atomisp_sub_device *asd,
-			struct atomisp_css_iefd2_6_config *iefd2_6_config);
-
-void atomisp_css_set_macc1_5_config(struct atomisp_sub_device *asd,
-			struct atomisp_css_macc1_5_config *macc1_5_config);
-
-void atomisp_css_set_macc1_5_table(struct atomisp_sub_device *asd,
-			struct atomisp_css_macc1_5_table *macc1_5_table);
-
-void atomisp_css_set_xnr3_0_11_config(struct atomisp_sub_device *asd,
-			struct atomisp_css_xnr3_0_11_config *xnr3_0_11_config);
 
 unsigned int atomisp_css_debug_get_dtrace_level(void);
 

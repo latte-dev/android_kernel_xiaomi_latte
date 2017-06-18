@@ -40,10 +40,9 @@
 #include <linux/io.h>
 #include <asm/current.h>
 #include <linux/sched.h>
-#include <linux/file.h>
 
 #ifdef CONFIG_ION
-#include "ion.h"
+#include <linux/ion.h>
 #endif
 
 #include "atomisp_internal.h"
@@ -379,6 +378,26 @@ int hmm_bo_device_init(struct hmm_bo_device *bdev,
 
 	spin_lock_init(&bdev->list_lock);
 	mutex_init(&bdev->rbtree_mutex);
+#ifdef CONFIG_ION
+	/*
+	 * TODO:
+	 * The ion_dev should be defined by ION driver. But ION driver does
+	 * not implement it yet, will fix it when it is ready.
+	 */
+	if (!ion_dev) {
+		isp_mmu_exit(&bdev->mmu);
+		return -EINVAL;
+	}
+
+	bdev->iclient = ion_client_create(ion_dev, "atomisp");
+	if (IS_ERR_OR_NULL(bdev->iclient)) {
+		ret = PTR_ERR(bdev->iclient);
+		if (!bdev->iclient) {
+			isp_mmu_exit(&bdev->mmu);
+			return -EINVAL;
+		}
+	}
+#endif
 
 	bdev->flag = HMM_BO_DEVICE_INITED;
 
@@ -562,6 +581,10 @@ void hmm_bo_device_exit(struct hmm_bo_device *bdev)
 	kmem_cache_destroy(bdev->bo_cache);
 
 	isp_mmu_exit(&bdev->mmu);
+#ifdef CONFIG_ION
+	if (bdev->iclient != NULL)
+		ion_client_destroy(bdev->iclient);
+#endif
 }
 
 int hmm_bo_device_inited(struct hmm_bo_device *bdev)
@@ -687,8 +710,7 @@ static void free_private_bo_pages(struct hmm_buffer_object *bo,
 			ret = set_pages_wb(bo->page_obj[i].page, 1);
 			if (ret)
 				dev_err(atomisp_dev,
-						"set page to WB err ...ret = %d\n",
-							ret);
+						"set page to WB err ...\n");
 			/*
 			W/A: set_pages_wb seldom return value = -EFAULT
 			indicate that address of page is not in valid
@@ -696,7 +718,7 @@ static void free_private_bo_pages(struct hmm_buffer_object *bo,
 			then, _free_pages would panic; Do not know why page
 			address be valid,it maybe memory corruption by lowmemory
 			*/
-			if (!ret) {
+			if (-EFAULT != ret) {
 				__free_pages(bo->page_obj[i].page, 0);
 				hmm_mem_stat.sys_size--;
 			}
@@ -984,21 +1006,11 @@ static int get_pfnmap_pages(struct task_struct *tsk, struct mm_struct *mm,
 
 #ifdef CONFIG_ION
 static int alloc_ion_pages(struct hmm_buffer_object *bo,
-			     unsigned long shared_fd)
+			     unsigned int shared_fd)
 {
 	struct sg_table *sg_tbl;
 	struct scatterlist *sl;
-	struct ion_client *iclient;
-	struct file *ion_file;
-	int ret = 0, page_nr = 0, i, j;
-
-	int ion_dev_fd = shared_fd >> ATOMISP_ION_DEVICE_FD_OFFSET;
-	int ion_shared_fd = shared_fd & ATOMISP_ION_SHARED_FD_MASK;
-
-	if (ion_shared_fd == (ION_FD_UNSET & ATOMISP_ION_SHARED_FD_MASK)) {
-		dev_err(atomisp_dev, "ion device is not opened.\n");
-		return -EINVAL;
-	}
+	int ret, page_nr = 0;
 
 	bo->page_obj = atomisp_kernel_malloc(
 			sizeof(struct hmm_page_object) * bo->pgnr);
@@ -1007,22 +1019,7 @@ static int alloc_ion_pages(struct hmm_buffer_object *bo,
 		return -ENOMEM;
 	}
 
-	ion_file = fget(ion_dev_fd);
-	if (unlikely(!ion_file)) {
-		dev_err(atomisp_dev, "invalid fd for ion file struct.\n");
-		ret = -EINVAL;
-		goto error_nomem;
-	}
-
-	iclient = (struct ion_client *) ion_file->private_data;
-	if (unlikely(!iclient)) {
-		dev_err(atomisp_dev, "invalid ion file struct for iclient.\n");
-		ret = -EINVAL;
-		goto error;
-	}
-
-	bo->ihandle = ion_import_dma_buf(iclient, ion_shared_fd);
-
+	bo->ihandle = ion_import_dma_buf(bo->bdev->iclient, shared_fd);
 	if (IS_ERR_OR_NULL(bo->ihandle)) {
 		dev_err(atomisp_dev, "invalid shared fd to ion.\n");
 		ret = PTR_ERR(bo->ihandle);
@@ -1031,56 +1028,34 @@ static int alloc_ion_pages(struct hmm_buffer_object *bo,
 		goto error;
 	}
 
-	sg_tbl = ion_sg_table(iclient, bo->ihandle);
+	sg_tbl = ion_sg_table(bo->bdev->iclient, bo->ihandle);
 	if (IS_ERR_OR_NULL(sg_tbl)) {
 		dev_err(atomisp_dev, "ion_sg_table error.\n");
 		ret = PTR_ERR(sg_tbl);
 		if (!sg_tbl)
 			ret = -EINVAL;
-		goto error;
+		goto error_unmap;
 	}
 
 	sl = sg_tbl->sgl;
-	for_each_sg(sg_tbl->sgl, sl, sg_tbl->nents, i) {
-		struct page *page;
+	do {
+		bo->page_obj[page_nr++].page = sg_page(sl);
+		sl = sg_next(sl);
+	} while (sl && page_nr < bo->pgnr);
 
-		if (!sl) {
-			dev_err(atomisp_dev, "sg is NULL.\n");
-			ret = -EINVAL;
-			goto error;
-		}
-
-		page = sg_page(sl);		
-		for (j = 0; j < sl->length / PAGE_SIZE; j++) {
-			bo->page_obj[page_nr++].page = page++;
-			/*
-			 * GFX driver allocates one extra page (actually one
-			 * extra byte) to work around some CTS failures. We
-			 * don't need to fill this page into page_obj since
-			 * it doesn't need to be mapped to the IPU address
-			 * space.
-			 */
-			if (page_nr == bo->pgnr)
-				goto sgl_iter_finished;
-		}
-	}
-
-sgl_iter_finished:
 	if (page_nr != bo->pgnr) {
 		dev_err(atomisp_dev,
 			 "get_ion_pages err: bo->pgnr = %d, "
 			 "pgnr actually pinned = %d.\n",
 			 bo->pgnr, page_nr);
 		ret = -EINVAL;
-		goto error;
+		goto error_unmap;
 	}
 
-	fput(ion_file);
-
 	return 0;
+error_unmap:
+	ion_free(bo->bdev->iclient, bo->ihandle);
 error:
-	fput(ion_file);
-error_nomem:
 	atomisp_kernel_free(bo->page_obj);
 	return ret;
 }
@@ -1175,6 +1150,7 @@ out_of_mem:
 static void free_ion_pages(struct hmm_buffer_object *bo)
 {
 	atomisp_kernel_free(bo->page_obj);
+	ion_free(bo->bdev->iclient, bo->ihandle);
 }
 #endif
 
@@ -1208,7 +1184,7 @@ int hmm_bo_alloc_pages(struct hmm_buffer_object *bo,
 		       enum hmm_bo_type type, int from_highmem,
 		       void *userptr, bool cached)
 {
-	int ret = -EINVAL;
+	int ret;
 
 	check_bo_null_return(bo, -EINVAL);
 
@@ -1230,7 +1206,7 @@ int hmm_bo_alloc_pages(struct hmm_buffer_object *bo,
 		 * TODO:
 		 * Add cache flag when ION support it
 		 */
-		ret = alloc_ion_pages(bo, (unsigned long)userptr);
+		ret = alloc_ion_pages(bo, userptr);
 #endif
 	} else {
 		dev_err(atomisp_dev, "invalid buffer type.\n");

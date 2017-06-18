@@ -29,11 +29,8 @@
 #else
 #include <media/v4l2-chip-ident.h>
 #endif
-#ifdef CONFIG_EXTERNAL_BTNS_CAMERA
-#include "ov8858_btns.h"
-#else
 #include "ov8858.h"
-#endif
+
 static int ov8858_i2c_read(struct i2c_client *client, u16 len, u16 addr,
 			   u8 *buf)
 {
@@ -82,10 +79,9 @@ static int ov8858_read_reg(struct i2c_client *client, u16 type, u16 reg,
 {
 	u8 data[OV8858_SHORT_MAX];
 	int err;
-#ifdef DEBUG
+
 	dev_dbg(&client->dev, "%s: type = %d, reg = 0x%04x\n",
 		__func__, type, reg);
-#endif
 
 	/* read only 8 and 16 bit values */
 	if (type != OV8858_8BIT && type != OV8858_16BIT) {
@@ -369,8 +365,6 @@ static int __ov8858_set_exposure(struct v4l2_subdev *sd, int exposure, int gain,
 	dev_dbg(&client->dev, "%s, exposure = %d, gain=%d, dig_gain=%d\n",
 		__func__, exposure, gain, dig_gain);
 
-	/* dig_gain is not applied to sensor. OTP WB data is used instead */
-
 	if (dev->limit_exposure_flag) {
 		if (exposure > *vts - OV8858_INTEGRATION_TIME_MARGIN)
 			exposure = *vts - OV8858_INTEGRATION_TIME_MARGIN;
@@ -400,6 +394,24 @@ static int __ov8858_set_exposure(struct v4l2_subdev *sd, int exposure, int gain,
 	if (ret)
 		return ret;
 
+	/* Digital gain : to all MWB channel gains */
+	if (dig_gain) {
+		ret = ov8858_write_reg(client, OV8858_16BIT,
+				OV8858_MWB_RED_GAIN_H, dig_gain);
+		if (ret)
+			return ret;
+
+		ret = ov8858_write_reg(client, OV8858_16BIT,
+				OV8858_MWB_GREEN_GAIN_H, dig_gain);
+		if (ret)
+			return ret;
+
+		ret = ov8858_write_reg(client, OV8858_16BIT,
+				OV8858_MWB_BLUE_GAIN_H, dig_gain);
+		if (ret)
+			return ret;
+	}
+
 	ret = ov8858_write_reg(client, OV8858_16BIT, OV8858_LONG_GAIN,
 				gain & 0x07ff);
 	if (ret)
@@ -416,14 +428,10 @@ static int ov8858_set_exposure(struct v4l2_subdev *sd, int exposure, int gain,
 				int dig_gain)
 {
 	struct ov8858_device *dev = to_ov8858_sensor(sd);
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	const struct ov8858_resolution *res;
 	u16 hts, vts;
 	int ret;
-	/* W/A: In CHT_MRD there is a sync problem between the new exposure,
-	 * and the statistics being reported to AE. This delay allows the old
-	 * statistics to be correctly reported before applying a new exposure */
-	if (strcmp(dmi_get_system_info(DMI_BOARD_NAME), CHT_HR_DEV_NAME) != 0)
-		usleep_range(4000, 6000);
 
 	mutex_lock(&dev->input_lock);
 
@@ -436,6 +444,13 @@ static int ov8858_set_exposure(struct v4l2_subdev *sd, int exposure, int gain,
 	/* Validate digital gain: must not exceed 12 bit value*/
 	dig_gain = clamp_t(int, dig_gain, 0, OV8858_MWB_GAIN_MAX);
 
+	/* Group hold is valid only if sensor is streaming. */
+	if (dev->streaming) {
+		ret = ov8858_write_reg_array(client, ov8858_param_hold);
+		if (ret)
+			goto out;
+	}
+
 	res = &dev->curr_res_table[dev->fmt_idx];
 	/*
 	 * Vendor: HTS reg value is half the total pixel line
@@ -444,30 +459,17 @@ static int ov8858_set_exposure(struct v4l2_subdev *sd, int exposure, int gain,
 	vts = res->fps_options[dev->fps_index].lines_per_frame;
 
 	ret = __ov8858_set_exposure(sd, exposure, gain, dig_gain, &hts, &vts);
+	if (ret)
+		goto out;
+out:
+	/* Group hold launch - delayed launch */
+	if (dev->streaming)
+		ret = ov8858_write_reg_array(client, ov8858_param_update);
+
 
 	mutex_unlock(&dev->input_lock);
 
 	return ret;
-}
-
-/*
-   When exposure gain value set to sensor, the sensor changed value.
-   So we need the function to get real value
- */
-static int ov8858_g_update_exposure(struct v4l2_subdev *sd,
-				struct atomisp_update_exposure *exposure)
-{
-	struct ov8858_device *dev = to_ov8858_sensor(sd);
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int gain = exposure->gain;
-
-	dev_dbg(&client->dev, "%s: gain: %d, digi_gain: %d\n", __func__,
-			exposure->gain, exposure->digi_gain);
-	exposure->update_digi_gain = dev->digital_gain;
-	/* This real gain value fetching function is provided by vendor */
-	exposure->update_gain = (((gain & 0x700) >> 8) + 1) * (gain & 0xFF);
-
-	return 0;
 }
 
 static int ov8858_s_exposure(struct v4l2_subdev *sd,
@@ -477,30 +479,19 @@ static int ov8858_s_exposure(struct v4l2_subdev *sd,
 				exposure->gain[0], exposure->gain[1]);
 }
 
-static int ov8858_priv_int_data_init(struct v4l2_subdev *sd)
+static int ov8858_g_priv_int_data(struct v4l2_subdev *sd,
+				  struct v4l2_private_int_data *priv)
 {
 	struct ov8858_device *dev = to_ov8858_sensor(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	u32 size = OV8858_OTP_END_ADDR - OV8858_OTP_START_ADDR + 1;
 	int r;
 	u16 isp_ctrl2 = 0;
-	u16 checksum_exp = 0;
-	u16 checksum_read = 0;
-	u8 *lenc_data;
-	u16 temp1 = 0, temp2 = 0;
-	int rg_ratio;
-	int bg_ratio;
-	int i;
 
-	if (!dev->otp.otp_data) {
-		u16 otp_flag = 0;
-		u16 addr = 0;
-
-		dev->otp.otp_lenc_en = 0;
-		dev->otp.otp_awb_en = 0;
-		dev->otp.otp_data = devm_kzalloc(&client->dev, size,
-							GFP_KERNEL);
-		if (!dev->otp.otp_data) {
+	mutex_lock(&dev->input_lock);
+	if (!dev->otp_data) {
+		dev->otp_data = devm_kzalloc(&client->dev, size, GFP_KERNEL);
+		if (!dev->otp_data) {
 			dev_err(&client->dev, "%s: can't allocate memory",
 				__func__);
 			r = -ENOMEM;
@@ -555,112 +546,9 @@ static int ov8858_priv_int_data_init(struct v4l2_subdev *sd)
 
 		/* Read the OTP data from the buffer */
 		r = ov8858_i2c_read(client, size, OV8858_OTP_START_ADDR,
-				    dev->otp.otp_data);
+				    dev->otp_data);
 		if (r)
 			goto error1;
-
-		/* Check lenc data */
-		r = ov8858_read_reg(client, OV8858_8BIT,
-					OV8858_OTP_LENC_FLAG_ADDR, &otp_flag);
-		if (IS_ERR_VALUE(r)) {
-			dev_err(&client->dev, "otp lenc flag read failed\n");
-			goto error1;
-		}
-		if ((otp_flag & 0xc0) == 0x40) {
-			dev->otp.lenc_offset = OV8858_OTP_LENC_OFFSET1;
-		} else if ((otp_flag & 0x30) == 0x10) {
-			dev->otp.lenc_offset = OV8858_OTP_LENC_OFFSET2;
-		} else {
-			dev_err(&client->dev, "otp lenc unsupported flag\n");
-			goto error1;
-		}
-
-		lenc_data =  dev->otp.otp_data + dev->otp.lenc_offset;
-		for (i = 0; i < OV8858_OTP_LENC_SIZE; i++)
-			checksum_exp += *(lenc_data + i);
-		checksum_exp = checksum_exp % 255 + 1;
-
-		r = ov8858_read_reg(client, OV8858_8BIT,
-					OV8858_OTP_START_ADDR +
-					dev->otp.lenc_offset +
-					OV8858_OTP_LENC_SIZE,
-					&checksum_read);
-		if (IS_ERR_VALUE(r)) {
-			dev_err(&client->dev,
-				"otp lenc checksum read failed\n");
-			goto error1;
-		}
-
-		if (checksum_read != checksum_exp) {
-			dev_err(&client->dev,
-				"otp lenc checksum no match!\n");
-			goto error1;
-		}
-
-		dev_dbg(&client->dev, "otp chksum read:%02x exp:%02x",
-						checksum_read, checksum_exp);
-		dev->otp.otp_lenc_en = 1;
-
-		/* Calculate wb gain */
-		r = ov8858_read_reg(client, OV8858_8BIT, OV8858_OTP_START_ADDR,
-					&otp_flag);
-		if (IS_ERR_VALUE(r)) {
-			dev_err(&client->dev, "otp wb flag read failed\n");
-			goto error1;
-		}
-
-		if ((otp_flag & 0xc0) == 0x40) {
-			addr = OV8858_OTP_AWB_START_ADDR1;
-		} else if ((otp_flag & 0x30) == 0x10) {
-			addr = OV8858_OTP_AWB_START_ADDR2;
-		} else {
-			dev_err(&client->dev, "otp wb unsupported flag\n");
-			goto error1;
-		}
-
-		r = ov8858_read_reg(client, OV8858_8BIT, addr + 5, &temp1);
-		r |= ov8858_read_reg(client, OV8858_8BIT, addr + 7, &temp2);
-
-		if (IS_ERR_VALUE(r)) {
-			dev_err(&client->dev,
-				"otp awb read failed\n");
-			goto error1;
-		}
-
-		rg_ratio = (temp1 << 2) + (temp2 >> 6 & 0x03);
-
-		r |= ov8858_read_reg(client, OV8858_8BIT, addr + 6, &temp1);
-
-		if (IS_ERR_VALUE(r)) {
-			dev_err(&client->dev,
-				"otp awb read failed\n");
-			goto error1;
-		}
-
-		bg_ratio = (temp1 << 2) + (temp2 >> 4 & 0x03);
-
-		dev->otp.R_gain = (RG_Ratio_Typical * 1000) / rg_ratio;
-		dev->otp.B_gain = (BG_Ratio_Typical * 1000) / bg_ratio;
-		dev->otp.G_gain = 1000;
-
-		if (dev->otp.R_gain < 1000 || dev->otp.B_gain < 1000) {
-			if (dev->otp.R_gain < dev->otp.B_gain)
-				temp1 = dev->otp.R_gain;
-			else
-				temp1 = dev->otp.B_gain;
-		} else {
-			temp1 = dev->otp.G_gain;
-		}
-
-		dev->otp.R_gain = OV8858_WB_GAIN1 * dev->otp.R_gain / temp1;
-		dev->otp.B_gain = OV8858_WB_GAIN1 * dev->otp.B_gain / temp1;
-		dev->otp.G_gain = OV8858_WB_GAIN1 * dev->otp.G_gain / temp1;
-		dev->otp.otp_awb_en = 1;
-
-		dev_dbg(&client->dev, "OTP calcualted R:%d G:%d B:%d",
-					dev->otp.R_gain,
-					dev->otp.G_gain,
-					dev->otp.B_gain);
 
 		/* Turn on Dead Pixel Correction */
 		r = ov8858_write_reg(client, OV8858_8BIT, OV8858_OTP_ISP_CTRL2,
@@ -677,6 +565,15 @@ static int ov8858_priv_int_data_init(struct v4l2_subdev *sd)
 		}
 	}
 
+	if (copy_to_user(priv->data, dev->otp_data,
+			 min_t(__u32, priv->size, size))) {
+		r = -EFAULT;
+		goto error3;
+	}
+
+	priv->size = size;
+	mutex_unlock(&dev->input_lock);
+
 	return 0;
 
 error1:
@@ -685,134 +582,22 @@ error1:
 			     isp_ctrl2 | OV8858_OTP_DPC_ENABLE);
 	ov8858_write_reg(client, 1, OV8858_STREAM_MODE, 0x00);
 error2:
-	devm_kfree(&client->dev, dev->otp.otp_data);
-	dev->otp.otp_data = NULL;
+	devm_kfree(&client->dev, dev->otp_data);
+	dev->otp_data = NULL;
 error3:
+	mutex_unlock(&dev->input_lock);
 	dev_err(&client->dev, "%s: OTP reading failed\n", __func__);
 	return r;
-}
-
-static int ov8858_g_priv_int_data(struct v4l2_subdev *sd,
-				  struct v4l2_private_int_data *priv)
-{
-	struct ov8858_device *dev = to_ov8858_sensor(sd);
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	u32 size = OV8858_OTP_END_ADDR - OV8858_OTP_START_ADDR + 1;
-	int r;
-
-	mutex_lock(&dev->input_lock);
-
-	if (!dev->otp.otp_data) {
-		dev_err(&client->dev, "%s: otp data is NULL\n", __func__);
-		mutex_unlock(&dev->input_lock);
-		return -EFAULT;
-	}
-
-	if (copy_to_user(priv->data, dev->otp.otp_data,
-			 min_t(__u32, priv->size, size))) {
-		r = -EFAULT;
-		dev_err(&client->dev, "%s: OTP reading failed\n", __func__);
-		mutex_unlock(&dev->input_lock);
-		return r;
-	}
-
-	priv->size = size;
-	mutex_unlock(&dev->input_lock);
-
-	return 0;
-}
-
-static int update_awb_gain(struct v4l2_subdev *sd)
-{
-	struct ov8858_device *dev = to_ov8858_sensor(sd);
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int R_gain;
-	int G_gain;
-	int B_gain;
-	int ret = 0;
-
-	if (!dev->otp.otp_awb_en)
-		return -EINVAL;
-
-	R_gain = dev->otp.R_gain;
-	G_gain = dev->otp.G_gain;
-	B_gain = dev->otp.B_gain;
-
-	if (R_gain > 0x400)
-		ret |= ov8858_write_reg(client, OV8858_16BIT,
-						OV8858_MWB_RED_GAIN_H,
-						R_gain);
-	if (G_gain > 0x400)
-		ret |= ov8858_write_reg(client, OV8858_16BIT,
-						OV8858_MWB_GREEN_GAIN_H,
-						G_gain);
-	if (B_gain > 0x400)
-		ret |= ov8858_write_reg(client, OV8858_16BIT,
-						OV8858_MWB_BLUE_GAIN_H,
-						B_gain);
-
-	if (IS_ERR_VALUE(ret))
-		dev_err(&client->dev, "otp awb gain apply failed\n");
-	else
-		dev_dbg(&client->dev,
-				"%s, R_gain:%d G_gain %d B_gain %d\n",
-				__func__, R_gain, G_gain, B_gain);
-
-	return ret;
-}
-
-static int update_lenc(struct v4l2_subdev *sd)
-{
-	struct ov8858_device *dev = to_ov8858_sensor(sd);
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int ret = 0;
-	u16 temp = 0;
-	u8 lenc_data[OV8858_OTP_LENC_SIZE + 2];
-	struct i2c_msg lsc_msg;
-
-	if (!dev->otp.otp_data || !dev->otp.otp_lenc_en)
-		return -EINVAL;
-
-	ret |= ov8858_read_reg(client, OV8858_8BIT,
-					OV8858_ISP_CTRL00_REG, &temp);
-	temp |= 0x80;
-	ret |= ov8858_write_reg(client, OV8858_8BIT, OV8858_ISP_CTRL00_REG,
-					temp);
-
-	if (IS_ERR_VALUE(ret)) {
-		dev_err(&client->dev, "otp lenc apply failed at beginning\n");
-		return ret;
-	}
-
-	lenc_data[0] = (OV8858_LENC_G00_REG >> 8) & 0xff;
-	lenc_data[1] = OV8858_LENC_G00_REG & 0xff;
-	memcpy(&lenc_data[2], dev->otp.otp_data + dev->otp.lenc_offset,
-			OV8858_OTP_LENC_SIZE);
-
-	lsc_msg.addr  = client->addr;
-	lsc_msg.flags = 0;
-	lsc_msg.len   = sizeof(lenc_data) / sizeof(lenc_data[0]);
-	lsc_msg.buf   = &lenc_data[0];
-
-	ret = i2c_transfer(client->adapter, &lsc_msg, 1);
-
-	dev_dbg(&client->dev, "%s %d msg sent", __func__, ret);
-
-	return ret == 1 ? 0 : -EIO;
 }
 
 static int __ov8858_init(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct ov8858_device *dev = to_ov8858_sensor(sd);
-	int ret;
-
 	dev_dbg(&client->dev, "%s\n", __func__);
 
-#ifndef CONFIG_GMIN_INTEL_MID
 	if (dev->sensor_id == OV8858_ID_DEFAULT)
 		return 0;
-#endif
 
 	/* Sets the default FPS */
 	dev->fps_index = 0;
@@ -829,24 +614,9 @@ static int __ov8858_init(struct v4l2_subdev *sd)
 		ov8858_BasicSettings[3].val = 0x50; /* pll1_multiplier = 80 */
 	}
 #endif
-
-#ifdef DEBUG
 	dev_dbg(&client->dev, "%s: Writing basic settings to ov8858\n",
 		__func__);
-#endif
-	ret = ov8858_write_reg_array(client, ov8858_BasicSettings);
-	if (ret)
-		return ret;
-
-	ret = ov8858_priv_int_data_init(sd);
-
-	/* Apply otp awb gain */
-	update_awb_gain(sd);
-
-	/* Apply otp lenc data */
-	update_lenc(sd);
-
-	return ret;
+	return ov8858_write_reg_array(client, ov8858_BasicSettings);
 }
 
 static int ov8858_init(struct v4l2_subdev *sd, u32 val)
@@ -910,7 +680,6 @@ static int ov8858_g_comp_delay(struct v4l2_subdev *sd, unsigned int *usec)
 
 	return 0;
 }
-
 static long ov8858_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -921,11 +690,8 @@ static long ov8858_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 		return ov8858_g_priv_int_data(sd, arg);
 	case ATOMISP_IOC_G_DEPTH_SYNC_COMP:
 		return ov8858_g_comp_delay(sd, (unsigned int *)arg);
-	case ATOMISP_IOC_G_UPDATE_EXPOSURE:
-		return ov8858_g_update_exposure(sd,
-				(struct atomisp_update_exposure *)arg);
 	default:
-		dev_dbg(&client->dev, "Unhandled command 0x%X\n", cmd);
+		dev_err(&client->dev, "Unhandled command 0x%X\n", cmd);
 		return -EINVAL;
 	}
 }
@@ -946,16 +712,6 @@ static int __power_ctrl(struct v4l2_subdev *sd, bool flag)
 		return dev->platform_data->power_ctrl(sd, flag);
 
 #ifdef CONFIG_GMIN_INTEL_MID
-	if (dev->platform_data->v1p2_ctrl) {
-		ret = dev->platform_data->v1p2_ctrl(sd, flag);
-		if (ret) {
-			dev_err(&client->dev,
-					"failed to power %s 1.2v power rail\n",
-					flag ? "up" : "down");
-			return ret;
-		}
-	}
-
 	if (dev->platform_data->v2p8_ctrl) {
 		ret = dev->platform_data->v2p8_ctrl(sd, flag);
 		if (ret) {
@@ -1002,22 +758,11 @@ static int __gpio_ctrl(struct v4l2_subdev *sd, bool flag)
 	if (dev->platform_data->gpio_ctrl)
 		return dev->platform_data->gpio_ctrl(sd, flag);
 
-
-	/*Just to execute specific code  dintinguishing between HR and MRD */
-	if (strcmp(dmi_get_system_info(DMI_BOARD_NAME), CHT_HR_DEV_NAME) == 0) {
 #ifdef CONFIG_GMIN_INTEL_MID
-		if (dev->platform_data->gpio0_ctrl)
-			return dev->platform_data->gpio0_ctrl(sd, flag);
+	if (dev->platform_data->gpio0_ctrl)
+		return dev->platform_data->gpio0_ctrl(sd, flag);
 #endif
-	} else {
-		if (dev->platform_data->gpio0_ctrl) {
-			int ret;
-			ret = dev->platform_data->gpio0_ctrl(sd, flag);
-			if (dev->platform_data->gpio1_ctrl)
-				ret |= dev->platform_data->gpio1_ctrl(sd, flag);
-		return ret;
-		}
-	}
+
 	dev_err(&client->dev, "failed to find platform gpio callback\n");
 
 	return -EINVAL;
@@ -1032,24 +777,18 @@ static int power_up(struct v4l2_subdev *sd)
 
 	/* Enable power */
 	ret = __power_ctrl(sd, 1);
-	if (ret) {
-		dev_err(&client->dev, "power rail on failed %d.\n", ret);
+	if (ret)
 		goto fail_power;
-	}
 
 	/* Enable clock */
 	ret = dev->platform_data->flisclk_ctrl(sd, 1);
-	if (ret) {
-		dev_err(&client->dev, "flisclk on failed %d\n", ret);
+	if (ret)
 		goto fail_clk;
-	}
 
 	/* Release reset */
 	ret = __gpio_ctrl(sd, 1);
-	if (ret) {
-		dev_err(&client->dev, "gpio on failed %d\n", ret);
+	if (ret)
 		goto fail_gpio;
-	}
 
 	/* Minumum delay is 8192 clock cycles before first i2c transaction,
 	 * which is 1.37 ms at the lowest allowed clock rate 6 MHz */
@@ -1490,33 +1229,26 @@ static int ov8858_get_intg_factor(struct v4l2_subdev *sd,
  * @w: width
  * @h: height
  *
- * Get the gap between res_w/res_h and w/h.
- * distance = (res_w/res_h - w/h) / (w/h) * 8192
+ * Get the gap between resolution and w/h.
  * res->width/height smaller than w/h wouldn't be considered.
- * The gap of ratio larger than 1/8 wouldn't be considered.
  * Returns the value of gap or -1 if fail.
  */
-#define LARGEST_ALLOWED_RATIO_MISMATCH 1024
+/* tune this value so that the DVS resolutions get selected properly,
+ * but make sure 16:9 does not match 4:3.
+ */
+#define LARGEST_ALLOWED_RATIO_MISMATCH 500
 static int distance(struct ov8858_resolution const *res, const u32 w,
 		    const u32 h)
 {
-	int ratio;
-	int distance;
+	unsigned int w_ratio = ((res->width<<13)/w);
+	unsigned int h_ratio = ((res->height<<13)/h);
+	int match   = abs(((w_ratio<<13)/h_ratio) - ((int)8192));
 
-	if (w == 0 || h == 0 ||
-		res->width < w || res->height < h)
+	if ((w_ratio < (int)8192) ||
+	    (h_ratio < (int)8192) || (match > LARGEST_ALLOWED_RATIO_MISMATCH))
 		return -1;
 
-	ratio = (res->width << 13);
-	ratio /= w;
-	ratio *= h;
-	ratio /= res->height;
-
-	distance = abs(ratio - 8192);
-
-	if (distance > LARGEST_ALLOWED_RATIO_MISMATCH)
-		return -1;
-	return distance;
+	return w_ratio + h_ratio;
 }
 
 /*
@@ -1535,7 +1267,6 @@ static int nearest_resolution_index(struct v4l2_subdev *sd, int w, int h)
 	int fps_diff;
 	int min_fps_diff = INT_MAX;
 	int min_dist = INT_MAX;
-	int min_res_w = INT_MAX;
 	const struct ov8858_resolution *tmp_res = NULL;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct ov8858_device *dev = to_ov8858_sensor(sd);
@@ -1545,15 +1276,12 @@ static int nearest_resolution_index(struct v4l2_subdev *sd, int w, int h)
 		tmp_res = &dev->curr_res_table[i];
 		dist = distance(tmp_res, w, h);
 		dev_dbg(&client->dev,
-			"%s[%d]: %dx%d distance=%d\n", tmp_res->desc,
+			"nearest_resolution_index[%d]: %dx%d distance=%d\n",
 			i, tmp_res->width, tmp_res->height, dist);
 		if (dist == -1)
 			continue;
 		if (dist < min_dist) {
 			min_dist = dist;
-			min_res_w = tmp_res->width;
-			min_fps_diff = __ov8858_min_fps_diff(dev->fps,
-						tmp_res->fps_options);
 			idx = i;
 		}
 		if (dist == min_dist) {
@@ -1561,10 +1289,6 @@ static int nearest_resolution_index(struct v4l2_subdev *sd, int w, int h)
 						tmp_res->fps_options);
 			if (fps_diff < min_fps_diff) {
 				min_fps_diff = fps_diff;
-				idx = i;
-			}
-			if (tmp_res->width < min_res_w) {
-				min_res_w = tmp_res->width;
 				idx = i;
 			}
 		}
@@ -1658,15 +1382,6 @@ static int ov8858_s_mbus_fmt(struct v4l2_subdev *sd,
 		dev->regs = res->regs;
 
 	ret = ov8858_write_reg_array(client, dev->regs);
-	/* W/A: For MRD, the valid BLC lines are different than in HR
-	 * making the image look green. */
-	if (strcmp(dmi_get_system_info(DMI_BOARD_NAME), CHT_HR_DEV_NAME) != 0) {
-		if (res->bin_factor_x || res->bin_factor_y)
-			ret = ov8858_write_reg(client, OV8858_8BIT,
-				OV8858_ANCHOR_RIGHT_START, 0x07);
-		else
-			ret = ov8858_write_reg_array(client, ov8858_BLC_MRD);
-	}
 	if (ret)
 		goto out;
 
@@ -1720,27 +1435,21 @@ static int ov8858_detect(struct i2c_client *client, u16 *id)
 	/* i2c check */
 	if (!i2c_check_functionality(adapter, I2C_FUNC_I2C))
 		return -ENODEV;
-#ifdef DEBUG
+
 	dev_dbg(&client->dev, "%s: I2C functionality ok\n", __func__);
-#endif
 	ret = ov8858_read_reg(client, OV8858_8BIT, OV8858_CHIP_ID_HIGH, &id_hi);
 	if (ret)
 		return ret;
-#ifdef DEBUG
 	dev_dbg(&client->dev, "%s: id_high = 0x%04x\n", __func__, id_hi);
-#endif
 	ret = ov8858_read_reg(client, OV8858_8BIT, OV8858_CHIP_ID_LOW, &id_low);
 	if (ret)
 		return ret;
-#ifdef DEBUG
 	dev_dbg(&client->dev, "%s: id_low = 0x%04x\n", __func__, id_low);
-#endif
 	*id = (id_hi << 8) | id_low;
-#ifdef DEBUG
+
 	dev_dbg(&client->dev, "%s: chip_id = 0x%04x\n", __func__, *id);
 
 	dev_info(&client->dev, "%s: chip_id = 0x%04x\n", __func__, *id);
-#endif
 	if (*id != OV8858_CHIP_ID)
 		return -ENODEV;
 
@@ -1897,22 +1606,11 @@ static int __update_ov8858_device_settings(struct ov8858_device *dev,
 					   u16 sensor_id)
 {
 	if (sensor_id == OV8858_CHIP_ID)
-#ifdef CONFIG_EXTERNAL_BTNS_CAMERA
-		dev->vcm_driver = &ov8858_vcms[OV8858_ID_DEFAULT];
-#else
-	/* CHT HR requires the vcm dw9718 and CHT MRD uses the vcm dw9714 */
-	if (strcmp(dmi_get_system_info(DMI_BOARD_NAME), CHT_HR_DEV_NAME) == 0)
 		dev->vcm_driver = &ov8858_vcms[OV8858_SUNNY];
-	else
-		dev->vcm_driver = &ov8858_vcms[OV8858_MRD];
-#endif
 	else
 		return -ENODEV;
 
-	if (dev->vcm_driver && dev->vcm_driver->init)
-		return dev->vcm_driver->init(&dev->sd);
-
-	return 0;
+	return dev->vcm_driver->init(&dev->sd);
 }
 
 static int ov8858_s_config(struct v4l2_subdev *sd,
@@ -1959,30 +1657,24 @@ static int ov8858_s_config(struct v4l2_subdev *sd,
 
 	dev->sensor_id = sensor_id;
 
-	/* power off sensor */
-	ret = __ov8858_s_power(sd, 0);
-	if (ret) {
-		dev->platform_data->csi_cfg(sd, 0);
-		dev_err(&client->dev, "__ov8858_s_power-down error %d!\n", ret);
-		goto fail_update;
-	}
-
 	/* Resolution settings depend on sensor type and platform */
 	ret = __update_ov8858_device_settings(dev, dev->sensor_id);
-	if (ret) {
-		dev->platform_data->csi_cfg(sd, 0);
-		dev_err(&client->dev, "__update_ov8858_device_settings error %d!\n", ret);
-		goto fail_update;
-	}
+	if (ret)
+		goto fail_detect;
+
+	/* power off sensor */
+	ret = __ov8858_s_power(sd, 0);
 
 	mutex_unlock(&dev->input_lock);
+	if (ret)
+		dev_err(&client->dev, "power-down error %d!\n", ret);
+
 	return ret;
 
 fail_detect:
 	dev->platform_data->csi_cfg(sd, 0);
 fail_csi_cfg:
 	__ov8858_s_power(sd, 0);
-fail_update:
 	if (dev->platform_data->platform_deinit)
 		dev->platform_data->platform_deinit();
 	mutex_unlock(&dev->input_lock);
@@ -2068,6 +1760,7 @@ static int ov8858_s_ctrl(struct v4l2_ctrl *ctrl)
 	 * doesn't need to be taken here.
 	 */
 
+	/* We only handle V4L2_CID_RUN_MODE for now. */
 	switch (ctrl->id) {
 	case V4L2_CID_RUN_MODE:
 		switch (ctrl->val) {
@@ -2089,6 +1782,12 @@ static int ov8858_s_ctrl(struct v4l2_ctrl *ctrl)
 		dev->fps_index = 0;
 
 		return 0;
+	case V4L2_CID_TEST_PATTERN:
+		dev_dbg(&client->dev,
+			"%s: V4L2_CID_TEST_PATTERN = %d, val = 0x%04X\n",
+			__func__, V4L2_CID_TEST_PATTERN, ctrl->val);
+		return ov8858_write_reg(client, OV8858_16BIT,
+					OV8858_TEST_PATTERN_REG, ctrl->val);
 	case V4L2_CID_FOCUS_ABSOLUTE:
 		if (dev->vcm_driver && dev->vcm_driver->t_focus_abs)
 			return dev->vcm_driver->t_focus_abs(&dev->sd,
@@ -2156,14 +1855,6 @@ static int ov8858_g_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_VFLIP:
 		ctrl->val = dev->vflip;
 		break;
-	case V4L2_CID_EXPOSURE_ABSOLUTE:
-		ctrl->val = dev->exposure;
-		break;
-#ifdef CONFIG_EXTERNAL_BTNS_CAMERA
-	case V4L2_CID_LINK_FREQ:
-		ctrl->val = 360000000;
-		break;
-#endif
 	default:
 		dev_warn(&client->dev,
 			 "%s: Error: Invalid ctrl: 0x%X\n", __func__, ctrl->id);
@@ -2392,7 +2083,14 @@ static const struct v4l2_ctrl_config ctrls[] = {
 		.min = 0x0,
 		.step = 1,
 		.def = 0x00,
-		.flags = V4L2_CTRL_FLAG_READ_ONLY | V4L2_CTRL_FLAG_VOLATILE,
+		.flags = 0,
+	}, {
+		.ops = &ctrl_ops,
+		.id = V4L2_CID_TEST_PATTERN,
+		.name = "Test pattern",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.step = 1,
+		.max = 0xffff,
 	}, {
 		.ops = &ctrl_ops,
 		.id = V4L2_CID_FOCUS_ABSOLUTE,
@@ -2484,20 +2182,7 @@ static const struct v4l2_ctrl_config ctrls[] = {
 		.min = V4L2_EXPOSURE_AUTO,
 		.max = V4L2_EXPOSURE_APERTURE_PRIORITY,
 		.step = 1,
-	},
-#ifdef CONFIG_EXTERNAL_BTNS_CAMERA
-	{
-		.ops = &ctrl_ops,
-		.id = V4L2_CID_LINK_FREQ,
-		.name = "Link Frequency",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.min = 1,
-		.max = 1500000000,
-		.step = 1,
-		.def = 360000000,
-		.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
-	},
-#endif
+	}
 };
 
 static int ov8858_probe(struct i2c_client *client,

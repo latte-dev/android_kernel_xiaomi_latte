@@ -43,7 +43,6 @@
 #include "imx132.h"
 #include "imx208.h"
 #include "imx219.h"
-#include "imx227.h"
 
 #define IMX_MCLK		192
 
@@ -52,13 +51,11 @@
 #define V4L2_IDENT_IMX	8245
 #endif
 
-#define IMX_MAX_AE_LUT_LENGTH	5
 /*
  * imx System control registers
  */
 #define IMX_MASK_5BIT	0x1F
 #define IMX_MASK_4BIT	0xF
-#define IMX_MASK_3BIT	0x7
 #define IMX_MASK_2BIT	0x3
 #define IMX_MASK_8BIT	0xFF
 #define IMX_MASK_11BIT	0x7FF
@@ -66,16 +63,10 @@
 
 #define IMX_FINE_INTG_TIME		0x1E8
 
-#define IMX_VT_PIX_CLK_DIV		0x0301
-#define IMX_VT_SYS_CLK_DIV		0x0303
-#define IMX_PRE_PLL_CLK_DIV		0x0305
-#define IMX227_IOP_PRE_PLL_CLK_DIV	0x030D
-#define IMX227_PLL_MULTIPLIER		0x0306
-#define IMX227_IOP_PLL_MULTIPLIER	0x030E
-#define IMX227_PLL_MULTI_DRIVE		0x0310
-#define IMX227_OP_PIX_CLK_DIV		0x0309
-#define IMX227_OP_SYS_CLK_DIV		0x030B
-#define IMX_PLL_MULTIPLIER		0x030C
+#define IMX_VT_PIX_CLK_DIV			0x0301
+#define IMX_VT_SYS_CLK_DIV			0x0303
+#define IMX_PRE_PLL_CLK_DIV			0x0305
+#define IMX_PLL_MULTIPLIER			0x030C
 #define IMX_OP_PIX_DIV			0x0309
 #define IMX_OP_SYS_DIV			0x030B
 #define IMX_FRAME_LENGTH_LINES		0x0340
@@ -83,11 +74,9 @@
 #define IMX_COARSE_INTG_TIME_MIN	0x1004
 #define IMX_COARSE_INTG_TIME_MAX	0x1006
 #define IMX_BINNING_ENABLE		0x0390
-#define IMX227_BINNING_ENABLE		0x0900
 #define IMX_BINNING_TYPE		0x0391
-#define IMX227_BINNING_TYPE		0x0901
-#define IMX_READ_MODE			0x0390
-#define IMX227_READ_MODE		0x0900
+
+#define IMX_READ_MODE				0x0390
 
 #define IMX_HORIZONTAL_START_H 0x0344
 #define IMX_VERTICAL_START_H 0x0346
@@ -115,7 +104,6 @@
 #define IMX_SHORT_AGC_GAIN		0x0233
 #define IMX_DGC_ADJ		0x020E
 #define IMX_DGC_LEN		10
-#define IMX227_DGC_LEN		4
 #define IMX_MAX_EXPOSURE_SUPPORTED 0xfffb
 #define IMX_MAX_GLOBAL_GAIN_SUPPORTED 0x00ff
 #define IMX_MAX_DIGITAL_GAIN_SUPPORTED 0x0fff
@@ -133,14 +121,12 @@
 #define IMX_NAME_132	"imx132"
 #define IMX_NAME_208	"imx208"
 #define IMX_NAME_219	"imx219"
-#define IMX_NAME_227	"imx227"
 #define IMX175_ID	0x0175
 #define IMX135_ID	0x0135
 #define IMX134_ID	0x0134
 #define IMX132_ID	0x0132
 #define IMX208_ID	0x0208
 #define IMX219_ID	0x0219
-#define IMX227_ID	0x0227
 
 /* Sensor id based on i2c_device_id table
  * (Fuji module can not be detected based on sensor registers) */
@@ -156,7 +142,6 @@
 #define IMX134_VALLEYVIEW 0x134
 #define IMX208_MOFD_PD2 0x208
 #define IMX219_MFV0_PRH 0x219
-#define IMX227_SAND 0x227
 
 /* otp - specific settings */
 #define E2PROM_ADDR 0xa0
@@ -165,13 +150,11 @@
 #define DEFAULT_OTP_SIZE 1280
 #define IMX135_OTP_SIZE 1280
 #define IMX219_OTP_SIZE 2048
-#define IMX227_OTP_SIZE 2560
 #define E2PROM_LITEON_12P1BA869D_SIZE 544
 
 #define IMX_ID_DEFAULT	0x0000
 #define IMX132_175_208_219_CHIP_ID	0x0000
 #define IMX134_135_CHIP_ID	0x0016
-#define IMX134_135_227_CHIP_ID	0x0016
 
 #define IMX175_RES_WIDTH_MAX	3280
 #define IMX175_RES_HEIGHT_MAX	2464
@@ -185,8 +168,6 @@
 #define IMX208_RES_HEIGHT_MAX	1096
 #define IMX219_RES_WIDTH_MAX	3280
 #define IMX219_RES_HEIGHT_MAX	2464
-#define IMX227_RES_WIDTH_MAX	2400
-#define IMX227_RES_HEIGHT_MAX	2720
 
 /* Defines for lens/VCM */
 #define IMX_FOCAL_LENGTH_NUM	369	/*3.69mm*/
@@ -274,10 +255,6 @@ struct max_res imx_max_res[] = {
 		.res_max_width = IMX219_RES_WIDTH_MAX,
 		.res_max_height = IMX219_RES_HEIGHT_MAX,
 	},
-	[IMX227_ID] = {
-		.res_max_width = IMX227_RES_WIDTH_MAX,
-		.res_max_height = IMX227_RES_HEIGHT_MAX,
-	},
 };
 
 struct imx_settings {
@@ -362,15 +339,6 @@ struct imx_settings imx_sets[] = {
 		.n_res_preview = ARRAY_SIZE(imx219_res_preview),
 		.n_res_still = ARRAY_SIZE(imx219_res_still),
 		.n_res_video = ARRAY_SIZE(imx219_res_video),
-	},
-	[IMX227_SAND] = {
-		.init_settings = imx227_init_settings,
-		.res_preview = imx227_res_preview,
-		.res_still = imx227_res_still,
-		.res_video = imx227_res_video,
-		.n_res_preview = ARRAY_SIZE(imx227_res_preview),
-		.n_res_still = ARRAY_SIZE(imx227_res_still),
-		.n_res_video = ARRAY_SIZE(imx227_res_video),
 	},
 };
 
@@ -694,8 +662,8 @@ struct imx_vcm imx_vcms[] = {
 		.t_vcm_timing = dw9718_t_vcm_timing,
 	},
 	[IMX_ID_DEFAULT] = {
-		.power_up = NULL,
-		.power_down = NULL,
+		.power_up = vcm_power_up,
+		.power_down = vcm_power_down,
 		.t_focus_abs_init = NULL,
 	},
 };
@@ -707,10 +675,6 @@ extern void *imx_otp_read(struct v4l2_subdev *sd, u8 dev_addr,
 extern void *e2prom_otp_read(struct v4l2_subdev *sd, u8 dev_addr,
 	u32 start_addr, u32 size);
 extern void *brcc064_otp_read(struct v4l2_subdev *sd, u8 dev_addr,
-	u32 start_addr, u32 size);
-extern void *imx227_otp_read(struct v4l2_subdev *sd, u8 dev_addr,
-	u32 start_addr, u32 size);
-extern void *e2prom_otp_read(struct v4l2_subdev *sd, u8 dev_addr,
 	u32 start_addr, u32 size);
 struct imx_otp imx_otps[] = {
 	[IMX175_MERRFLD] = {
@@ -754,10 +718,6 @@ struct imx_otp imx_otps[] = {
 		.dev_addr = E2PROM_ADDR,
 		.start_addr = 0,
 		.size = IMX219_OTP_SIZE,
-	},
-	[IMX227_SAND] = {
-		.otp_read = imx227_otp_read,
-		.size = IMX227_OTP_SIZE,
 	},
 	[IMX_ID_DEFAULT] = {
 		.otp_read = dummy_otp_read,

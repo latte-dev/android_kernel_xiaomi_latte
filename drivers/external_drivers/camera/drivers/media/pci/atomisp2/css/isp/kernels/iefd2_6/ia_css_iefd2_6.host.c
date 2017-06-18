@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #ifndef IA_CSS_NO_DEBUG
 #include "ia_css_debug.h"
@@ -188,64 +188,13 @@ ia_css_init_iefd2_6_state(
 }
 
 #ifndef IA_CSS_NO_DEBUG
+/* TODO: AM: This needs a proper implementation. */
 void
 ia_css_iefd2_6_debug_dtrace(
 	const struct ia_css_iefd2_6_config *config,
 	unsigned level)
 {
-	ia_css_debug_dtrace(level,
-		"horver_diag_coeff=%d, ed_horver_diag_coeff=%d, dir_smooth_enable=%d, dir_metric_update=%d, \n"
-		"\t\tunsharp_c00=%d, unsharp_c01=%d, unsharp_c02=%d, unsharp_c11=%d, unsharp_c12=%d, unsharp_c22=%d, \n"
-		"\t\tunsharp_weight=%d, unsharp_amount=%d, \n"
-		"\t\tcu_dir_sharp_pow=%d, cu_dir_sharp_pow_bright=%d, cu_non_dir_sharp_pow=%d, cu_non_dir_sharp_pow_bright=%d, dir_far_sharp_weight=%d, \n"
-		"\t\trad_cu_dir_sharp_x1=%d, rad_cu_non_dir_sharp_x1=%d, rad_dir_far_sharp_weight=%d, \n"
-		"\t\tsharp_nega_lmt_txt=%d, sharp_posi_lmt_txt=%d, sharp_nega_lmt_dir=%d, sharp_posi_lmt_dir=%d, \n"
-		"\t\tclamp_stitch=%d, rad_enable=%d, rad_x_origin=%d, rad_y_origin=%, rad_nf=%d, rad_inv_r2=%d, \n"
-		"\t\tvssnlm_enable=%d, vssnlm_x0=%d, vssnlm_x1=%d, vssnlm_x2=%d, vssnlm_y1=%d, vssnlm_y2=%d, vssnlm_y3=%d, \n"
-		"\t\tcu_ed_points_x ={%d, %d, %d, %d, %d, %d}, \n"
-		"\t\tcu_ed_slopes_a ={%d, %d, %d, %d, %d}, \n"
-		"\t\tcu_ed_slopes_b ={%d, %d, %d, %d, %d}, \n"
-		"\t\tcu_ed2_points_x={%d, %d}, \n"
-		"\t\tcu_ed2_slopes_a=%d, cu_ed2_slopes_b=%d, \n"
-		"\t\tcu_dir_sharp_points_x    ={%d, %d, %d, %d}, \n"
-		"\t\tcu_dir_sharp_slopes_a    ={%d, %d, %d}, \n"
-		"\t\tcu_dir_sharp_slopes_b    ={%d, %d, %d}, \n"
-		"\t\tcu_non_dir_sharp_points_x={%d, %d, %d, %d}, \n"
-		"\t\tcu_non_dir_sharp_slopes_a={%d, %d, %d}, \n"
-		"\t\tcu_non_dir_sharp_slopes_a={%d, %d, %d}, \n"
-		"\t\tcu_radial_points_x       ={%d, %d, %d, %d, %d, %d}, \n"
-		"\t\tcu_radial_slopes_a       ={%d, %d, %d, %d, %d}, \n"
-		"\t\tcu_radial_slopes_b       ={%d, %d, %d, %d, %d}, \n"
-		"\t\tcu_vssnlm_points_x       ={%d, %d}, \n"
-		"\t\tcu_vssnlm_slopes_a=%d, cu_vssnlm_slopes_b=%d\n",
-		config->horver_diag_coeff, config->ed_horver_diag_coeff,
-		config->dir_smooth_enable, config->dir_metric_update,
-		config->unsharp_c00, config->unsharp_c01, config->unsharp_c02,
-		config->unsharp_c11, config->unsharp_c12, config->unsharp_c22,
-		config->unsharp_weight, config->unsharp_amount,
-		config->cu_dir_sharp_pow, config->cu_dir_sharp_pow_bright, config->cu_non_dir_sharp_pow,
-		config->cu_non_dir_sharp_pow_bright, config->dir_far_sharp_weight,
-		config->rad_cu_dir_sharp_x1, config->rad_cu_non_dir_sharp_x1, config->rad_dir_far_sharp_weight,
-		config->sharp_nega_lmt_txt, config->sharp_posi_lmt_txt,
-		config->sharp_nega_lmt_dir, config->sharp_posi_lmt_dir,
-		config->clamp_stitch, config->rad_enable,
-		config->rad_x_origin, config->rad_y_origin, config->rad_nf, config->rad_inv_r2,
-		config->vssnlm_enable, config->vssnlm_x0, config->vssnlm_x1, config->vssnlm_x2, config->vssnlm_y1, config->vssnlm_y2, config->vssnlm_y3,
-		config->cu_ed_points_x[0], config->cu_ed_points_x[1], config->cu_ed_points_x[2], config->cu_ed_points_x[3], config->cu_ed_points_x[4], config->cu_ed_points_x[5],
-		config->cu_ed_slopes_a[0], config->cu_ed_slopes_a[1], config->cu_ed_slopes_a[2], config->cu_ed_slopes_a[3], config->cu_ed_slopes_a[4],
-		config->cu_ed_slopes_b[0], config->cu_ed_slopes_b[1], config->cu_ed_slopes_b[2], config->cu_ed_slopes_b[3], config->cu_ed_slopes_b[4],
-		config->cu_ed2_points_x[0], config->cu_ed2_points_x[1],
-		config->cu_ed2_slopes_a, config->cu_ed2_slopes_b,
-		config->cu_dir_sharp_points_x[0], config->cu_dir_sharp_points_x[1], config->cu_dir_sharp_points_x[2], config->cu_dir_sharp_points_x[3],
-		config->cu_dir_sharp_slopes_a[0], config->cu_dir_sharp_slopes_a[1], config->cu_dir_sharp_slopes_a[2],
-		config->cu_dir_sharp_slopes_b[0], config->cu_dir_sharp_slopes_b[1], config->cu_dir_sharp_slopes_b[2],
-		config->cu_non_dir_sharp_points_x[0], config->cu_non_dir_sharp_points_x[1], config->cu_non_dir_sharp_points_x[2], config->cu_non_dir_sharp_points_x[3],
-		config->cu_non_dir_sharp_slopes_a[0], config->cu_non_dir_sharp_slopes_a[1], config->cu_non_dir_sharp_slopes_a[2],
-		config->cu_non_dir_sharp_slopes_b[0], config->cu_non_dir_sharp_slopes_b[1], config->cu_non_dir_sharp_slopes_b[2],
-		config->cu_radial_points_x[0], config->cu_radial_points_x[1], config->cu_radial_points_x[2], config->cu_radial_points_x[3], config->cu_radial_points_x[4], config->cu_radial_points_x[5],
-		config->cu_radial_slopes_a[0], config->cu_radial_slopes_a[1], config->cu_radial_slopes_a[2], config->cu_radial_slopes_a[3], config->cu_radial_slopes_a[4],
-		config->cu_radial_slopes_b[0], config->cu_radial_slopes_b[1], config->cu_radial_slopes_b[2], config->cu_radial_slopes_b[3], config->cu_radial_slopes_b[4],
-		config->cu_vssnlm_points_x[0], config->cu_vssnlm_points_x[1],
-		config->cu_vssnlm_slopes_a, config->cu_vssnlm_slopes_b);
+	(void)config;
+	(void)level;
 }
 #endif

@@ -82,7 +82,6 @@
 #define OV2685_REG_EXPOSURE_1	0x3501
 #define OV2685_REG_EXPOSURE_2	0x3502
 #define OV2685_REG_EXPOSURE_AUTO	0x3503
-#define OV2685_REG_CIP_CTRL_0A	0x530a
 #define OV2685_AEC_CTRL0	0x3a00
 #define OV2685_AEC_CTRL2	0x3a02
 #define OV2685_REG_WPT		0x3a03
@@ -119,11 +118,6 @@
 #define MIN_HTS			8
 #define MIN_SHUTTER		0
 #define MIN_GAIN		0
-
-#define AE_UNLOCK	0
-#define AE_LOCK		1
-#define HOT_PIXEL_OFF	0
-#define HOT_PIXEL_ON	1
 
 /* OV2685_DEVICE_ID */
 #define OV2685_MOD_ID		0x2685
@@ -370,12 +364,12 @@ static struct ov2685_reg const ov2685_AWB_sunny[] = {
 static struct ov2685_reg const ov2685_AWB_incandescent[] = {
 	{OV2685_8BIT, 0x3208 , 0x00},
 	{OV2685_8BIT, 0x5180 , 0xf6},
-	{OV2685_8BIT, 0x5195 , 0x04},
-	{OV2685_8BIT, 0x5196 , 0x90},
+	{OV2685_8BIT, 0x5195 , 0x06},
+	{OV2685_8BIT, 0x5196 , 0xb8},
 	{OV2685_8BIT, 0x5197 , 0x04},
 	{OV2685_8BIT, 0x5198 , 0x00},
-	{OV2685_8BIT, 0x5199 , 0x09},
-	{OV2685_8BIT, 0x519a , 0x20},
+	{OV2685_8BIT, 0x5199 , 0x06},
+	{OV2685_8BIT, 0x519a , 0x5f},
 	{OV2685_8BIT, 0x3208 , 0x10},
 	{OV2685_8BIT, 0x3208 , 0xa0},
 	{OV2685_TOK_TERM, 0, 0}
@@ -384,12 +378,12 @@ static struct ov2685_reg const ov2685_AWB_incandescent[] = {
 static struct ov2685_reg const ov2685_AWB_fluorescent[] = {
 	{OV2685_8BIT, 0x3208 , 0x00},
 	{OV2685_8BIT, 0x5180 , 0xf6},
-	{OV2685_8BIT, 0x5195 , 0x06},
-	{OV2685_8BIT, 0x5196 , 0xb8},
+	{OV2685_8BIT, 0x5195 , 0x04},
+	{OV2685_8BIT, 0x5196 , 0x90},
 	{OV2685_8BIT, 0x5197 , 0x04},
 	{OV2685_8BIT, 0x5198 , 0x00},
-	{OV2685_8BIT, 0x5199 , 0x06},
-	{OV2685_8BIT, 0x519a , 0x5f},
+	{OV2685_8BIT, 0x5199 , 0x09},
+	{OV2685_8BIT, 0x519a , 0x20},
 	{OV2685_8BIT, 0x3208 , 0x10},
 	{OV2685_8BIT, 0x3208 , 0xa0},
 	{OV2685_TOK_TERM, 0, 0}
@@ -462,9 +456,13 @@ static struct ov2685_reg const ov2685_blue_effect[] = {
 
 static struct ov2685_reg const ov2685_green_effect[] = {
 	{OV2685_8BIT, 0x3208 , 0x00},
-	{OV2685_8BIT, 0x5600 , 0x1c},
-	{OV2685_8BIT, 0x5603 , 0x60},
-	{OV2685_8BIT, 0x5604 , 0x60},
+	{OV2685_8BIT, 0x5180 , 0xf6},
+	{OV2685_8BIT, 0x5195 , 0x04},
+	{OV2685_8BIT, 0x5196 , 0x90},
+	{OV2685_8BIT, 0x5197 , 0x04},
+	{OV2685_8BIT, 0x5198 , 0x00},
+	{OV2685_8BIT, 0x5199 , 0x09},
+	{OV2685_8BIT, 0x519a , 0x20},
 	{OV2685_8BIT, 0x3208 , 0x10},
 	{OV2685_8BIT, 0x3208 , 0xa0},
 	{OV2685_TOK_TERM, 0, 0}
@@ -536,11 +534,7 @@ static struct ov2685_reg const ov2685_2M_init[] = {
 	{OV2685_8BIT, 0x3819 , 0x04},
 	{OV2685_8BIT, 0x3820 , 0xc0},
 	{OV2685_8BIT, 0x3821 , 0x00},
-	{OV2685_8BIT, 0x382a , 0x08},
 	/* AIQ settings */
-	{OV2685_8BIT, 0x3a02 , 0x90},
-	{OV2685_8BIT, 0x3a03 , 0x4e},
-	{OV2685_8BIT, 0x3a04 , 0x40},
 	{OV2685_8BIT, 0x3a06 , 0x01},
 	{OV2685_8BIT, 0x3a07 , 0x84},
 	{OV2685_8BIT, 0x3a08 , 0x01},
@@ -792,11 +786,7 @@ static struct ov2685_reg const ov2685_1M3_init[] = {
 	{OV2685_8BIT, 0x3819 , 0x04},/* bin off */
 	{OV2685_8BIT, 0x3820 , 0xc0},
 	{OV2685_8BIT, 0x3821 , 0x00},
-	{OV2685_8BIT, 0x382a , 0x08},
 	/* AIQ settings */
-	{OV2685_8BIT, 0x3a02 , 0x90},
-	{OV2685_8BIT, 0x3a03 , 0x4e},
-	{OV2685_8BIT, 0x3a04 , 0x40},
 	{OV2685_8BIT, 0x3a06 , 0x01},
 	{OV2685_8BIT, 0x3a07 , 0x84},
 	{OV2685_8BIT, 0x3a08 , 0x01},
@@ -1047,11 +1037,7 @@ static struct ov2685_reg const ov2685_1408_1152_init[] = {
 	{OV2685_8BIT, 0x3815 , 0x11},
 	{OV2685_8BIT, 0x3819 , 0x04},
 	{OV2685_8BIT, 0x3820 , 0xc0},
-	{OV2685_8BIT, 0x382a , 0x08},
 	/* AIQ settings */
-	{OV2685_8BIT, 0x3a02 , 0x90},
-	{OV2685_8BIT, 0x3a03 , 0x4e},
-	{OV2685_8BIT, 0x3a04 , 0x40},
 	{OV2685_8BIT, 0x3821 , 0x00},
 	{OV2685_8BIT, 0x3a06 , 0x01},
 	{OV2685_8BIT, 0x3a07 , 0x84},
@@ -1307,11 +1293,7 @@ static struct ov2685_reg const ov2685_1468_1200_init[] = {
 	{OV2685_8BIT, 0x3819 , 0x04},
 	{OV2685_8BIT, 0x3820 , 0xc0},
 	{OV2685_8BIT, 0x3821 , 0x00},
-	{OV2685_8BIT, 0x382a , 0x08},
 	/* AIQ settings */
-	{OV2685_8BIT, 0x3a02 , 0x90},
-	{OV2685_8BIT, 0x3a03 , 0x4e},
-	{OV2685_8BIT, 0x3a04 , 0x40},
 	{OV2685_8BIT, 0x3a06 , 0x01},
 	{OV2685_8BIT, 0x3a07 , 0x84},
 	{OV2685_8BIT, 0x3a08 , 0x01},
@@ -1566,11 +1548,7 @@ static struct ov2685_reg const ov2685_732_600_init[] = {
 	{OV2685_8BIT, 0x3819 , 0x04},
 	{OV2685_8BIT, 0x3820 , 0xc2},
 	{OV2685_8BIT, 0x3821 , 0x01},
-	{OV2685_8BIT, 0x382a , 0x08},
 	/* AIQ settings */
-	{OV2685_8BIT, 0x3a02 , 0x90},
-	{OV2685_8BIT, 0x3a03 , 0x4e},
-	{OV2685_8BIT, 0x3a04 , 0x40},
 	{OV2685_8BIT, 0x3a06 , 0x01},
 	{OV2685_8BIT, 0x3a07 , 0x84},
 	{OV2685_8BIT, 0x3a08 , 0x01},
@@ -1822,11 +1800,7 @@ static struct ov2685_reg const ov2685_720p_init[] = {
 	{OV2685_8BIT, 0x3819 , 0x04},
 	{OV2685_8BIT, 0x3820 , 0xc0},
 	{OV2685_8BIT, 0x3821 , 0x00},
-	{OV2685_8BIT, 0x382a , 0x08},
 	/* AIQ settings */
-	{OV2685_8BIT, 0x3a02 , 0x90},
-	{OV2685_8BIT, 0x3a03 , 0x4e},
-	{OV2685_8BIT, 0x3a04 , 0x40},
 	{OV2685_8BIT, 0x3a06 , 0x00},
 	{OV2685_8BIT, 0x3a07 , 0xe4},
 	{OV2685_8BIT, 0x3a08 , 0x00},
@@ -2078,11 +2052,7 @@ static struct ov2685_reg const ov2685_svga_init[] = {
 	{OV2685_8BIT, 0x3819 , 0x04},
 	{OV2685_8BIT, 0x3820 , 0xc2},
 	{OV2685_8BIT, 0x3821 , 0x01},
-	{OV2685_8BIT, 0x382a , 0x08},
 	/* AIQ settings */
-	{OV2685_8BIT, 0x3a02 , 0x90},
-	{OV2685_8BIT, 0x3a03 , 0x4e},
-	{OV2685_8BIT, 0x3a04 , 0x40},
 	{OV2685_8BIT, 0x3a06 , 0x01},
 	{OV2685_8BIT, 0x3a07 , 0x84},
 	{OV2685_8BIT, 0x3a08 , 0x01},

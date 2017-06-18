@@ -780,10 +780,10 @@ void *lm3642_platform_data_func(struct i2c_client *client)
 
 	if (ACPI_COMPANION(&client->dev)) {
 		lm3642_dev = gmin_camera_platform_data(sd, 0, 0);
+		platform_data.power_ctrl = lm3642_dev->v1p8_ctrl;
+	}
 
-		if (lm3642_dev)
-			platform_data.power_ctrl = lm3642_dev->v1p8_ctrl;
-
+	if (ACPI_COMPANION(&client->dev)) {
 		platform_data.gpio_strobe =
 			desc_to_gpio(gpiod_get_index(&(client->dev),
 							"lm3642_gpio0", 0));

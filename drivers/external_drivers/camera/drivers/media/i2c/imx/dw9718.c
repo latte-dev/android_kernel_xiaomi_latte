@@ -86,7 +86,7 @@ int dw9718_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 
 	value = clamp(value, 0, DW9718_MAX_FOCUS_POS);
 	ret = dw9718_i2c_wr16(client, DW9718_DATA_M, value);
-	/*pr_info("%s: value = %d\n", __func__, value);*/
+	pr_info("%s: value = %d\n", __func__, value);
 	if (ret < 0)
 		return ret;
 
@@ -101,25 +101,21 @@ int dw9718_vcm_power_up(struct v4l2_subdev *sd)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 	u8 value;
-
-	if (dw9718_dev.power_on)
-		return 0;
+	int i;
+	int step = DW9718_CLICK_REDUCTION_STEP;
 
 	/* Enable power */
 	ret = dw9718_dev.platform_data->power_ctrl(sd, 1);
-	if (ret) {
-		dev_err(&client->dev, "DW9718_PD power_ctrl failed %d\n", ret);
+	if (ret)
 		return ret;
-	}
-	/* Wait for VBAT to stabilize */
-	udelay(100);
+	/* Wait t_OPR for VBAT to stabilize */
+	usleep_range(100, 110);
 
 	/* Detect device */
 	ret = dw9718_i2c_rd8(client, DW9718_SACT, &value);
-	if (ret < 0) {
-		dev_err(&client->dev, "read DW9718_SACT failed %d\n", ret);
+	if (ret < 0)
 		goto fail_powerdown;
-	}
+
 	/*
 	 * WORKAROUND: for module P8V12F-203 which are used on
 	 * Cherrytrail Refresh Davis Reef AoB, register SACT is not
@@ -137,23 +133,34 @@ int dw9718_vcm_power_up(struct v4l2_subdev *sd)
 			     DW9718_CONTROL_S_SAC4 |
 			     DW9718_CONTROL_OCP_DISABLE |
 			     DW9718_CONTROL_UVLO_DISABLE);
-	if (ret < 0) {
-		dev_err(&client->dev, "write DW9718_CONTROL  failed %d\n", ret);
+	if (ret < 0)
 		goto fail_powerdown;
-	}
 	ret = dw9718_i2c_wr8(client, DW9718_SACT,
 			     DW9718_SACT_MULT_TWO |
 			     DW9718_SACT_PERIOD_8_8MS);
-	if (ret < 0) {
-		dev_err(&client->dev, "write DW9718_SACT  failed %d\n", ret);
+	if (ret < 0)
 		goto fail_powerdown;
+
+	/* Wait t_MODE after changing from switching to linear mode */
+	usleep_range(85, 95);
+
+	/* Minimize the click sounds from the lens during power up */
+	i = DW9718_LENS_MOVE_POSITION;
+	while (i <= dw9718_dev.focus) {
+		ret = dw9718_i2c_wr16(client, DW9718_DATA_M, i);
+		if (ret) {
+			dev_err(&client->dev, "%s: write failed\n", __func__);
+			break;
+		}
+		msleep(DW9718_CLICK_REDUCTION_SLEEP);
+		i += step;
 	}
 
 	ret = dw9718_t_focus_abs(sd, dw9718_dev.focus);
 	if (ret)
 		return ret;
+
 	dw9718_dev.initialized = true;
-	dw9718_dev.power_on = 1;
 
 	return 0;
 
@@ -167,19 +174,22 @@ int dw9718_vcm_power_down(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
+	int i;
+	int step = DW9718_CLICK_REDUCTION_STEP;
 
-	if (!dw9718_dev.power_on)
-		return 0;
-
-	ret =  dw9718_dev.platform_data->power_ctrl(sd, 0);
-	if (ret) {
-		dev_err(&client->dev, "%s power_ctrl failed\n",
-				__func__);
-		return ret;
+	/* Minimize the click sounds from the lens during power down */
+	i = min(dw9718_dev.focus, DW9718_DEFAULT_FOCUS_POSITION) - step;
+	while (i >= DW9718_LENS_MOVE_POSITION) {
+		ret = dw9718_i2c_wr16(client, DW9718_DATA_M, i);
+		if (ret) {
+			dev_err(&client->dev, "%s: write failed\n", __func__);
+			break;
+		}
+		msleep(DW9718_CLICK_REDUCTION_SLEEP);
+		i -= step;
 	}
-	dw9718_dev.power_on = 0;
 
-	return 0;
+	return dw9718_dev.platform_data->power_ctrl(sd, 0);
 }
 
 int dw9718_q_focus_status(struct v4l2_subdev *sd, s32 *value)
@@ -233,6 +243,5 @@ int dw9718_vcm_init(struct v4l2_subdev *sd)
 {
 	dw9718_dev.platform_data = camera_get_af_platform_data();
 	dw9718_dev.focus = DW9718_DEFAULT_FOCUS_POSITION;
-	dw9718_dev.power_on = 0;
 	return (NULL == dw9718_dev.platform_data) ? -ENODEV : 0;
 }

@@ -1,23 +1,21 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #ifndef __IA_CSS_XNR3_PARAM_H
 #define __IA_CSS_XNR3_PARAM_H
 
 #include "type_support.h"
-#include "vmem.h" /* needed for VMEM_ARRAY */
-
 
 /* Scaling factor of the alpha values: which fixed-point value represents 1.0?
  * It must be chosen such that 1/min_sigma still fits in an ISP vector
@@ -75,18 +73,5 @@ struct sh_css_isp_xnr3_params {
 	struct sh_css_xnr3_coring_params   coring;
 	struct sh_css_xnr3_blending_params blending;
 };
-
-/*
- * STRUCT sh_css_isp_xnr3_vmem_params
- * -----------------------------------------------
- * ISP VMEM parameters
- */
-struct sh_css_isp_xnr3_vmem_params {
-	VMEM_ARRAY(x, ISP_VEC_NELEMS);
-	VMEM_ARRAY(a, ISP_VEC_NELEMS);
-	VMEM_ARRAY(b, ISP_VEC_NELEMS);
-	VMEM_ARRAY(c, ISP_VEC_NELEMS);
-};
-
 
 #endif  /*__IA_CSS_XNR3_PARAM_H */

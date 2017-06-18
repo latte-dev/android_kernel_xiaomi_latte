@@ -536,7 +536,7 @@ static int gpio_ctrl(struct v4l2_subdev *sd, bool flag)
 	return ret;
 }
 
-static int power_up(struct v4l2_subdev *sd)
+static int __power_up(struct v4l2_subdev *sd)
 {
 	struct mt9m114_device *dev = to_mt9m114_sensor(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -606,6 +606,21 @@ static int power_down(struct v4l2_subdev *sd)
 	/*according to DS, 20ms is needed after power down*/
 	msleep(20);
 
+	return ret;
+}
+
+static int power_up(struct v4l2_subdev *sd)
+{
+	static const int retry_count = 4;
+	int i, ret;
+
+	for (i = 0; i < retry_count; i++) {
+		ret = __power_up(sd);
+		if (!ret)
+			return 0;
+
+		power_down(sd);
+	}
 	return ret;
 }
 
@@ -2210,7 +2225,6 @@ static int mt9m114_probe(struct i2c_client *client,
 	if (ret) {
 		v4l2_device_unregister_subdev(&dev->sd);
 		kfree(dev);
-		return ret;
 	}
 #else
 	if (client->dev.platform_data) {

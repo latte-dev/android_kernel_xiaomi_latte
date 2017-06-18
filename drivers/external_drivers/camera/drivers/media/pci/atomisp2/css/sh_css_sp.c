@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #include "sh_css_sp.h"
 
@@ -63,13 +63,7 @@ more details.
 #include "ia_css_isp_states.h"
 #if !defined(IS_ISP_2500_SYSTEM)
 /* This kernel is not used by SKC yet. */
-#include "isp/kernels/ipu2_io_ls/bayer_io_ls/ia_css_bayer_io.host.h"
-#include "isp/kernels/ipu2_io_ls/yuv444_io_ls/ia_css_yuv444_io.host.h"
-#include "isp/kernels/ipu2_io_ls/plane_io_ls/ia_css_plane_io.host.h"
-#endif
-
-#if defined(IS_ISP_2500_SYSTEM)
-#include "product_specific.host.h"
+#include "isp/kernels/io_ls/bayer_io_ls/ia_css_bayer_io.host.h"
 #endif
 
 struct sh_css_sp_group		sh_css_sp_group;
@@ -506,7 +500,6 @@ sh_css_copy_frame_to_spframe(struct ia_css_frame_sp *sp_frame_out,
 	case IA_CSS_FRAME_FORMAT_YUV444:
 	case IA_CSS_FRAME_FORMAT_YUV420_16:
 	case IA_CSS_FRAME_FORMAT_YUV422_16:
-	case IA_CSS_FRAME_FORMAT_YCgCo444_16:
 	case IA_CSS_FRAME_FORMAT_YV12:
 	case IA_CSS_FRAME_FORMAT_YV16:
 		sp_frame_out->planes.yuv.y.offset =
@@ -556,7 +549,6 @@ set_input_frame_buffer(const struct ia_css_frame *frame)
 	case IA_CSS_FRAME_FORMAT_RAW_PACKED:
 	case IA_CSS_FRAME_FORMAT_RAW:
 	case IA_CSS_FRAME_FORMAT_YUV420:
-	case IA_CSS_FRAME_FORMAT_YCgCo444_16:
 	case IA_CSS_FRAME_FORMAT_YUYV:
 	case IA_CSS_FRAME_FORMAT_YUV_LINE:
 	case IA_CSS_FRAME_FORMAT_NV12:
@@ -590,7 +582,6 @@ set_output_frame_buffer(const struct ia_css_frame *frame,
 	case IA_CSS_FRAME_FORMAT_YV16:
 	case IA_CSS_FRAME_FORMAT_YUV420_16:
 	case IA_CSS_FRAME_FORMAT_YUV422_16:
-	case IA_CSS_FRAME_FORMAT_YCgCo444_16:
 	case IA_CSS_FRAME_FORMAT_NV11:
 	case IA_CSS_FRAME_FORMAT_NV12:
 	case IA_CSS_FRAME_FORMAT_NV12_16:
@@ -825,62 +816,35 @@ is_sp_stage(struct ia_css_pipeline_stage *stage)
 	return stage->sp_func != IA_CSS_PIPELINE_NO_FUNC;
 }
 
-static enum ia_css_err
+static void
 configure_isp_from_args(
-	const struct sh_css_sp_pipeline *pipeline,
+	const struct sh_css_sp_pipeline *pipe,
 	const struct ia_css_binary      *binary,
 	const struct sh_css_binary_args *args,
 	bool two_ppc,
 	bool deinterleaved)
 {
-	enum ia_css_err err = IA_CSS_SUCCESS;
-	struct ia_css_pipe *pipe = find_pipe_by_num(pipeline->pipe_num);
-	const struct ia_css_resolution *res;
-
 #if !defined(IS_ISP_2500_SYSTEM)
 	ia_css_fpn_configure(binary,  &binary->in_frame_info);
 	ia_css_crop_configure(binary, &args->delay_frames[0]->info);
-	ia_css_qplane_configure(pipeline, binary, &binary->in_frame_info);
+	ia_css_qplane_configure(pipe, binary, &binary->in_frame_info);
 	ia_css_output0_configure(binary, &args->out_frame[0]->info);
 	ia_css_output1_configure(binary, &args->out_vf_frame->info);
 	ia_css_copy_output_configure(binary, args->copy_output);
 	ia_css_output0_configure(binary, &args->out_frame[0]->info);
-	ia_css_sc_configure(binary, pipeline->shading.internal_frame_origin_x_bqs_on_sctbl,
-				    pipeline->shading.internal_frame_origin_y_bqs_on_sctbl);
 #else
 	/* Currently this is a 2500 only kernel */
-	ia_css_input_yuv_configure(pipeline, binary, &args->in_frame->info);
+	ia_css_input_yuv_configure(pipe, binary, &args->in_frame->info);
 #endif
 	ia_css_iterator_configure(binary, &args->in_frame->info);
-#if !defined(IS_ISP_2500_SYSTEM)
-	(void) res;
-	(void) pipe;
 	ia_css_dvs_configure(binary, &args->out_frame[0]->info);
-#else
-	if (pipe == NULL) {
-		return IA_CSS_ERR_INTERNAL_ERROR;
-	}
-	if (pipe->config.output_system_in_res.width && pipe->config.output_system_in_res.height) {
-		res = &pipe->config.output_system_in_res;
-	} else {
-		res = &args->out_frame[0]->info.res;
-	}
-	ia_css_dvs_configure(binary, res);
-#endif
 	ia_css_output_configure(binary, &args->out_frame[0]->info);
-	ia_css_raw_configure(pipeline, binary, &args->in_frame->info, &binary->in_frame_info, two_ppc, deinterleaved);
-	ia_css_ref_configure(binary, (const struct ia_css_frame **)args->delay_frames, pipeline->dvs_frame_delay);
+	ia_css_raw_configure(pipe, binary, &args->in_frame->info, &binary->in_frame_info, two_ppc, deinterleaved);
+	ia_css_ref_configure(binary, (const struct ia_css_frame **)args->delay_frames, pipe->dvs_frame_delay);
 	ia_css_tnr_configure(binary, (const struct ia_css_frame **)args->tnr_frames);
 #if !defined(IS_ISP_2500_SYSTEM)
 	ia_css_bayer_io_config(binary, args);
-	ia_css_yuv444_io_config(binary, args);
-	ia_css_plane_io_config(binary, args);
 #endif
-#ifdef HAS_TNR3
-	/* Remove support for TNR2 once TNR3 fully integrated */
-	ia_css_tnr3_configure(binary, (const struct ia_css_frame **)args->tnr_frames);
-#endif
-	return err;
 }
 
 static void
@@ -1057,28 +1021,23 @@ sh_css_sp_init_stage(struct ia_css_binary *binary,
 		return err;
 
 #ifdef USE_INPUT_SYSTEM_VERSION_2401
-	if (stage == 0) {
-		if (args->in_frame) {
-			pipe = find_pipe_by_num(sh_css_sp_group.pipe[thread_id].pipe_num);
-			if (pipe == NULL)
-				return IA_CSS_ERR_INTERNAL_ERROR;
-			ia_css_get_crop_offsets(pipe, &args->in_frame->info);
-		} else if (&binary->in_frame_info) {
-			pipe = find_pipe_by_num(sh_css_sp_group.pipe[thread_id].pipe_num);
-			if (pipe == NULL)
-				return IA_CSS_ERR_INTERNAL_ERROR;
-			ia_css_get_crop_offsets(pipe, &binary->in_frame_info);
-		}
+	if (args->in_frame) {
+		pipe = find_pipe_by_num(sh_css_sp_group.pipe[thread_id].pipe_num);
+		if (pipe == NULL)
+			return IA_CSS_ERR_INTERNAL_ERROR;
+		ia_css_get_crop_offsets(pipe, &args->in_frame->info);
+	} else if (&binary->in_frame_info) {
+		pipe = find_pipe_by_num(sh_css_sp_group.pipe[thread_id].pipe_num);
+		if (pipe == NULL)
+			return IA_CSS_ERR_INTERNAL_ERROR;
+		ia_css_get_crop_offsets(pipe, &binary->in_frame_info);
 	}
 #else
 	(void)pipe; /*avoid build warning*/
 #endif
 
-	err = configure_isp_from_args(&sh_css_sp_group.pipe[thread_id],
+	configure_isp_from_args(&sh_css_sp_group.pipe[thread_id],
 			binary, args, two_ppc, sh_css_sp_stage.deinterleaved);
-	if (err != IA_CSS_SUCCESS)
-		return err;
-
 	initialize_isp_states(binary);
 
 	/* we do this only for preview pipe because in fill_binary_info function
@@ -1234,13 +1193,11 @@ sh_css_sp_init_pipeline(struct ia_css_pipeline *me,
 			enum sh_css_pipe_config_override copy_ovrd,
 			enum ia_css_input_mode input_mode,
 			const struct ia_css_metadata_config *md_config,
-			const struct ia_css_metadata_info *md_info,
+			const struct ia_css_metadata_info *md_info
 #if !defined(HAS_NO_INPUT_SYSTEM)
-			const mipi_port_ID_t port_id,
+			, const mipi_port_ID_t port_id
 #endif
-			const struct ia_css_coordinate *internal_frame_origin_bqs_on_sctbl, /* Origin of internal frame
-							positioned on shading table at shading correction in ISP. */
-			const struct ia_css_isp_parameters *params)
+			)
 {
 	/* Get first stage */
 	struct ia_css_pipeline_stage *stage        = NULL;
@@ -1358,20 +1315,6 @@ sh_css_sp_init_pipeline(struct ia_css_pipeline *me,
 	}
 #endif
 
-	/* For the shading correction type 1 (the legacy shading table conversion in css is not used),
-	 * the parameters are passed to the isp for the shading table centering.
-	 */
-	if (internal_frame_origin_bqs_on_sctbl != NULL &&
-			params != NULL && params->shading_settings.enable_shading_table_conversion == 0) {
-		sh_css_sp_group.pipe[thread_id].shading.internal_frame_origin_x_bqs_on_sctbl
-								= (uint32_t)internal_frame_origin_bqs_on_sctbl->x;
-		sh_css_sp_group.pipe[thread_id].shading.internal_frame_origin_y_bqs_on_sctbl
-								= (uint32_t)internal_frame_origin_bqs_on_sctbl->y;
-	} else {
-		sh_css_sp_group.pipe[thread_id].shading.internal_frame_origin_x_bqs_on_sctbl = 0;
-		sh_css_sp_group.pipe[thread_id].shading.internal_frame_origin_y_bqs_on_sctbl = 0;
-	}
-
 	IA_CSS_LOG("pipe_id %d port_config %08x",
 		   pipe_id, sh_css_sp_group.pipe[thread_id].inout_port_config);
 
@@ -1423,23 +1366,18 @@ sh_css_write_host2sp1_command(enum host2sp_commands host2sp_command)
 }
 #endif /* HAS_SEC_SP */
 
-bool
+void
 sh_css_write_host2sp_command(enum host2sp_commands host2sp_command)
 {
 	unsigned int HIVE_ADDR_host_sp_com = sh_css_sp_fw.info.sp.host_sp_com;
 	unsigned int offset = (unsigned int)offsetof(struct host_sp_communication, host2sp_command)
 				/ sizeof(int);
-	enum host2sp_commands last_cmd = host2sp_cmd_error;
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 
 	/* Previous command must be handled by SP (by design) */
-	last_cmd = load_sp_array_uint(host_sp_com, offset);
-	if (last_cmd != host2sp_cmd_ready)
-		IA_CSS_ERROR("last host command not handled by SP(%d)", last_cmd);
+	assert(load_sp_array_uint(host_sp_com, offset) == host2sp_cmd_ready);
 
 	store_sp_array_uint(host_sp_com, offset, host2sp_command);
-
-	return (last_cmd == host2sp_cmd_ready);
 }
 
 enum host2sp_commands

@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #ifndef __IA_CSS_SPCTRL_H__
 #define __IA_CSS_SPCTRL_H__
@@ -41,9 +41,6 @@ hrt_vaddress get_sp_code_addr(sp_ID_t  sp_id);
 */
 enum ia_css_err ia_css_spctrl_load_fw(sp_ID_t sp_id,
 			ia_css_spctrl_cfg *spctrl_cfg);
-
-/*! Setup registers for reloading FW */
-void sh_css_spctrl_reload_fw(sp_ID_t sp_id);
 
 /*!  Unload/release any memory allocated to hold the firmware
 */

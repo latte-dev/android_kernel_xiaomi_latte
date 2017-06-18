@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #include "ia_css_util.h"
 #include <ia_css_frame.h>
@@ -156,21 +156,6 @@ enum ia_css_err ia_css_util_check_res(unsigned int width, unsigned int height)
 		return IA_CSS_ERR_INVALID_ARGUMENTS;
 	}
 	return IA_CSS_SUCCESS;
-}
-
-bool ia_css_util_res_leq(struct ia_css_resolution a, struct ia_css_resolution b)
-{
-	return a.width <= b.width && a.height <= b.height;
-}
-
-bool ia_css_util_resolution_is_zero(const struct ia_css_resolution resolution)
-{
-	return (resolution.width == 0) || (resolution.height == 0);
-}
-
-bool ia_css_util_resolution_is_even(const struct ia_css_resolution resolution)
-{
-	return IS_EVEN(resolution.height) && IS_EVEN(resolution.width);
 }
 
 bool ia_css_util_is_input_format_raw(enum ia_css_stream_format format)

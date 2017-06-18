@@ -231,15 +231,6 @@ struct atomisp_parameters32 {
 	compat_uptr_t dvs2_coefs; /* DVS 2.0 coefficients */
 	compat_uptr_t capture_config;
 	compat_uptr_t anr_thres;
-	compat_uptr_t dpc2_config;
-	compat_uptr_t eed1_8_config;
-	compat_uptr_t ob2_config;
-	compat_uptr_t ctc2_config;
-	compat_uptr_t iefd2_6_config;
-	compat_uptr_t macc1_5_config;
-	compat_uptr_t macc1_5_table;
-	compat_uptr_t xnr3_0_11_config;
-
 
 	compat_uptr_t	lin_2500_config;       /* Skylake: Linearization config */
 	compat_uptr_t	obgrid_2500_config;    /* Skylake: OBGRID config */

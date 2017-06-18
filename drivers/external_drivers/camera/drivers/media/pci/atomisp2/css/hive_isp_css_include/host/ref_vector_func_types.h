@@ -1,16 +1,16 @@
-/**
-Support for Intel Camera Imaging ISP subsystem.
-Copyright (c) 2010 - 2015, Intel Corporation.
-
-This program is free software; you can redistribute it and/or modify it
-under the terms and conditions of the GNU General Public License,
-version 2, as published by the Free Software Foundation.
-
-This program is distributed in the hope it will be useful, but WITHOUT
-ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-more details.
-*/
+/*
+ * Support for Intel Camera Imaging ISP subsystem.
+ * Copyright (c) 2015, Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ */
 
 #ifndef __REF_VECTOR_FUNC_TYPES_H_INCLUDED__
 #define __REF_VECTOR_FUNC_TYPES_H_INCLUDED__
@@ -33,7 +33,6 @@ more details.
 #define SLOPE_A_RESOLUTION 10
 #define CONFIG_UNIT_LUT_SIZE_32 32 /*XCU works for ISP_NWAY = 32 */
 #define LXCU_LUT_SIZE      16
-#define IMAX32_ELEM_SIZE   32
 
 #define ONE_IN_Q14 (1<<(NUM_BITS-2))
 #define Q29_TO_Q15_SHIFT_VAL (NUM_BITS-2)
@@ -161,7 +160,7 @@ typedef struct {
 	  0, 0, 0, 0, 0, \
 	  0, 0, 0, 0, 0, \
 	  0, 0, 0, 0, 0 })
-
+	
 typedef struct {
 	tvector1w v00;
 	tvector1w v01;
@@ -331,10 +330,6 @@ typedef struct {
 	tscalar1w_5bit exponent;
 	tscalar1w_5bit slope_resolution;
 } xcu_ref_init_vectors;
-
-typedef struct {
-	tvector1w elem[IMAX32_ELEM_SIZE];
-} imax32_ref_in_vector;
 
 typedef struct {
 	tscalar1w search[BMA_SEARCH_BLOCK_SZ_16][BMA_SEARCH_BLOCK_SZ_16];

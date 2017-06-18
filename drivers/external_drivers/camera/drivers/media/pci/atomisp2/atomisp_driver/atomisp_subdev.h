@@ -110,14 +110,6 @@ struct atomisp_video_pipe {
 	 */
 	unsigned int frame_request_config_id[VIDEO_MAX_FRAME];
 	struct atomisp_css_params_with_list *frame_params[VIDEO_MAX_FRAME];
-
-	/*
-	* move wdt from asd struct to create wdt for each pipe
-	*/
-	struct timer_list wdt;
-	unsigned int wdt_duration;	/* in jiffies */
-	unsigned long wdt_expires;
-	atomic_t wdt_count;
 };
 
 struct atomisp_acc_pipe {
@@ -189,17 +181,6 @@ struct atomisp_css_params {
 	struct ia_css_shading_table *shading_table;
 	struct ia_css_morph_table   *morph_table;
 
-	/*Add new parameters for isp2.7*/
-	struct ia_css_dpc2_config dpc2_config;
-	struct ia_css_eed1_8_config eed1_8_config;
-	struct ia_css_ob2_config ob2_config;
-	struct ia_css_ctc2_config ctc2_config;
-	struct ia_css_iefd2_6_config iefd2_6_config;
-	struct ia_css_macc1_5_config macc1_5_config;
-	struct ia_css_macc1_5_table macc1_5_table;
-	struct ia_css_xnr3_0_11_config xnr3_0_11_config;
-
-
 	/*
 	 * Used to store the user pointer address of the frame. driver needs to
 	 * translate to ia_css_frame * and then set to CSS.
@@ -254,7 +235,6 @@ struct atomisp_subdev_params {
 	uint32_t metadata_width_size;
 
 	struct ia_css_dvs2_statistics *dvs_stat;
-	struct atomisp_css_dvs_6axis *dvs_6axis;
 	uint32_t exp_id;
 	int  dvs_hor_coef_bytes;
 	int  dvs_ver_coef_bytes;
@@ -327,11 +307,8 @@ struct atomisp_sub_device {
 	struct v4l2_ctrl *continuous_raw_buffer_size;
 	struct v4l2_ctrl *continuous_viewfinder;
 	struct v4l2_ctrl *enable_raw_buffer_lock;
-	struct v4l2_ctrl *ion_dev_fd;
 	struct v4l2_ctrl *disable_dz;
-#ifdef V4L2_CID_ATOMISP_SELECT_ISP_VERSION
-	struct v4l2_ctrl *select_isp_version;
-#endif
+
 	struct {
 		struct list_head fw;
 		struct list_head memory_maps;
@@ -403,16 +380,21 @@ struct atomisp_sub_device {
 	unsigned int mipi_frame_size;
 
 	bool copy_mode; /* CSI2+ use copy mode */
+	bool copy_mode_format_conv; /* CSI2+ copy with format conversion */
 	bool yuvpp_mode;	/* CSI2+ yuvpp pipe */
 
 	int raw_buffer_bitmap[ATOMISP_MAX_EXP_ID/32 + 1]; /* Record each Raw Buffer lock status */
 	int raw_buffer_locked_count;
 	spinlock_t raw_buffer_bitmap_lock;
 
+	struct timer_list wdt;
+	unsigned int wdt_duration;	/* in jiffies */
+	unsigned long wdt_expires;
+
 	struct atomisp_resolution sensor_array_res;
 	bool high_speed_mode; /* Indicate whether now is a high speed mode */
 	int pending_capture_request; /* Indicates the number of pending capture requests. */
-	bool re_trigger_capture;
+
 	unsigned int preview_exp_id;
 	unsigned int postview_exp_id;
 };
@@ -431,6 +413,8 @@ const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv_compressed(
 bool atomisp_subdev_format_conversion(struct atomisp_sub_device *asd,
 				      unsigned int source_pad);
 uint16_t atomisp_subdev_source_pad(struct video_device *vdev);
+bool atomisp_subdev_copy_format_conversion(struct atomisp_sub_device *asd,
+					   unsigned int source_pad);
 
 /* Get pointer to appropriate format */
 struct v4l2_mbus_framefmt
