@@ -186,22 +186,4 @@ struct flock {
 };
 #endif
 
-#ifndef CONFIG_64BIT
-
-#ifndef HAVE_ARCH_STRUCT_FLOCK64
-#ifndef __ARCH_FLOCK64_PAD
-#define __ARCH_FLOCK64_PAD
-#endif
-
-struct flock64 {
-	short  l_type;
-	short  l_whence;
-	__kernel_loff_t l_start;
-	__kernel_loff_t l_len;
-	__kernel_pid_t  l_pid;
-	__ARCH_FLOCK64_PAD
-};
-#endif
-#endif /* !CONFIG_64BIT */
-
 #endif /* _ASM_GENERIC_FCNTL_H */
