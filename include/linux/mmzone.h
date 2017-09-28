@@ -481,6 +481,8 @@ struct zone {
 	spinlock_t		lru_lock;
 	struct lruvec		lruvec;
 
+        unsigned long		pages_scanned;	   /* since last reclaim */
+
 	/*
 	 * When free pages are below this point, additional steps are taken
 	 * when reading the number of free pages to avoid per-cpu counter

@@ -67,3 +67,4 @@ obj-$(CONFIG_INTEL_WCOVE_GPIO) 	+= intel_wcove_gpio.o
 obj-$(CONFIG_BCM_BT_LPM)        += bcm-lpm/
 obj-y				+= tspdrv/
 obj-$(CONFIG_TYPEC_DRIVER)	+= type-c/
+obj-$(CONFIG_UID_CPUTIME) += uid_cputime.o
