@@ -499,6 +499,12 @@ error:
 }
 EXPORT_SYMBOL_GPL(cdc_ncm_bind_common);
 
+static int cdc_ncm_remote_mac_bind(struct usbnet *dev,
+					struct usb_interface *intf)
+{
+	dev->net->addr_len = 1;
+	//return cdc_ncm_bind(dev, intf); // MUST BE FIXED
+}
 void cdc_ncm_unbind(struct usbnet *dev, struct usb_interface *intf)
 {
 	struct cdc_ncm_ctx *ctx = (struct cdc_ncm_ctx *)dev->data[0];
@@ -578,13 +584,6 @@ static int cdc_ncm_bind(struct usbnet *dev, struct usb_interface *intf)
 
 	/* NCM data altsetting is always 1 */
 	return cdc_ncm_bind_common(dev, intf, 1);
-}
-
-static int cdc_ncm_remote_mac_bind(struct usbnet *dev,
-					struct usb_interface *intf)
-{
-	dev->net->addr_len = 1;
-	return cdc_ncm_bind(dev, intf);
 }
 
 static void cdc_ncm_align_tail(struct sk_buff *skb, size_t modulus, size_t remainder, size_t max)
