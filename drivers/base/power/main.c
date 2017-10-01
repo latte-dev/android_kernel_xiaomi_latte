@@ -737,6 +737,7 @@ static void dpm_resume_early(pm_message_t state)
 void dpm_resume_start(pm_message_t state)
 {
 	dpm_resume_noirq(state);
+	dump_wakeup_irqs();
 	dpm_resume_early(state);
 }
 EXPORT_SYMBOL_GPL(dpm_resume_start);
@@ -1577,6 +1578,9 @@ int dpm_prepare(pm_message_t state)
 		get_device(dev);
 		mutex_unlock(&dpm_list_mtx);
 
+		pm_suspend_dbg(PM_SUSPEND_DBG_SUSPEND,
+			"PM: device[%s] driver[%s] suspend prepare enter\n",
+			dev_name(dev), dev_driver_string(dev));
 
 		error = device_prepare(dev, state);
 

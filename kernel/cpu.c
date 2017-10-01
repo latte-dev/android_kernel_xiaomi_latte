@@ -20,7 +20,6 @@
 #include <linux/gfp.h>
 #include <linux/suspend.h>
 #include <trace/events/power.h>
-
 #include <trace/events/sched.h>
 
 #include "smpboot.h"

@@ -52,7 +52,7 @@ struct charging_algo {
 	struct list_head node;
 	unsigned int chrg_prof_type;
 	char *name;
-	int (*get_next_cc_cv)(struct batt_props,
+	enum psy_algo_stat (*get_next_cc_cv)(struct batt_props,
 			struct ps_batt_chg_prof, unsigned long *cc,
 			unsigned long *cv);
 	int (*get_batt_thresholds)(struct ps_batt_chg_prof,
@@ -97,12 +97,21 @@ static inline int get_ps_int_property(struct power_supply *psy,
 */
 #define PROP_TTL (HZ*10)
 #define enable_charging(psy) \
-		set_ps_int_property(psy,\
-				POWER_SUPPLY_PROP_ENABLE_CHARGING, true);
-
+		({if ((CABLE_TYPE(psy) != POWER_SUPPLY_CHARGER_TYPE_NONE) &&\
+			!IS_CHARGING_ENABLED(psy)) { \
+		enable_charger(psy); \
+		set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGING,\
+					true); } })
 #define disable_charging(psy) \
 		set_ps_int_property(psy,\
 				POWER_SUPPLY_PROP_ENABLE_CHARGING, false);
+
+#define enable_charger(psy) \
+		set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGER, true)
+#define disable_charger(psy) \
+		({  disable_charging(psy); \
+			set_ps_int_property(psy,\
+				POWER_SUPPLY_PROP_ENABLE_CHARGER, false); })
 
 #define set_cc(psy, cc) \
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_CHARGE_CURRENT, cc)
@@ -198,7 +207,8 @@ static inline int get_ps_int_property(struct power_supply *psy,
 		(status == POWER_SUPPLY_CHARGER_EVENT_RESUME) ||\
 		(status == POWER_SUPPLY_CHARGER_EVENT_SUSPEND))
 #define IS_CHARGER_PROP_CHANGED(prop, cache_prop)\
-	((cache_prop.online != prop.online) || \
+	((cache_prop.cable != prop.cable) || \
+	(cache_prop.online != prop.online) || \
 	(cache_prop.present != prop.present) || \
 	(cache_prop.is_charging != prop.is_charging) || \
 	(cache_prop.health != prop.health) || \

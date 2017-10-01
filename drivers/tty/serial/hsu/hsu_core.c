@@ -908,6 +908,32 @@ static void serial_hsu_break_ctl(struct uart_port *port, int break_state)
 	pm_runtime_put(up->dev);
 }
 
+static void serial_hsu_throttle(struct uart_port *port)
+{
+	struct tty_struct *tty = port->state->port.tty;
+	unsigned long flags;
+
+	if (tty->termios.c_cflag & CRTSCTS) {
+		spin_lock_irqsave(&port->lock, flags);
+		port->mctrl &= ~TIOCM_RTS;
+		serial_hsu_set_mctrl(port, port->mctrl);
+		spin_unlock_irqrestore(&port->lock, flags);
+	}
+}
+
+static void serial_hsu_unthrottle(struct uart_port *port)
+{
+	struct tty_struct *tty = port->state->port.tty;
+	unsigned long flags;
+
+	if (tty->termios.c_cflag & CRTSCTS) {
+		spin_lock_irqsave(&port->lock, flags);
+		port->mctrl |= TIOCM_RTS;
+		serial_hsu_set_mctrl(port, port->mctrl);
+		spin_unlock_irqrestore(&port->lock, flags);
+	}
+}
+
 /*
  * What special to do:
  * 1. chose the 64B fifo mode
@@ -1084,6 +1110,8 @@ serial_hsu_do_set_termios(struct uart_port *port, struct ktermios *termios,
 		cval |= UART_LCR_EPAR;
 
 	baud = uart_get_baud_rate(port, termios, old, 0, 4000000);
+	if (!baud)
+		return;
 
 	if (up->hw_type == hsu_intel) {
 		/*
@@ -1231,10 +1259,9 @@ serial_hsu_do_set_termios(struct uart_port *port, struct ktermios *termios,
 
 	serial_out(up, UART_IER, up->ier);
 
-	if (termios->c_cflag & CRTSCTS) {
+	if (termios->c_cflag & CRTSCTS)
 		up->mcr |= UART_MCR_AFE | UART_MCR_RTS;
-		up->prev_mcr = up->mcr;
-	} else
+	else
 		up->mcr &= ~UART_MCR_AFE;
 
 	up->dll	= quot & 0xff;
@@ -1477,6 +1504,8 @@ struct uart_ops serial_hsu_pops = {
 	.stop_tx	= serial_hsu_stop_tx,
 	.start_tx	= serial_hsu_start_tx,
 	.stop_rx	= serial_hsu_stop_rx,
+	.throttle	= serial_hsu_throttle,
+	.unthrottle	= serial_hsu_unthrottle,
 	.enable_ms	= serial_hsu_enable_ms,
 	.break_ctl	= serial_hsu_break_ctl,
 	.startup	= serial_hsu_startup,
@@ -1563,8 +1592,7 @@ int serial_hsu_do_suspend(struct uart_hsu_port *up)
 
 	/* Should check the RX FIFO is not empty */
 	if (test_bit(flag_startup, &up->flags) && (up->hw_type == hsu_dw)
-			&& ((serial_in(up, UART_DW_USR) & UART_DW_USR_RFNE)
-			|| test_bit(flag_rx_on, &up->flags)))
+			&& serial_in(up, UART_DW_USR) & UART_DW_USR_RFNE)
 			goto busy;
 
 	if (cfg->hw_set_rts)

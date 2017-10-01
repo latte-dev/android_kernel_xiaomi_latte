@@ -512,23 +512,14 @@ struct root_domain {
 
 extern struct root_domain def_root_domain;
 
-#endif /* CONFIG_SMP */
-
-#ifdef CONFIG_CPU_CONCURRENCY
 struct cpu_concurrency_t {
-	u64 sum;
-	u64 sum_now;
-	u64 contrib;
-	u64 sum_timestamp;
-	u64 contrib_timestamp;
-	unsigned long nr_running;
-#ifdef CONFIG_WORKLOAD_CONSOLIDATION
+	struct sched_avg avg;
 	int unload;
 	int dst_cpu;
 	struct cpu_stop_work unload_work;
-#endif
 };
-#endif
+
+#endif /* CONFIG_SMP */
 
 /*
  * This is the main, per-CPU runqueue data structure.
@@ -616,6 +607,8 @@ struct rq {
 
 	struct list_head cfs_tasks;
 
+	struct cpu_concurrency_t concurrency;
+
 	u64 rt_avg;
 	u64 age_stamp;
 	u64 idle_stamp;
@@ -667,12 +660,6 @@ struct rq {
 
 #ifdef CONFIG_SMP
 	struct llist_head wake_list;
-#endif
-
-	struct sched_avg avg;
-
-#ifdef CONFIG_CPU_CONCURRENCY
-	struct cpu_concurrency_t concurrency;
 #endif
 };
 
@@ -749,16 +736,22 @@ queue_balance_callback(struct rq *rq,
  *		be returned.
  * @flag:	The flag to check for the highest sched_domain
  *		for the given cpu.
+ * @all:	The flag is contained by all sched_domains from the hightest down
  *
  * Returns the highest sched_domain of a cpu which contains the given flag.
  */
-static inline struct sched_domain *highest_flag_domain(int cpu, int flag)
+static inline struct
+sched_domain *highest_flag_domain(int cpu, int flag, int all)
 {
 	struct sched_domain *sd, *hsd = NULL;
 
 	for_each_domain(cpu, sd) {
-		if (!(sd->flags & flag))
-			break;
+		if (!(sd->flags & flag)) {
+			if (all)
+				break;
+			else
+				continue;
+		}
 		hsd = sd;
 	}
 
@@ -783,6 +776,7 @@ DECLARE_PER_CPU(int, sd_llc_id);
 DECLARE_PER_CPU(struct sched_domain *, sd_numa);
 DECLARE_PER_CPU(struct sched_domain *, sd_busy);
 DECLARE_PER_CPU(struct sched_domain *, sd_asym);
+DECLARE_PER_CPU(struct sched_domain *, sd_wc);
 
 struct sched_group_power {
 	atomic_t ref;
@@ -1216,11 +1210,21 @@ extern void idle_balance(int this_cpu, struct rq *this_rq);
 extern void idle_enter_fair(struct rq *this_rq);
 extern void idle_exit_fair(struct rq *this_rq);
 
+extern void update_cpu_concurrency(struct rq *rq);
+extern void init_workload_consolidation(struct rq *rq);
+extern void wc_nonshielded_mask(struct sched_domain *sd, struct cpumask *mask);
+extern int wc_cpu_shielded(int cpu);
+
 #else	/* CONFIG_SMP */
 
 static inline void idle_balance(int cpu, struct rq *rq)
 {
 }
+
+static inline void update_cpu_concurrency(struct rq *rq) {}
+static inline void init_workload_consolidation(struct rq *rq) {}
+static inline void wc_nonshielded_mask(struct sched_domain *sd, struct cpumask *mask) {}
+static inline int wc_cpu_shielded(struct sched_domain *sd) {}
 
 #endif
 
@@ -1235,24 +1239,6 @@ extern void init_sched_dl_class(void);
 
 extern void resched_task(struct task_struct *p);
 extern void resched_cpu(int cpu);
-
-#ifdef CONFIG_CPU_CONCURRENCY
-extern void init_cpu_concurrency(struct rq *rq);
-extern void update_cpu_concurrency(struct rq *rq);
-#ifdef CONFIG_WORKLOAD_CONSOLIDATION
-extern int workload_consolidation_wakeup(int prev, int target);
-extern struct sched_group *
-workload_consolidation_find_group(struct sched_domain *sd,
-				 struct task_struct *p, int this_cpu);
-extern void workload_consolidation_unload(struct cpumask *nonshielded);
-extern int workload_consolidation_cpu_shielded(int cpu);
-extern void workload_consolidation_nonshielded_mask(int cpu,
-					 struct cpumask *mask);
-#endif
-#else
-static inline void init_cpu_concurrency(struct rq *rq) {}
-static inline void update_cpu_concurrency(struct rq *rq) {}
-#endif
 
 extern struct rt_bandwidth def_rt_bandwidth;
 extern void init_rt_bandwidth(struct rt_bandwidth *rt_b, u64 period, u64 runtime);

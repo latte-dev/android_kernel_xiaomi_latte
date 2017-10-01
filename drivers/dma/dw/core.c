@@ -1464,11 +1464,8 @@ static void dw_dma_off(struct dw_dma *dw)
 	channel_clear_bit(dw, MASK.DST_TRAN, dw->all_chan_mask);
 	channel_clear_bit(dw, MASK.ERROR, dw->all_chan_mask);
 
-	while (dma_readl(dw, CFG) & DW_CFG_DMA_EN && retry--) {
-		udelay(100);
-		if (retry == 0)
-			dev_err(&dw->dma.dev, "%s timeout error\n", __func__);
-	}
+	while (dma_readl(dw, CFG) & DW_CFG_DMA_EN)
+		cpu_relax();
 }
 
 int dw_dma_probe(struct dw_dma_chip *chip, struct dw_dma_platform_data *pdata)

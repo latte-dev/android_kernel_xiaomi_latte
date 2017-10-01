@@ -762,6 +762,7 @@ static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
 	sched_info_queued(rq, p);
+	update_cpu_concurrency(rq);
 	p->sched_class->enqueue_task(rq, p, flags);
 	update_cpu_concurrency(rq);
 }
@@ -770,6 +771,7 @@ static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
 	sched_info_dequeued(rq, p);
+	update_cpu_concurrency(rq);
 	p->sched_class->dequeue_task(rq, p, flags);
 	update_cpu_concurrency(rq);
 }
@@ -2467,6 +2469,7 @@ void scheduler_tick(void)
 
 	raw_spin_lock(&rq->lock);
 	update_rq_clock(rq);
+	update_cpu_concurrency(rq);
 	curr->sched_class->task_tick(rq, curr, 0);
 	update_cpu_load_active(rq);
 	update_cpu_concurrency(rq);
@@ -4476,6 +4479,10 @@ void sched_show_task(struct task_struct *p)
 	show_stack(p, NULL);
 }
 
+#ifdef CONFIG_SCHED_DEBUG
+static __read_mostly int sched_debug_enabled;
+#endif
+
 void show_state_filter(unsigned long state_filter)
 {
 	struct task_struct *g, *p;
@@ -4501,7 +4508,8 @@ void show_state_filter(unsigned long state_filter)
 	touch_all_softlockup_watchdogs();
 
 #ifdef CONFIG_SCHED_DEBUG
-	sysrq_sched_debug_show();
+	if (sched_debug_enabled)
+		sysrq_sched_debug_show();
 #endif
 	rcu_read_unlock();
 	/*
@@ -4919,11 +4927,7 @@ set_table_entry(struct ctl_table *entry,
 static struct ctl_table *
 sd_alloc_ctl_domain_table(struct sched_domain *sd)
 {
-#ifdef CONFIG_WORKLOAD_CONSOLIDATION
 	struct ctl_table *table = sd_alloc_ctl_entry(14);
-#else
-	struct ctl_table *table = sd_alloc_ctl_entry(13);
-#endif
 
 	if (table == NULL)
 		return NULL;
@@ -4953,13 +4957,9 @@ sd_alloc_ctl_domain_table(struct sched_domain *sd)
 		sizeof(int), 0644, proc_dointvec_minmax, false);
 	set_table_entry(&table[11], "name", sd->name,
 		CORENAME_MAX_SIZE, 0444, proc_dostring, false);
-#ifdef CONFIG_WORKLOAD_CONSOLIDATION
-	set_table_entry(&table[12], "asym_concurrency", &sd->asym_concurrency,
+	set_table_entry(&table[12], "consolidating_coeff", &sd->consolidating_coeff,
 		sizeof(int), 0644, proc_dointvec, false);
 	/* &table[13] is terminator */
-#else
-	/* &table[12] is terminator */
-#endif
 	return table;
 }
 
@@ -5192,8 +5192,6 @@ early_initcall(migration_init);
 static cpumask_var_t sched_domains_tmpmask; /* sched_domains_mutex */
 
 #ifdef CONFIG_SCHED_DEBUG
-
-static __read_mostly int sched_debug_enabled;
 
 static int __init sched_debug_setup(char *str)
 {
@@ -5560,7 +5558,7 @@ static void update_top_cache_domain(int cpu)
 	int id = cpu;
 	int size = 1;
 
-	sd = highest_flag_domain(cpu, SD_SHARE_PKG_RESOURCES);
+	sd = highest_flag_domain(cpu, SD_SHARE_PKG_RESOURCES, 1);
 	if (sd) {
 		id = cpumask_first(sched_domain_span(sd));
 		size = cpumask_weight(sched_domain_span(sd));
@@ -5575,12 +5573,13 @@ static void update_top_cache_domain(int cpu)
 	sd = lowest_flag_domain(cpu, SD_NUMA);
 	rcu_assign_pointer(per_cpu(sd_numa, cpu), sd);
 
-	sd = highest_flag_domain(cpu, SD_ASYM_PACKING);
+	sd = highest_flag_domain(cpu, SD_ASYM_PACKING, 1);
 	rcu_assign_pointer(per_cpu(sd_asym, cpu), sd);
 }
 
-#ifdef CONFIG_WORKLOAD_CONSOLIDATION
-static void update_domain_extra_info(struct sched_domain *sd)
+DEFINE_PER_CPU(struct sched_domain *, sd_wc);
+
+static void update_wc_domain(struct sched_domain *sd, int cpu)
 {
 	while (sd) {
 		int i = 0, j = 0, first, min = INT_MAX;
@@ -5603,8 +5602,9 @@ static void update_domain_extra_info(struct sched_domain *sd)
 		sd->group_number = j;
 		sd = sd->parent;
 	}
+	sd = highest_flag_domain(cpu, SD_WORKLOAD_CONSOLIDATION, 0);
+	rcu_assign_pointer(per_cpu(sd_wc, cpu), sd);
 }
-#endif
 
 /*
  * Attach the domain 'sd' to 'cpu' as its base domain. Callers must
@@ -5655,9 +5655,7 @@ cpu_attach_domain(struct sched_domain *sd, struct root_domain *rd, int cpu)
 
 	update_top_cache_domain(cpu);
 
-#ifdef CONFIG_WORKLOAD_CONSOLIDATION
-	update_domain_extra_info(sd);
-#endif
+	update_wc_domain(sd, cpu);
 }
 
 /* cpus with isolated domains */
@@ -7002,10 +7000,7 @@ void __init sched_init(void)
 		init_rq_hrtick(rq);
 		atomic_set(&rq->nr_iowait, 0);
 
-		/*
-		 * cpu concurrency init
-		 */
-		init_cpu_concurrency(rq);
+		init_workload_consolidation(rq);
 	}
 
 	set_load_weight(&init_task);

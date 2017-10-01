@@ -37,7 +37,11 @@
 #include <linux/mutex.h>
 #include <linux/wait.h>
 #include <linux/delay.h>
+<<<<<<< HEAD
 #ifdef CONFIG_HAS_WAKELOCK
+=======
+#ifdef CONFIG_WAKELOCK
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
 #include <linux/wakelock.h>
 #endif
 #include <linux/mdm_ctrl.h>
@@ -75,7 +79,11 @@ struct mdm_info {
 
 	struct mutex lock;
 	atomic_t modem_state;
+<<<<<<< HEAD
 #ifdef CONFIG_HAS_WAKELOCK
+=======
+#ifdef CONFIG_WAKELOCK
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
 	struct wake_lock	 stay_awake;
 #endif
 
@@ -87,6 +95,10 @@ struct mdm_info {
 	struct timer_list flashing_timer;
 
 	bool is_mdm_ctrl_disabled;
+<<<<<<< HEAD
+=======
+	unsigned char irq_requests;
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
 };
 
 /**

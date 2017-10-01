@@ -264,13 +264,9 @@ static inline unsigned int serial_in(struct uart_hsu_port *up, int offset)
 {
 	unsigned int val;
 
-	if (offset > UART_MSR || up->hw_type == hsu_dw) {
+	if (offset > UART_MSR || up->hw_type == hsu_dw)
 		val = readl(up->port.membase + (offset << 2));
-		if (offset == UART_MSR && up->prev_mcr & UART_MCR_AFE) {
-			val |= UART_MSR_CTS;
-			val &= ~UART_MSR_DCTS;
-		}
-	} else
+	else
 		val = (unsigned int)readb(up->port.membase + offset);
 
 	return val;

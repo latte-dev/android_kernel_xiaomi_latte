@@ -116,6 +116,7 @@ static inline int con_debug_leave(void)
 #define CON_ANYTIME	(16) /* Safe to call when cpu is offline */
 #define CON_BRL		(32) /* Used for a braille device */
 #define CON_IGNORELEVEL	(64) /* Used to ignore log level for a console */
+#define CON_FAST	(128) /* This is a fast console */
 
 struct console {
 	char	name[16];
@@ -152,6 +153,9 @@ extern void console_unlock(void);
 extern void console_conditional_schedule(void);
 extern void console_unblank(void);
 extern void console_flush_on_panic(void);
+void console_suspend_slow(void);
+void console_restore_slow(void);
+
 extern struct tty_driver *console_device(int *);
 extern void console_stop(struct console *);
 extern void console_start(struct console *);

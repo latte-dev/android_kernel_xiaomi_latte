@@ -40,8 +40,8 @@
 #define PWMCR_BUF_MASK	0xff0000
 
 #define PWMCR_OTD_OFFSET	0
-#define PWMCR_BU_OFFSET	16
-#define PWMCR_BUF_OFFSET	8
+#define PWMCR_BU_OFFSET	8
+#define PWMCR_BUF_OFFSET	16
 
 struct byt_pwm_chip {
 	struct mutex lock;
@@ -96,29 +96,26 @@ static int byt_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	uint32_t temp;
 	const char *board_name;
 	pm_runtime_get_sync(byt_pwm->dev);
-	msleep(50);
 
 	/* frequency = clock * base_unit/256, so:
 	   base_unit = frequency * 256 / clock, which result:
 	   base_unit = 256 * 10^6 / (clock_khz * period_ns); */
 	bu = (256 * 1000000) / (byt_pwm->clk_khz * period_ns);
 	bu_f = (256 * 1000000) % (byt_pwm->clk_khz * period_ns);
-	bu_f = (bu_f / 1000000 * 256) / (byt_pwm->clk_khz / 1000 * period_ns / 1000);
+	bu_f = bu_f * 256 / (byt_pwm->clk_khz * period_ns);
 
 	/* one time divison calculation:
-	   duty_ns / period_ns = (255 - otd) / 255 */
-	otd = 255 - duty_ns * 255 / period_ns;
+	   duty_ns / period_ns = (256 - otd) / 256 */
+	otd = 256 - duty_ns * 256 / period_ns;
 	mutex_lock(&byt_pwm->lock);
 	board_name = dmi_get_system_info(DMI_BOARD_NAME);
-	if ((strcmp(board_name, "Cherry Trail CR") == 0) ||
-			(strcmp(board_name, "Cherry Trail FFD") == 0) ||
-			(strcmp(board_name, "Mipad") == 0)) {
+	if (strcmp(board_name, "Cherry Trail CR") == 0) {
 		pr_debug("Cherry Trail CR: byt_pwm_config\n");
 		/* reset pwm before configuring */
 		iowrite32(PWMRESET_EN, PWMRESET(byt_pwm));
 		/* set clock */
 		clock = ioread32(PWMGENERAL(byt_pwm));
-		if (byt_pwm->clk_khz == PWM_CHT_CLK_KHZ) {
+		if (&byt_pwm->clk_khz == PWM_CHT_CLK_KHZ) {
 			temp = BIT(3);
 			clock &= ~temp;
 		} else {
@@ -182,13 +179,6 @@ static void byt_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm)
 	mutex_lock(&byt_pwm->lock);
 
 	val = ioread32(PWMCR(byt_pwm));
-	val |= 0xff;
-	iowrite32(val, PWMCR(byt_pwm));
-
-	val |= PWMCR_UP;
-	iowrite32(val, PWMCR(byt_pwm));
-	msleep(20);
-
 	iowrite32(val & ~PWMCR_EN, PWMCR(byt_pwm));
 	mutex_unlock(&byt_pwm->lock);
 	pm_runtime_mark_last_busy(byt_pwm->dev);
@@ -567,7 +557,7 @@ static int pwm_byt_suspend(struct device *dev)
 		return r;
 	}
 
-	if (!adev->power.state) {
+	if (adev->power.state) {
 		pr_info("Device %s is already in non D0 state\n",
 				dev_name(dev));
 		return r;

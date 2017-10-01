@@ -113,14 +113,14 @@ int arch_update_cpu_topology(void);
 				| 0*SD_SERIALIZE			\
 				| 0*SD_PREFER_SIBLING			\
 				| arch_sd_sibling_asym_packing()	\
-				| 0*SD_ASYM_CONCURRENCY			\
+				| 0*SD_WORKLOAD_CONSOLIDATION		\
 				,					\
 	.last_balance		= jiffies,				\
 	.balance_interval	= 1,					\
 	.smt_gain		= 1178,	/* 15% */			\
 	.max_newidle_lb_cost	= 0,					\
 	.next_decay_max_lb_cost	= jiffies,				\
-	ASYM_CONCURRENCY_INIT(0)					\
+	.consolidating_coeff	= 0,					\
 }
 #endif
 #endif /* CONFIG_SCHED_SMT */
@@ -147,13 +147,12 @@ int arch_update_cpu_topology(void);
 				| 0*SD_SHARE_CPUPOWER			\
 				| 1*SD_SHARE_PKG_RESOURCES		\
 				| 0*SD_SERIALIZE			\
-				| 0*SD_ASYM_CONCURRENCY			\
+				| 0*SD_WORKLOAD_CONSOLIDATION		\
 				,					\
 	.last_balance		= jiffies,				\
 	.balance_interval	= 1,					\
 	.max_newidle_lb_cost	= 0,					\
 	.next_decay_max_lb_cost	= jiffies,				\
-	ASYM_CONCURRENCY_INIT(0)					\
 }
 #endif
 #endif /* CONFIG_SCHED_MC */
@@ -182,13 +181,13 @@ int arch_update_cpu_topology(void);
 				| 0*SD_SHARE_PKG_RESOURCES		\
 				| 0*SD_SERIALIZE			\
 				| 1*SD_PREFER_SIBLING			\
-				| 1*SD_ASYM_CONCURRENCY			\
+				| 1*SD_WORKLOAD_CONSOLIDATION		\
 				,					\
 	.last_balance		= jiffies,				\
 	.balance_interval	= 1,					\
 	.max_newidle_lb_cost	= 0,					\
 	.next_decay_max_lb_cost	= jiffies,				\
-	ASYM_CONCURRENCY_INIT(180)					\
+	.consolidating_coeff	= 160,					\
 }
 #endif
 

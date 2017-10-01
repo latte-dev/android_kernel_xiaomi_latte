@@ -17,6 +17,7 @@
 #include <asm/spid.h>
 
 #define MAX_SUBDEVS 8
+//#define DEBUG
 
 /* This needs to be initialized at runtime so the various
  * platform-checking macros in spid.h return the correct results.
@@ -51,6 +52,13 @@ EXPORT_SYMBOL(spid);
 #define ELDO2_1P8V	0x16
 #define ELDO2_CTRL_SHIFT 0x01
 
+#define ELDO1_1P6V      0x12
+
+#define FLDO2_SEL_REG   0x1d
+#define FLDO2_CTRL3_REG 0x13
+#define FLDO2_1P2V      0x0a
+#define FLDO2_CTRL3_SHIFT 0x03
+
 /* TI SND9039 PMIC register hackery */
 #define LDO9_REG	0x49
 #define LDO10_REG	0x4a
@@ -76,6 +84,7 @@ EXPORT_SYMBOL(spid);
 #define WCOVE_CTRL_DISABLE	0x0
 
 
+
 struct gmin_subdev {
 	struct v4l2_subdev *subdev;
 	int clock_num;
@@ -85,13 +94,15 @@ struct gmin_subdev {
 	struct regulator *v1p8_reg;
 	struct regulator *v2p8_reg;
 	struct regulator *v1p2_reg;
-	struct regulator *vprog4d_reg;
+	struct regulator *v2p8_vcm_reg;
 	enum atomisp_camera_port csi_port;
 	unsigned int csi_lanes;
 	enum atomisp_input_format csi_fmt;
 	enum atomisp_bayer_order csi_bayer;
 	bool v1p8_on;
 	bool v2p8_on;
+	bool v1p2_on;
+	bool v2p8_vcm_on;
 	int eldo1_sel_reg, eldo1_1p8v, eldo1_ctrl_shift;
 	int eldo2_sel_reg, eldo2_1p8v, eldo2_ctrl_shift;
 };
@@ -157,6 +168,23 @@ EXPORT_SYMBOL_GPL(atomisp_get_platform_data);
 
 static int af_power_ctrl(struct v4l2_subdev *subdev, int flag)
 {
+	struct gmin_subdev *gs = find_gmin_subdev(subdev);
+
+	if (gs && gs->v2p8_vcm_on == flag)
+		return 0;
+	gs->v2p8_vcm_on = flag;
+
+	/*
+	 * The power here is used for dw9817,
+	 * regulator is from rear sensor
+	*/
+	if (gs->v2p8_vcm_reg) {
+		if (flag)
+			return regulator_enable(gs->v2p8_vcm_reg);
+		else
+			return regulator_disable(gs->v2p8_vcm_reg);
+	}
+
 	return 0;
 }
 
@@ -273,7 +301,7 @@ int atomisp_gmin_remove_subdev(struct v4l2_subdev *sd)
 				regulator_put(gmin_subdevs[i].v1p8_reg);
 				regulator_put(gmin_subdevs[i].v2p8_reg);
 				regulator_put(gmin_subdevs[i].v1p2_reg);
-				regulator_put(gmin_subdevs[i].vprog4d_reg);
+				regulator_put(gmin_subdevs[i].v2p8_vcm_reg);
 			}
 			gmin_subdevs[i].subdev = NULL;
 		}
@@ -360,7 +388,7 @@ static struct gmin_subdev *gmin_subdev_add(struct v4l2_subdev *subdev)
 
 	dev = client ? &client->dev : NULL;
 
-	for (i = 0; i < MAX_SUBDEVS && gmin_subdevs[i].subdev; i++)
+	for (i=0; i < MAX_SUBDEVS && gmin_subdevs[i].subdev; i++)
 		;
 	if (i >= MAX_SUBDEVS)
 		return NULL;
@@ -370,21 +398,27 @@ static struct gmin_subdev *gmin_subdev_add(struct v4l2_subdev *subdev)
 		pmic_id);
 
 	gmin_subdevs[i].subdev = subdev;
-	dev_info(dev, "suddev name = %s", subdev->name);
-	if (0 == strcmp(subdev->name, "t4ka3 3-0037")) {
-		gmin_subdevs[i].clock_num = 0;
-		gmin_subdevs[i].clock_src = 0;
-		gmin_subdevs[i].csi_port = 1;
-		gmin_subdevs[i].csi_lanes = 4;
-	} else {
-		gmin_subdevs[i].clock_num = 1;
-		gmin_subdevs[i].clock_src = 0;
-		gmin_subdevs[i].csi_port = 0;
-		gmin_subdevs[i].csi_lanes = 2;
-
-	}
+	gmin_subdevs[i].clock_num = gmin_get_var_int(dev, "CamClk", 0);
+	/*WA:CHT requires XTAL clock as PLL is not stable.*/
+	gmin_subdevs[i].clock_src = gmin_get_var_int(dev, "ClkSrc",
+							VLV2_CLK_PLL_19P2MHZ);
+	gmin_subdevs[i].csi_port = gmin_get_var_int(dev, "CsiPort", 0);
+	gmin_subdevs[i].csi_lanes = gmin_get_var_int(dev, "CsiLanes", 1);
 	gmin_subdevs[i].gpio0 = gpiod_get_index(dev, "cam_gpio0", 0);
 	gmin_subdevs[i].gpio1 = gpiod_get_index(dev, "cam_gpio1", 1);
+	gmin_subdevs[i].eldo1_1p8v = gmin_get_var_int(dev, "eldo1_1p8v",
+							ELDO1_1P8V);
+	gmin_subdevs[i].eldo1_sel_reg =
+		gmin_get_var_int(dev, "eldo1_sel_reg", ELDO1_SEL_REG);
+	gmin_subdevs[i].eldo1_ctrl_shift =
+		gmin_get_var_int(dev, "eldo1_ctrl_shift", ELDO1_CTRL_SHIFT);
+	gmin_subdevs[i].eldo2_1p8v =
+		gmin_get_var_int(dev, "eldo2_1p8v", ELDO2_1P8V);
+	gmin_subdevs[i].eldo2_sel_reg = gmin_get_var_int(dev, "eldo2_sel_reg",
+							ELDO2_SEL_REG);
+	gmin_subdevs[i].eldo2_ctrl_shift =
+		gmin_get_var_int(dev, "eldo2_ctrl_shift", ELDO2_CTRL_SHIFT);
+
 	if (!IS_ERR(gmin_subdevs[i].gpio0)) {
 		ret = gpiod_direction_output(gmin_subdevs[i].gpio0, 0);
 		if (ret)
@@ -404,8 +438,8 @@ static struct gmin_subdev *gmin_subdev_add(struct v4l2_subdev *subdev)
 	if (pmic_id == PMIC_REGULATOR) {
 		gmin_subdevs[i].v1p8_reg = regulator_get(dev, "V1P8SX");
 		gmin_subdevs[i].v2p8_reg = regulator_get(dev, "V2P8SX");
-		gmin_subdevs[i].v1p2_reg = regulator_get(dev, "V1P2SX");
-		gmin_subdevs[i].vprog4d_reg = regulator_get(dev, "VPROG4D");
+		gmin_subdevs[i].v1p2_reg = regulator_get(dev, "V1P2A");
+		gmin_subdevs[i].v2p8_vcm_reg = regulator_get(dev, "VPROG4B");
 
 		/* Note: ideally we would initialize v[12]p8_on to the
 		 * output of regulator_is_enabled(), but sadly that
@@ -516,6 +550,71 @@ static int axp_v2p8_off(void)
 				 ALDO1_CTRL3_SHIFT, false);
 }
 
+static int axp_v1p2_on(void)
+{
+	return axp_regulator_set(FLDO2_SEL_REG, FLDO2_1P2V, FLDO2_CTRL3_REG,
+				 FLDO2_CTRL3_SHIFT, true);
+}
+
+static int axp_v1p2_off(void)
+{
+	return axp_regulator_set(FLDO2_SEL_REG, FLDO2_1P2V, FLDO2_CTRL3_REG,
+				 FLDO2_CTRL3_SHIFT, false);
+}
+
+int gmin_v1p2_ctrl(struct v4l2_subdev *subdev, int on)
+{
+	struct gmin_subdev *gs = find_gmin_subdev(subdev);
+
+	if (gs && gs->v1p2_on == on)
+		return 0;
+	gs->v1p2_on = on;
+
+	if (pmic_id == PMIC_AXP) {
+		if (on)
+			return axp_v1p2_on();
+		else
+			return axp_v1p2_off();
+	}
+
+	if (gs->v1p2_reg) {
+		if (on)
+			return regulator_enable(gs->v1p2_reg);
+		else
+			return regulator_disable(gs->v1p2_reg);
+	}
+
+	/*TODO:v1p2 needs to extend to other PMICs*/
+
+	return -EINVAL;
+}
+
+static int axp_v1p5_on(void)
+{
+	return axp_regulator_set(ELDO1_SEL_REG, ELDO1_1P6V, ELDO_CTRL_REG,
+				 ELDO1_CTRL_SHIFT, true);
+}
+
+static int axp_v1p5_off(void)
+{
+	return axp_regulator_set(ELDO1_SEL_REG, ELDO1_1P6V, ELDO_CTRL_REG,
+				 ELDO1_CTRL_SHIFT, false);
+}
+
+static int gmin_v1p5_ctrl(struct v4l2_subdev *subdev, int on)
+{
+	if (pmic_id == PMIC_AXP) {
+		if (on)
+			return axp_v1p5_on();
+		else
+			return axp_v1p5_off();
+	}
+
+	return -EINVAL;
+}
+
+
+
 int gmin_v1p8_ctrl(struct v4l2_subdev *subdev, int on)
 {
 	struct gmin_subdev *gs = find_gmin_subdev(subdev);
@@ -542,15 +641,10 @@ int gmin_v1p8_ctrl(struct v4l2_subdev *subdev, int on)
 		gpio_set_value(v1p8_gpio, on);
 
 	if (gs->v1p8_reg) {
-		if (on) {
-			ret = regulator_enable(gs->v1p2_reg);
-			ret = regulator_enable(gs->v1p8_reg);
-			return ret;
-		} else {
-			ret = regulator_disable(gs->v1p2_reg);
-			ret = regulator_disable(gs->v1p8_reg);
-			return ret;
-		}
+		if (on)
+			return regulator_enable(gs->v1p8_reg);
+		else
+			return regulator_disable(gs->v1p8_reg);
 	}
 
 	if (pmic_id == PMIC_AXP) {
@@ -606,15 +700,10 @@ int gmin_v2p8_ctrl(struct v4l2_subdev *subdev, int on)
 		gpio_set_value(v2p8_gpio, on);
 
 	if (gs->v2p8_reg) {
-		if (on) {
-			ret = regulator_enable(gs->vprog4d_reg);
-			ret = regulator_enable(gs->v2p8_reg);
-			return ret;
-		} else {
-			ret = regulator_disable(gs->vprog4d_reg);
-			ret = regulator_disable(gs->v2p8_reg);
-			return ret;
-		};
+		if (on)
+			return regulator_enable(gs->v2p8_reg);
+		else
+			return regulator_disable(gs->v2p8_reg);
 	}
 
 	if (pmic_id == PMIC_AXP) {
@@ -645,6 +734,9 @@ int gmin_flisclk_ctrl(struct v4l2_subdev *subdev, int on)
 {
 	int ret = 0;
 	struct gmin_subdev *gs = find_gmin_subdev(subdev);
+
+	if (!gs)
+		return -ENODEV;
 	if (on)
 		ret = vlv2_plat_set_clock_freq(gs->clock_num, gs->clock_src);
 	if (ret)
@@ -695,6 +787,8 @@ static struct camera_sensor_platform_data gmin_plat = {
 	.gpio1_ctrl = gmin_gpio1_ctrl,
 	.v1p8_ctrl = gmin_v1p8_ctrl,
 	.v2p8_ctrl = gmin_v2p8_ctrl,
+	.v1p2_ctrl = gmin_v1p2_ctrl,
+	.v1p5_ctrl = gmin_v1p5_ctrl,
 	.flisclk_ctrl = gmin_flisclk_ctrl,
 	.platform_init = gmin_platform_init,
 	.platform_deinit = gmin_platform_deinit,
@@ -708,6 +802,9 @@ struct camera_sensor_platform_data *gmin_camera_platform_data(
 		enum atomisp_bayer_order csi_bayer)
 {
 	struct gmin_subdev *gs = find_gmin_subdev(subdev);
+
+	if (!gs)
+		return NULL;
 	gs->csi_fmt = csi_format;
 	gs->csi_bayer = csi_bayer;
 
@@ -804,8 +901,10 @@ int gmin_get_config_var(struct device *dev, const char *var, char *out, size_t *
 	kfree(ev);
 	*out_len = efilen;
 
+#ifdef DEBUG
 	if (ret)
  		dev_warn(dev, "Failed to find gmin variable %s\n", var8);
+#endif
 
 	return ret;
 }

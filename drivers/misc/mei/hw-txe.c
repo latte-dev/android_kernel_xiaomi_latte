@@ -198,8 +198,10 @@ static u32 mei_txe_aliveness_get(struct mei_device *dev)
 	return reg & HICR_HOST_ALIVENESS_RESP_ACK;
 }
 
-
-#define SEC_AVLIVENESS_WAIT_TIMEOUT (1*MSEC_PER_SEC)
+static inline bool ktime_before(const ktime_t cmp1, const ktime_t cmp2)
+{
+	return ktime_compare(cmp1, cmp2) < 0;
+}
 
 /**
  * mei_txe_aliveness_poll - waits for aliveness to settle
@@ -208,7 +210,8 @@ static u32 mei_txe_aliveness_get(struct mei_device *dev)
  * @expected: expected aliveness value
  *
  * Polls for HICR_HOST_ALIVENESS_RESP.ALIVENESS_RESP to be set
- * returns: 0 if the expected value was received, -ETIME otherwise
+ *
+ * Return: 0 if the expected value was received, -ETIME otherwise
  */
 static int mei_txe_aliveness_poll(struct mei_device *dev, u32 expected)
 {
@@ -216,18 +219,18 @@ static int mei_txe_aliveness_poll(struct mei_device *dev, u32 expected)
 	ktime_t stop, start;
 
 	start = ktime_get();
-	stop = ktime_add(start, ms_to_ktime(SEC_AVLIVENESS_WAIT_TIMEOUT));
+	stop = ktime_add(start, ms_to_ktime(SEC_ALIVENESS_WAIT_TIMEOUT));
 	do {
 		hw->aliveness = mei_txe_aliveness_get(dev);
 		if (hw->aliveness == expected) {
 			dev->pg_event = MEI_PG_EVENT_IDLE;
 			dev_dbg(&dev->pdev->dev,
 				"aliveness settled after %lld usecs\n",
-			ktime_to_us(ktime_sub(ktime_get(), start)));
+				ktime_to_us(ktime_sub(ktime_get(), start)));
 			return 0;
 		}
 		usleep_range(20, 50);
-	} while (ktime_compare(ktime_get(), stop) < 0);
+	} while (ktime_before(ktime_get(), stop));
 
 	dev->pg_event = MEI_PG_EVENT_IDLE;
 	dev_err(&dev->pdev->dev, "aliveness timed out\n");

@@ -871,6 +871,7 @@ enum cpu_idle_type {
 #define SD_PREFER_SIBLING	0x1000	/* Prefer to place tasks in a sibling domain */
 #define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
 #define SD_NUMA			0x4000	/* cross-node balancing */
+#define SD_WORKLOAD_CONSOLIDATION  0x8000	/* consolidate CPU workload */
 
 #ifdef CONFIG_WORKLOAD_CONSOLIDATION
 /* Higher concurrency in front to save power */
@@ -962,12 +963,10 @@ struct sched_domain {
 		struct rcu_head rcu;	/* used during destruction */
 	};
 
-#ifdef CONFIG_WORKLOAD_CONSOLIDATION
-	unsigned int total_groups;
-	unsigned int group_number;
-	unsigned int asym_concurrency;
-	struct sched_group *first_group;        /* ordered by CPU number */
-#endif
+	unsigned int total_groups;		/* total group number */
+	unsigned int group_number;		/* this CPU's group sequence */
+	unsigned int consolidating_coeff;	/* consolidating coefficient */
+	struct sched_group *first_group;	/* ordered by CPU number */
 
 	unsigned int span_weight;
 	/*
@@ -1038,6 +1037,7 @@ struct sched_avg {
 	 * choices of y < 1-2^(-32)*1024.
 	 */
 	u32 runnable_avg_sum, runnable_avg_period;
+	u32 period_contrib;
 	u64 last_runnable_update;
 	s64 decay_count;
 	unsigned long load_avg_contrib;

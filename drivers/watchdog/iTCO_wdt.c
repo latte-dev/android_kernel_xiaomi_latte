@@ -2,7 +2,6 @@
  *	intel TCO Watchdog Driver
  *
  *	(c) Copyright 2006-2011 Wim Van Sebroeck <wim@iguana.be>.
- *	Copyright (C) 2016 XiaoMi, Inc.
  *
  *	This program is free software; you can redistribute it and/or
  *	modify it under the terms of the GNU General Public License
@@ -127,6 +126,11 @@ module_param(turn_SMI_watchdog_clear_off, int, 0);
 MODULE_PARM_DESC(turn_SMI_watchdog_clear_off,
 	"Turn off SMI clearing watchdog (depends on TCO-version)(default=1)");
 
+static bool force_no_reboot;
+module_param(force_no_reboot, bool, 0);
+MODULE_PARM_DESC(force_no_reboot,
+	"Prevents the watchdog rebooting the platform (default=0)");
+
 /*
  * Some TCO specific functions
  */
@@ -171,6 +175,10 @@ static int iTCO_wdt_unset_NO_REBOOT_bit(void)
 	int ret = 0;
 	u32 val32;
 
+	/* force_no_reboot will prevent to unset NO_REBOOT bit */
+	if (force_no_reboot)
+		return -EIO;
+
 	/* Unset the NO_REBOOT bit: this enables reboots */
 	if (iTCO_wdt_private.iTCO_version == 3) {
 		val32 = readl(iTCO_wdt_private.gcs_pmc);
@@ -212,7 +220,7 @@ static int iTCO_wdt_start(struct watchdog_device *wd_dev)
 	/* disable chipset's NO_REBOOT bit */
 	if (iTCO_wdt_unset_NO_REBOOT_bit()) {
 		spin_unlock(&iTCO_wdt_private.io_lock);
-		pr_err("failed to reset NO_REBOOT flag, reboot disabled by hardware/BIOS\n");
+		pr_err("failed to reset NO_REBOOT flag, reboot disabled by hardware/BIOS/command line\n");
 		return -EIO;
 	}
 
@@ -590,17 +598,6 @@ static int iTCO_wdt_suspend(struct device *dev)
 	/* Reload the watchdog first, as advised from the AN */
 	iTCO_wdt_ping(&iTCO_wdt_watchdog_dev);
 
-	return 0;
-}
-
-int iTCO_wdt_suspend_afternoirq(void)
-{
-	if (!iTCO_wdt_private.started)
-		return 0;
-
-	/* Reload the watchdog first, as advised from the AN */
-	iTCO_wdt_ping(&iTCO_wdt_watchdog_dev);
-
 	/* Halt the watchdog */
 	iTCO_wdt_stop(&iTCO_wdt_watchdog_dev);
 
@@ -626,13 +623,11 @@ static int iTCO_wdt_resume(struct device *dev)
 	return iTCO_wdt_set_timeout(&iTCO_wdt_watchdog_dev,
 				    iTCO_wdt_watchdog_dev.timeout);
 }
-
 int iTCO_wdt_resume_early(void)
 {
 	printk("System debug in function %s \n", __func__);
 	return iTCO_wdt_resume(NULL);
 }
-
 #endif /* CONFIG_PM_SLEEP */
 
 static SIMPLE_DEV_PM_OPS(iTCO_wdt_pm_ops, iTCO_wdt_suspend, iTCO_wdt_resume);

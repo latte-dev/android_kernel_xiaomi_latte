@@ -203,6 +203,15 @@ void dw_writel(struct dw_i2c_dev *dev, u32 b, int offset)
 	}
 }
 
+static void dump_registers(struct dw_i2c_dev *dev)
+{
+	int offset;
+	for (offset = 0; offset <= DW_IC_COMP_TYPE; offset += 4) {
+		dev_err(dev->dev, "Offset 0x%02x, Value 0x%08x\n", offset,
+				dw_readl(dev, offset));
+	}
+
+}
 static u32
 i2c_dw_scl_hcnt(u32 ic_clk, u32 tSYMBOL, u32 tf, int cond, int offset)
 {
@@ -322,10 +331,13 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 			udelay(10);
 		else
 			usleep_range(10, 100);
-	} while (timeout--);
+	} while (--timeout);
 
-	if (unlikely(timeout == 0))
+	if (unlikely(timeout == 0)) {
 		dev_err(dev->dev, "controller time out\n");
+		dump_stack();
+		dump_registers(dev);
+	}
 
 	reg = dw_readl(dev, DW_IC_COMP_TYPE);
 	if (reg == ___constant_swab32(DW_IC_COMP_TYPE_VALUE)) {
@@ -486,10 +498,13 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 	struct i2c_msg *msgs = dev->msgs;
 	u32 intr_mask;
 	int tx_limit, rx_limit;
-	u32 addr = msgs[dev->msg_write_idx].addr;
+	u32 addr = 0;
 	u32 buf_len = dev->tx_buf_len;
 	u8 *buf = dev->tx_buf;
 	bool need_restart = false;
+
+	if (dev->msg_write_idx < dev->msgs_num)
+		addr = msgs[dev->msg_write_idx].addr;
 
 	intr_mask = DW_IC_INTR_DEFAULT_MASK;
 
@@ -637,6 +652,7 @@ static int i2c_dw_handle_tx_abort(struct dw_i2c_dev *dev)
 		return -EREMOTEIO;
 	}
 
+	dev_err(dev->dev, "abort_source = 0x%08lx\n", abort_source);
 	for_each_set_bit(i, &abort_source, ARRAY_SIZE(abort_sources))
 		dev_err(dev->dev, "%s: %s\n", __func__, abort_sources[i]);
 

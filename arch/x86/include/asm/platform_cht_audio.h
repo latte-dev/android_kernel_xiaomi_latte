@@ -2,7 +2,10 @@
  * platform_cht_audio.h: Cherrytrail audio platform data header file
  *
  * (C) Copyright 2013 Intel Corporation
+<<<<<<< HEAD
  * Copyright (C) 2016 XiaoMi, Inc.
+=======
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
  * Author: Mythri P K<mythri.p.k@intel.com>
  *
  * This program is free software; you can redistribute it and/or
@@ -18,6 +21,7 @@ enum {
 	CHT_DPCM_DB,
 	CHT_DPCM_COMPR,
 	CHT_DPCM_VOIP,
+	CHT_DPCM_LL,
 	CHT_DPCM_PROBE,
 };
 
@@ -30,5 +34,4 @@ enum {
 #define CHT_FW_MOD_TABLE_SIZE 0x100
 
 extern int chv_enable_jack(int enable);
-
 #endif

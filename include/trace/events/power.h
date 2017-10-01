@@ -162,7 +162,7 @@ TRACE_EVENT(cpu_frequency_limits,
 		  (unsigned long)__entry->cpu_id)
 );
 
-TRACE_EVENT(machine_suspend,
+TRACE_EVENT(device_pm_callback_start,
 
 	TP_PROTO(struct device *dev, const char *pm_ops, int event_in),
 
@@ -227,8 +227,8 @@ TRACE_EVENT(suspend_resume,
 		__entry->action = action;
 		__entry->val = val;
 		__entry->start = start;
-	),
-
+ 	),
+ 
 	TP_printk("%s[%u] %s", __entry->action, (unsigned int)__entry->val,
 		(__entry->start)?"begin":"end")
 );

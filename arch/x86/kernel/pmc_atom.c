@@ -280,7 +280,7 @@ static int pm_suspend_exit_event(void)
 			pr_err("Post Suspend: PMC_S0I3_TMR register read returned negative value\n");
 		} else {
 			legacy_suspend.tmr_after_susp = tmr;
-			pr_debug("Sleep residency in the last suspend cycle = %llu ms",
+			pr_info("Sleep residency in the last suspend cycle = %llu ms",
 			legacy_suspend.tmr_after_susp -
 			legacy_suspend.tmr_before_susp);
 			/* Compute the time spent in suspend */

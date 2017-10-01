@@ -36,6 +36,18 @@ enum typec_state {
 	TYPEC_STATE_UNATTACHED_DFP,
 	TYPEC_STATE_ATTACHED_UFP,
 	TYPEC_STATE_ATTACHED_DFP,
+	TYPEC_STATE_ATTACHED_AUDIO_ACC,
+	TYPEC_STATE_ATTACHED_DEBUG_ACC,
+	/* CC pull-down to pull-up during PR SWAP*/
+	TYPEC_STATE_PD_PU_SWAP,
+	/* CC pull-up to pull-down during PR SWAP*/
+	TYPEC_STATE_PU_PD_SWAP,
+};
+
+enum typec_cc_pull {
+	TYPEC_CC_PULL_NONE,
+	TYPEC_CC_PULL_UP,
+	TYPEC_CC_PULL_DOWN,
 };
 
 enum typec_cc_pin {
@@ -64,10 +76,17 @@ enum typec_cc_level {
 	USB_TYPEC_CC_VRD_3000,
 };
 
+enum typec_fifo {
+	FIFO_TYPE_TX = 1,
+	FIFO_TYPE_RX = 2,
+};
+
 enum typec_event {
 	TYPEC_EVENT_UNKNOWN,
 	TYPEC_EVENT_VBUS,
 	TYPEC_EVENT_DRP,
+	TYPEC_EVENT_UFP,
+	TYPEC_EVENT_DFP,
 	TYPEC_EVENT_TIMER,
 	TYPEC_EVENT_NONE,
 	TYPEC_EVENT_DEV_REMOVE,
@@ -84,10 +103,77 @@ enum typec_type {
 	USB_TYPE_C
 };
 
+enum typec_phy_evts {
+	PROT_PHY_EVENT_NONE,
+	PROT_PHY_EVENT_GOODCRC,
+	PROT_PHY_EVENT_TX_SENT,
+	PROT_PHY_EVENT_COLLISION,
+	PROT_PHY_EVENT_HARD_RST,
+	PROT_PHY_EVENT_SOFT_RST,
+	PROT_PHY_EVENT_RESET,
+	PROT_PHY_EVENT_TX_FAIL,
+	PROT_PHY_EVENT_SOFT_RST_FAIL,
+	PROT_PHY_EVENT_TX_HARD_RST,
+	PROT_PHY_EVENT_GOODCRC_SENT,
+	PROT_PHY_EVENT_MSG_RCV,
+};
+
+enum typec_phy_dpm_evts {
+	PHY_DPM_EVENT_VBUS_ON,
+	PHY_DPM_EVENT_VBUS_OFF,
+};
+
+enum {
+	PD_DATA_ROLE_UFP,
+	PD_DATA_ROLE_DFP,
+};
+
+enum {
+	PD_PWR_ROLE_SINK,
+	PD_PWR_ROLE_SRC,
+};
+
+enum {
+	PD_POWER_ROLE_PROVIDER,
+	PD_POWER_ROLE_PROVIER_CONSUMER,
+	PD_POWER_ROLE_CONSUMER,
+	PD_POWER_ROLE_CONSUMER_PROVIDER,
+};
+
+enum typec_cc_vrd {
+	TYPEC_CC_VRD_UNKNOWN = -1,
+	TYPEC_CC_VRA,
+	TYPEC_CC_VRD_USB,
+	TYPEC_CC_VRD_1500,
+	TYPEC_CC_VRD_3000
+};
+
+enum typec_dp_cable_type {
+	TYPEC_DP_TYPE_NONE,
+	TYPEC_DP_TYPE_2X,
+	TYPEC_DP_TYPE_4X,
+};
+
+enum pd_pkt_type {
+	PKT_TYPE_NONE,
+	PKT_TYPE_SOP,	/* SOP */
+	PKT_TYPE_SOP_P, /* SOP prime */
+	PKT_TYPE_SOP_PP /* SOP double prime */
+};
+
 struct typec_cc_psy {
 	enum typec_cc_level v_rd;
 	enum typec_current cur;
 };
+
+struct cc_pin {
+	enum typec_cc_pin id;
+	int valid;
+	int rd;
+	int cur;
+};
+
+#define MAX_LABEL_SIZE		16
 
 struct typec_phy;
 
@@ -97,20 +183,18 @@ struct typec_ops {
 	/* Callback for getting host-current */
 	enum typec_current (*get_host_current)(struct typec_phy *phy);
 	/* Callback for measuring cc */
-	int (*measure_cc)(struct typec_phy *phy, enum typec_cc_pin pin,
-			struct typec_cc_psy *cc_psy, unsigned long timeout);
+	int (*measure_cc)(struct typec_phy *phy, struct cc_pin *pin);
 	/* Callback for switching between pull-up & pull-down */
 	int (*switch_mode)(struct typec_phy *phy, enum typec_mode mode);
 	/* Callback for setting-up cc */
 	int (*setup_cc)(struct typec_phy *phy, enum typec_cc_pin cc,
 					enum typec_state state);
+	int (*enable_valid_pu)(struct typec_phy *phy);
+	bool (*is_vconn_enabled)(struct typec_phy *phy);
+	int (*enable_vconn)(struct typec_phy *phy, bool en);
+	int (*set_bist_cm2)(struct typec_phy *phy, bool en);
 };
 
-struct bmc_ops {
-	int pd_revision;
-	int (*send_packet)(struct typec_phy *phy, void *msg, int len);
-	int (*recv_packet)(struct typec_phy *phy, void *msg);
-};
 
 struct typec_phy {
 	const char *label;
@@ -119,12 +203,19 @@ struct typec_phy {
 	enum typec_type type;
 	enum typec_state state;
 	enum typec_cc_pin valid_cc;
-	bool valid_ra;
-
+	enum typec_dp_cable_type dp_type;
+	int valid_rd;
+	struct pd_prot *proto;
 	struct list_head list;
 	spinlock_t irq_lock;
 	struct atomic_notifier_head notifier;
 	struct atomic_notifier_head prot_notifier;
+	struct cc_pin cc1;
+	struct cc_pin cc2;
+
+	bool support_drp_toggle;
+	bool support_auto_goodcrc;
+	bool support_retry;
 
 	int (*notify_connect)(struct typec_phy *phy, enum typec_cc_level lvl);
 	int (*notify_disconnect)(struct typec_phy *phy);
@@ -132,9 +223,25 @@ struct typec_phy {
 	int (*init)(struct typec_phy *phy);
 	int (*shutdown)(struct typec_phy *phy);
 	int (*get_pd_version)(struct typec_phy *phy);
+	int (*phy_reset)(struct typec_phy *phy);
+	int (*flush_fifo)(struct typec_phy *phy, enum typec_fifo fifo_type);
+	int (*send_packet)(struct typec_phy *phy, u8 *msg, int len,
+				enum pd_pkt_type type);
+	int (*recv_packet)(struct typec_phy *phy,
+					u8 *msg, enum pd_pkt_type *type);
+	int (*setup_role)(struct typec_phy *phy, int data_role, int pwr_role);
+	void (*notify_protocol)(struct typec_phy *phy, unsigned long event);
 	bool (*is_pd_capable)(struct typec_phy *phy);
+	int (*enable_autocrc)(struct typec_phy *phy, bool en);
+	int (*set_pu_pd)(struct typec_phy *phy, enum typec_cc_pull pull);
+	int (*set_swap_state)(struct typec_phy *phy, bool swap);
+	int (*enable_detection)(struct typec_phy *phy, bool en);
+	bool (*is_vbus_on)(struct typec_phy *phy);
+	int (*enable_auto_retry)(struct typec_phy *phy, bool en);
+	int (*enable_sop_prime)(struct typec_phy *phy, bool en);
 };
 
+extern struct typec_phy *typec_get_phy(int type);
 extern int typec_add_phy(struct typec_phy *phy);
 extern int typec_remove_phy(struct typec_phy *phy);
 struct typec_phy *typec_get_phy(int type);
@@ -159,6 +266,38 @@ static inline int typec_set_host_current(struct typec_phy *phy,
 {
 	if (phy && phy->ops.set_host_current)
 		return phy->ops.set_host_current(phy, cur);
+	return -ENOTSUPP;
+}
+
+static inline int typec_set_bist_cm2(struct typec_phy *phy,
+					bool en)
+{
+	if (phy && phy->ops.set_bist_cm2)
+		return phy->ops.set_bist_cm2(phy, en);
+
+	return -ENOTSUPP;
+}
+
+static inline bool typec_is_vconn_enabled(struct typec_phy *phy)
+{
+	if (phy && phy->ops.is_vconn_enabled)
+		return phy->ops.is_vconn_enabled(phy);
+
+	return false;
+}
+
+static inline int typec_enable_vconn(struct typec_phy *phy, bool en)
+{
+	if (phy && phy->ops.enable_vconn)
+		return phy->ops.enable_vconn(phy, en);
+
+	return -ENOTSUPP;
+}
+
+static inline int typec_enable_valid_pu(struct typec_phy *phy)
+{
+	if (phy && phy->ops.enable_valid_pu)
+		return phy->ops.enable_valid_pu(phy);
 	return -ENOTSUPP;
 }
 
@@ -189,7 +328,7 @@ typec_measure_cc(struct typec_phy *phy, int pin,
 		struct typec_cc_psy *cc_psy, unsigned long timeout)
 {
 	if (phy && phy->ops.measure_cc)
-		return phy->ops.measure_cc(phy, pin, cc_psy, timeout);
+		return phy->ops.measure_cc(phy, pin);
 	return -ENOTSUPP;
 }
 
@@ -222,6 +361,38 @@ static inline int typec_setup_cc(struct typec_phy *phy, enum typec_cc_pin cc,
 	return -ENOTSUPP;
 }
 
+static inline int typec_enable_autocrc(struct typec_phy *phy, bool en)
+{
+	if (phy && phy->enable_autocrc)
+		return phy->enable_autocrc(phy, en);
+
+	return -ENOTSUPP;
+}
+
+static inline int typec_enable_auto_retry(struct typec_phy *phy, bool en)
+{
+	if (phy && phy->enable_auto_retry)
+		return phy->enable_auto_retry(phy, en);
+
+	return -ENOTSUPP;
+}
+
+static inline int typec_enable_sop_prime(struct typec_phy *phy, bool en)
+{
+	if (phy && phy->enable_sop_prime)
+		return phy->enable_sop_prime(phy, en);
+
+	return -ENOTSUPP;
+}
+
+static inline int typec_set_swap_state(struct typec_phy *phy, bool swap)
+{
+	if (phy && phy->set_swap_state)
+		return phy->set_swap_state(phy, swap);
+
+	return -ENOTSUPP;
+}
+
 static inline int typec_register_prot_notifier(struct typec_phy *phy,
 						struct notifier_block *nb)
 {
@@ -233,4 +404,5 @@ static inline int typec_unregister_prot_notifier(struct typec_phy *phy,
 {
 	return atomic_notifier_chain_unregister(&phy->prot_notifier, nb);
 }
+
 #endif /* __USB_TYPEC_PHY_H__ */

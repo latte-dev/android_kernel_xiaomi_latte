@@ -1219,9 +1219,7 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
 {
 	struct task_struct *curr;
 	struct rq *rq;
-#ifdef CONFIG_WORKLOAD_CONSOLIDATION
 	int do_find = 0;
-#endif
 
 	if (p->nr_cpus_allowed == 1)
 		goto out;
@@ -1235,11 +1233,8 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
 	rcu_read_lock();
 	curr = ACCESS_ONCE(rq->curr); /* unlocked access */
 
-#ifdef CONFIG_WORKLOAD_CONSOLIDATION
-	if (workload_consolidation_cpu_shielded(cpu) &&
-		(p->nr_cpus_allowed > 1))
+	if (wc_cpu_shielded(cpu))
 		do_find = 1;
-#endif
 
 	/*
 	 * If the current task on @p's runqueue is an RT task, then
@@ -1263,14 +1258,9 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
 	 * This test is optimistic, if we get it wrong the load-balancer
 	 * will have to sort it out.
 	 */
-
-#ifdef CONFIG_WORKLOAD_CONSOLIDATION
 	if (do_find || (curr && unlikely(rt_task(curr)) &&
-		(curr->nr_cpus_allowed < 2 || curr->prio <= p->prio))) {
-#else
-	if (curr && unlikely(rt_task(curr)) &&
-		((curr->nr_cpus_allowed < 2) || (curr->prio <= p->prio))) {
-#endif
+	    (curr->nr_cpus_allowed < 2 ||
+	     curr->prio <= p->prio))) {
 		int target = find_lowest_rq(p);
 
 		if (target != -1)
@@ -1455,11 +1445,12 @@ static int find_lowest_rq(struct task_struct *task)
 	if (!cpupri_find(&task_rq(task)->rd->cpupri, task, lowest_mask))
 		return -1; /* No targets found */
 
-#ifdef CONFIG_WORKLOAD_CONSOLIDATION
-	workload_consolidation_nonshielded_mask(this_cpu, lowest_mask);
+	rcu_read_lock();
+	sd = rcu_dereference(per_cpu(sd_wc, this_cpu));
+	wc_nonshielded_mask(sd, lowest_mask);
+	rcu_read_unlock();
 	if (!cpumask_weight(lowest_mask))
 		return -1;
-#endif
 
 	/*
 	 * At this point we have built a mask of cpus representing the
@@ -1698,6 +1689,9 @@ static void pull_rt_task(struct rq *this_rq)
 	 * see overloaded we must also see the rto_mask bit.
 	 */
 	smp_rmb();
+
+	if (wc_cpu_shielded(this_cpu))
+		return 0;
 
 	for_each_cpu(cpu, this_rq->rd->rto_mask) {
 		if (this_cpu == cpu)

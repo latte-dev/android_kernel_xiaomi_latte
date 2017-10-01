@@ -74,6 +74,11 @@ int em_config_get_oem1_data(struct em_config_oem1_data *data);
 
 #else
 
+static int em_config_get_oem0_data(struct em_config_oem0_data *data)
+{
+	return 0;
+}
+
 static int em_config_get_oem1_data(struct em_config_oem1_data *data)
 {
 	return 0;

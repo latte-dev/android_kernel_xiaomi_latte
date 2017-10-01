@@ -2500,7 +2500,7 @@ config IOSF_MBI
 
 config PMC_ATOM
 	def_bool y
-        depends on PCI
+	depends on PCI
 
 config INTEL_SOC_NC_STATE
 	bool "North Complex devices power state driver"

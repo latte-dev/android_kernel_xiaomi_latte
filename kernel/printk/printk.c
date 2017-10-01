@@ -257,6 +257,11 @@ static u32 log_buf_len = __LOG_BUF_LEN;
 /* cpu currently holding logbuf_lock */
 static volatile unsigned int logbuf_cpu = UINT_MAX;
 
+/* Give the posibility to temporary disable slow (!CON_FAST) consoles */
+static atomic_t console_slow_suspended = ATOMIC_INIT(0);
+/* Keep the number of slow suspend in check */
+#define MAX_SLOW_SUSPEND_COUNT	(50)
+
 /* human readable text of the record */
 static char *log_text(const struct printk_log *msg)
 {
@@ -1269,6 +1274,9 @@ static void call_console_drivers(int level, const char *text, size_t len)
 	for_each_console(con) {
 		if (exclusive_console && con != exclusive_console)
 			continue;
+		if (atomic_read(&console_slow_suspended) &&
+		    !(con->flags & CON_FAST))
+			continue;
 		if (!(con->flags & CON_ENABLED))
 			continue;
 		if (!con->write)
@@ -1340,10 +1348,11 @@ static inline int can_use_console(unsigned int cpu)
  * interrupts disabled. It should return with 'lockbuf_lock'
  * released but interrupts still disabled.
  */
-static int console_trylock_for_printk(unsigned int cpu)
+static int console_trylock_for_printk(void)
 	__releases(&logbuf_lock)
 {
 	int retval = 0, wake = 0;
+	unsigned int cpu = smp_processor_id();
 
 	if (!in_nmi() && console_trylock()) {
 		retval = 1;
@@ -1518,7 +1527,8 @@ asmlinkage int vprintk_emit(int facility, int level,
 		 */
 		if (!oops_in_progress && !lockdep_recursing(current)) {
 			recursion_bug = 1;
-			goto out_restore_irqs;
+			local_irq_restore(flags);
+			return 0;
 		}
 		zap_locks();
 	}
@@ -1622,6 +1632,16 @@ asmlinkage int vprintk_emit(int facility, int level,
 	}
 	printed_len += text_len;
 
+	lockdep_on();
+	local_irq_restore(flags);
+	lockdep_off();
+
+	/*
+	 * Disable preemption to avoid being preempted while holding
+	 * console_sem which would prevent anyone from printing to
+	 * console
+	 */
+	preempt_disable();
 	/*
 	 * Try to acquire and then immediately release the console semaphore.
 	 * The release will print out buffers and wake up /dev/kmsg and syslog()
@@ -1630,13 +1650,13 @@ asmlinkage int vprintk_emit(int facility, int level,
 	 * The console_trylock_for_printk() function will release 'logbuf_lock'
 	 * regardless of whether it actually gets the console semaphore or not.
 	 */
-	if (console_trylock_for_printk(this_cpu))
+	if (console_trylock_for_printk())
 		console_unlock();
 
+
 out_restore_lockdep_irqs:
+	preempt_enable();
 	lockdep_on();
-out_restore_irqs:
-	local_irq_restore(flags);
 
 	return printed_len;
 }
@@ -2190,6 +2210,33 @@ void console_flush_on_panic(void)
 	console_may_schedule = 0;
 	console_unlock();
 }
+void console_suspend_slow(void)
+{
+	struct console *c;
+	if (atomic_read(&console_slow_suspended) >= MAX_SLOW_SUSPEND_COUNT) {
+		pr_debug("Max slow suspend\n");
+		return;
+	}
+	if (atomic_add_return(1, &console_slow_suspended) == 1) {
+		pr_err("Suspend slow consoles\n");
+		for_each_console(c)
+			if (!(c->flags & CON_FAST))
+				pr_debug("%s suspended\n", c->name);
+	}
+}
+EXPORT_SYMBOL(console_suspend_slow);
+
+void console_restore_slow(void)
+{
+	if (atomic_read(&console_slow_suspended) <= 0) {
+		pr_debug("Min slow suspend\n");
+		return;
+	}
+
+	if (!atomic_sub_return(1, &console_slow_suspended))
+		pr_err("Restore slow consoles\n");
+}
+EXPORT_SYMBOL(console_restore_slow);
 
 /*
  * Return the console tty driver structure and its associated index

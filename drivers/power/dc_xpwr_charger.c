@@ -337,11 +337,11 @@ static inline int pmic_chrg_set_cv(struct pmic_chrg_info *info, int cv)
 	if (ret < 0)
 		goto set_cv_fail;
 
-	if (cv < CV_4100)
+	if (cv <= CV_4100)
 		reg_val = CHRG_CCCV_CV_4100MV;
-	else if (cv < CV_4150)
+	else if (cv <= CV_4150)
 		reg_val = CHRG_CCCV_CV_4150MV;
-	else if (cv < CV_4200)
+	else if (cv <= CV_4200)
 		reg_val = CHRG_CCCV_CV_4200MV;
 	else
 		reg_val = CHRG_CCCV_CV_4350MV;
@@ -605,7 +605,8 @@ static int pmic_chrg_usb_set_property(struct power_supply *psy,
 		ret = pmic_chrg_enable_charging(info, val->intval);
 		if (ret < 0)
 			dev_warn(&info->pdev->dev, "enable charger failed\n");
-		 info->is_charger_enabled = val->intval;
+		info->is_charging_enabled = val->intval;
+		info->is_charger_enabled = val->intval;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CURRENT:
 		ret = pmic_chrg_set_cc(info, val->intval);
@@ -657,12 +658,6 @@ static int pmic_chrg_usb_set_property(struct power_supply *psy,
 		ret = -EINVAL;
 	}
 
-	/*
-	 * back to back or contineous read/writes to
-	 * PMIC is causing i2c semaphore hang issues.
-	 * adding a delay of 5ms to avoid the issue.
-	 */
-	usleep_range(10000, 15000);
 	mutex_unlock(&info->lock);
 	return ret;
 }
@@ -745,12 +740,6 @@ static int pmic_chrg_usb_get_property(struct power_supply *psy,
 	}
 
 psy_get_prop_fail:
-	/*
-	 * back to back or contineous read/writes to
-	 * PMIC is causing i2c semaphore hang issues.
-	 * adding a delay of 5ms to avoid the issue.
-	 */
-	usleep_range(9000, 12000);
 	mutex_unlock(&info->lock);
 	return ret;
 }
@@ -1049,15 +1038,16 @@ static int pmic_chrg_probe(struct platform_device *pdev)
 			 * on usb id during boot.
 			 */
 			schedule_work(&info->otg_work);
-		}
-	}
 
-	/* Register cooling device to control the vbus */
-	ret = register_cooling_device(info);
-	if (ret) {
-		dev_err(&info->pdev->dev,
-			"Register cooling device Failed (%d)\n", ret);
-		goto cdev_reg_fail;
+			/* Register cooling device to control the vbus */
+			ret = register_cooling_device(info);
+			if (ret) {
+				dev_err(&info->pdev->dev,
+					"Register cooling device Failed (%d)\n",
+					ret);
+				goto cdev_reg_fail;
+			}
+		}
 	}
 
 	return 0;

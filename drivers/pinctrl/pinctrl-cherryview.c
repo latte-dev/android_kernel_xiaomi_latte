@@ -70,7 +70,6 @@
 				offset, CV_PADCTRL1_REG)) & CV_CFG_LOCK_MASK)
 
 #define CV_GPIO_NORTH_CTRL_BASE	(0xFED88000)
-
 /*northeast pin list*/
 enum {
 	MF_PLT_CLK0 = 0,
@@ -725,7 +724,7 @@ struct chv_gpio {
 	struct irq_domain	*domain;
 	int			intr_lines[MAX_INTR_LINE_NUM];
 	char			*community_name;
-	int		print_wakeup;
+	int			print_wakeup;
 };
 
 static DEFINE_SPINLOCK(chv_reg_access_lock);
@@ -1261,7 +1260,6 @@ static u32 chv_gpio_cfg_read(int gpio, int ctrl_reg)
 
 	return value;
 }
-
 /*there is requirement to access the inv settings on ctrl1 register*
 **	gpio : gpio number					**
 **	inv : inv settings bits					**
@@ -1299,10 +1297,44 @@ void chv_gpio_cfg(int gpio, int inv, int en, int mask, int ctrl_reg)
 	spin_unlock_irqrestore(&cg->lock, flags);
 }
 
+
+/*there is requirement to access the inv settings on ctrl1 register*
+**	gpio : gpio number					**
+**	inv : inv settings bits					**
+**	en: 1 for enable inv, 0 for disable inv			**/
 void chv_gpio_cfg_inv(int gpio, int inv, int en)
 {
-	chv_gpio_cfg(gpio, inv, en, CV_GPIO_INV_MASK, CV_PADCTRL1_REG);
+	int offset;
+	struct chv_gpio *cg;
+	void __iomem *reg;
+	unsigned long flags;
+	struct gpio_chip *chip;
+	u32 value;
+	u32 set;
+
+	set = __ffs(inv & CV_GPIO_INV_MASK);
+	if (!set)
+		return;
+
+	chip = gpiod_to_chip(gpio_to_desc(gpio));
+	if (!chip)
+		return;
+
+	cg = to_chv_priv(chip);
+	offset = gpio - chip->base;
+	reg = chv_gpio_reg(&cg->chip, offset, CV_PADCTRL1_REG);
+
+	spin_lock_irqsave(&cg->lock, flags);
+	value = chv_readl(reg);
+
+	if (en)
+		chv_writel((value | BIT(set)), reg);
+	else
+		chv_writel((value & ~BIT(set)), reg);
+
+	spin_unlock_irqrestore(&cg->lock, flags);
 }
+
 EXPORT_SYMBOL_GPL(chv_gpio_cfg_inv);
 
 static void chv_gpio_cfg_ctrl0(int gpio, int inv, int en)
@@ -1388,7 +1420,6 @@ static struct class jack_class = {
 	.class_attrs =	jack_attrs,
 };
 
-
 static void chv_gpio_irq_dispatch(struct chv_gpio *cg)
 {
 	u32 intr_line, mask, offset, irq;
@@ -1401,17 +1432,23 @@ static void chv_gpio_irq_dispatch(struct chv_gpio *cg)
 	while ((pending = (chv_readl(reg) & chv_readl(mask_reg) & 0xFFFF))) {
 		intr_line = __ffs(pending);
 		offset = cg->intr_lines[intr_line];
+		/*
+		* For the interrupts the kernel doens't know, do ack
+		* and mask to prevent it from entering the loop again.
+		*/
 		if (unlikely(offset < 0)) {
 			mask = BIT(intr_line);
 			chv_writel(mask, reg);
-			dev_warn(&cg->pdev->dev, "unregistered shared irq\n");
+			chv_writel(chv_readl(mask_reg) & (~mask), mask_reg);
+			dev_warn(&cg->pdev->dev,
+				"unregistered irq, line %d\n", intr_line);
 			continue;
 		} else {
 			irq = irq_find_mapping(cg->domain, offset);
 			if (cg->print_wakeup) {
 				pr_info("chv_gpio: irq[%d]"
-						" might wake up system!\n",
-						irq);
+					" might wake up system!\n",
+					irq);
 			}
 
 			generic_handle_irq(irq);
@@ -1475,6 +1512,38 @@ static const struct irq_domain_ops chv_gpio_irq_ops = {
 	.map = chv_gpio_irq_map,
 };
 
+#ifdef CONFIG_ACPI
+#define GPIO_ACPI_MMIO_ACCESS_START		((acpi_adr_space_type) 0x91)
+
+struct chv_gpio_acpi_handler_data {
+	struct chv_gpio *cg;
+	int id;
+};
+
+static acpi_status
+chv_gpio_mmio_access_handler(u32 function, acpi_physical_address address,
+			    u32 bits, u64 *value, void *handler_context,
+			    void *region_context)
+{
+	struct chv_gpio_acpi_handler_data *data = region_context;
+	void __iomem *reg_addr;
+	struct device *dev = &data->cg->pdev->dev;
+
+	dev_dbg(dev, "%s: function %d, address 0x%x, value 0x%x\n",
+		__func__, function, (u32)address, (u32)(*value));
+
+	reg_addr = (void __iomem *) (data->cg->reg_base + (u32)address);
+
+	if (function == ACPI_WRITE)
+		chv_writel((u32)(*value), reg_addr);
+	else if (function == ACPI_READ)
+		*value = chv_readl(reg_addr);
+	else
+		return AE_BAD_PARAMETER;
+
+	return AE_OK;
+}
+
 #ifdef CONFIG_PM_SLEEP
 static int chv_gpio_suspend_noirq(struct device *dev)
 {
@@ -1491,6 +1560,35 @@ static int chv_gpio_resume_early(struct device *dev)
 }
 #endif
 
+static int chv_gpio_acpi_request_mmio_access(struct chv_gpio *cg, int id)
+{
+	struct acpi_device *adev = ACPI_COMPANION(&cg->pdev->dev);
+	struct chv_gpio_acpi_handler_data *data;
+	acpi_status status;
+
+	if (!adev)
+		return -ENODEV;
+
+	data = devm_kzalloc(&cg->pdev->dev,
+		sizeof(struct chv_gpio_acpi_handler_data), GFP_KERNEL);
+
+	if (!data)
+		return -ENOMEM;
+
+	data->cg = cg;
+	data->id = id;
+	status = acpi_install_address_space_handler(adev->handle,
+				GPIO_ACPI_MMIO_ACCESS_START + id,
+				&chv_gpio_mmio_access_handler,
+				NULL,
+				data);
+
+	if (ACPI_FAILURE(status))
+		return -EFAULT;
+	return 0;
+}
+#endif
+
 static int
 chv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 {
@@ -1501,7 +1599,8 @@ chv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 	struct device *dev = &pdev->dev;
 	struct gpio_bank_pnp *bank;
 	int ret = 0;
-	int nbanks = sizeof(chv_banks_pnp) / sizeof(struct gpio_bank_pnp);
+	int nbanks = ARRAY_SIZE(chv_banks_pnp);
+	int bank_id = 0;
 
 	cg = devm_kzalloc(dev, sizeof(struct chv_gpio), GFP_KERNEL);
 	if (!cg) {
@@ -1525,6 +1624,8 @@ chv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 		ret = -ENODEV;
 		goto err;
 	}
+
+	bank_id = i;
 
 	mem_rc = pnp_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!mem_rc) {
@@ -1588,16 +1689,11 @@ chv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 		irq_set_chained_handler(irq_rc->start, chv_gpio_irq_handler);
 	}
 
-	/* reigster class */
-	if (mem_rc->start == CV_GPIO_NORTH_CTRL_BASE) {
-		ret = class_register(&jack_class);
-		if (ret < 0)
-			dev_err(dev, "create jack_class failed!\n");
-		dev_info(dev, "Created jack_class.\n");
-	}
+#ifdef CONFIG_ACPI
+	chv_gpio_acpi_request_mmio_access(cg, bank_id);
+#endif
 
-	dev_info(dev, "Cherryview GPIO %s probed. Base=%x\n",
-		pdev->name, mem_rc->start);
+	dev_info(dev, "Cherryview GPIO %s probed\n", pdev->name);
 
 	dev_set_drvdata(&pdev->dev, cg);
 	return 0;
@@ -1626,7 +1722,7 @@ static struct pnp_driver chv_gpio_pnp_driver = {
 	.name		= "chv_gpio",
 	.id_table	= chv_gpio_pnp_match,
 	.probe          = chv_gpio_pnp_probe,
-	.driver     = {
+	.driver		= {
 		.name = "chv_gpio",
 		.pm = &chv_gpio_pm,
 	},

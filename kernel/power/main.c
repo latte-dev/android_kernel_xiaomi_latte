@@ -233,7 +233,6 @@ static int __init pm_debugfs_init(void)
 
 late_initcall(pm_debugfs_init);
 #endif /* CONFIG_DEBUG_FS */
-
 #endif /* CONFIG_PM_SLEEP */
 
 #ifdef CONFIG_PM_SLEEP_DEBUG
@@ -635,11 +634,16 @@ static inline int pm_start_workqueue(void) { return 0; }
 
 int register_power_hal_suspend_device(struct device *dev)
 {
+	int ret;
 	if (!power_hal_kobj || !dev)
 		return -ENODEV;
 
-	return sysfs_create_link(power_hal_kobj, &dev->kobj,
+	ret = sysfs_create_link(power_hal_kobj, &dev->kobj,
 			dev_name(dev));
+
+	kobject_uevent(&dev->kobj, KOBJ_CHANGE);
+
+	return ret;
 }
 EXPORT_SYMBOL(register_power_hal_suspend_device);
 

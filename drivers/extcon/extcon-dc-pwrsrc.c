@@ -86,6 +86,8 @@
 #define BC12_IRQ_CFG_MASK		0x2
 
 #define DC_XPWR_CHARGE_CUR_DCP		2000
+#define DC_XPWR_CHARGE_CUR_DCP_1500		1500
+#define DC_XPWR_CHARGE_CUR_DCP_2000		2000
 #define DC_XPWR_CHARGE_CUR_CDP		1500
 #define DC_XPWR_CHARGE_CUR_SDP_500	500
 #define DC_XPWR_CHARGE_CUR_SDP_100	100
@@ -270,7 +272,10 @@ static int handle_chrg_det_event(struct dc_pwrsrc_info *info)
 		notify_charger = true;
 		cable_props.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_CONNECT;
 		cable_props.chrg_type = POWER_SUPPLY_CHARGER_TYPE_USB_DCP;
-		cable_props.ma = DC_XPWR_CHARGE_CUR_DCP;
+		if (info->pdata->chrg_usb_compliance)
+			cable_props.ma = DC_XPWR_CHARGE_CUR_DCP_1500;
+		else
+			cable_props.ma = DC_XPWR_CHARGE_CUR_DCP_2000;
 	} else {
 		dev_warn(&info->pdev->dev,
 			"disconnect or unknown or ID event\n");
@@ -527,6 +532,15 @@ static int dc_xpwr_pwrsrc_probe(struct platform_device *pdev)
 		}
 	}
 
+	/* Register extcon notifier */
+	info->extcon_nb.notifier_call = dc_pwrsrc_handle_extcon_event;
+	ret = extcon_register_interest(&info->cable_obj, NULL,
+				"USB-Host", &info->extcon_nb);
+	if (ret)
+		dev_err(&pdev->dev, "failed to register extcon notifier\n");
+
+	if (info->cable_obj.edev)
+		info->id_short = is_usb_host_mode(info->cable_obj.edev);
 
 	dev_info(&info->pdev->dev, "%s: gpio_mux_cntl=%d\n",
 			__func__, desc_to_gpio(info->pdata->gpio_mux_cntl));

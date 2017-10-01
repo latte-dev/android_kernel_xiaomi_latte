@@ -35,11 +35,17 @@
 #include <trace/events/cpufreq_interactive.h>
 
 struct timer_list  bootboost_safety_timer;
-
+u32 max_nonturbo_freq;
 struct cpufreq_interactive_cpuinfo {
 	struct timer_list cpu_timer;
 	struct timer_list cpu_slack_timer;
-	spinlock_t load_lock; /* protects the next 9 fields */
+	spinlock_t load_lock; /* protects the next fields */
+	u64 prev_aperf;
+	u64 prev_mperf;
+	u64 prev_tsc;
+	u64 delta_mperf;
+	u64 delta_aperf;
+	u64 delta_tsc;
 	u64 time_in_idle;
 	u64 time_in_idle_timestamp;
 	u64 cputime_speedadj;
@@ -59,6 +65,10 @@ struct cpufreq_interactive_cpuinfo {
 	unsigned int max_freq;
 	u64 floor_validate_time;
 	u64 hispeed_validate_time;
+	u64 pol_floor_val_time; /* policy floor_validate_time */
+	u64 loc_floor_val_time; /* per-cpu floor_validate_time */
+	u64 pol_hispeed_val_time; /* policy hispeed_validate_time */
+	u64 loc_hispeed_val_time; /* per-cpu hispeed_validate_time */
 	struct rw_semaphore enable_sem;
 	int governor_enabled;
 };
@@ -122,6 +132,7 @@ struct cpufreq_interactive_tunables {
 	/* End time of touchboost pulse in ktime converted to usecs */
 	u64 touchboostpulse_endtime;
 	bool boosted;
+	unsigned int io_boosted;
 	/*
 	 * Max additional time to wait in idle, beyond timer_rate, at speeds
 	 * above minimum before wakeup to reduce speed, or -1 if unnecessary.
@@ -178,6 +189,7 @@ static void cpufreq_interactive_timer_resched(
 {
 	struct cpufreq_interactive_tunables *tunables =
 		pcpu->policy->governor_data;
+	struct cpuinfo_x86 *c = &cpu_data(smp_processor_id());
 	unsigned long expires;
 	unsigned long flags;
 
@@ -185,11 +197,17 @@ static void cpufreq_interactive_timer_resched(
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	update_irq_time(pcpu);
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
-	pcpu->time_in_idle =
-		get_cpu_idle_time(smp_processor_id(),
-				  &pcpu->time_in_idle_timestamp,
-				  tunables->io_is_busy);
-	pcpu->cputime_speedadj = 0;
+	if (cpu_has(c, X86_FEATURE_APERFMPERF)) {
+		rdmsrl(MSR_IA32_MPERF, pcpu->prev_mperf);
+		rdmsrl(MSR_IA32_APERF, pcpu->prev_aperf);
+		rdmsrl(MSR_IA32_TSC, pcpu->prev_tsc);
+	} else {
+		pcpu->time_in_idle =
+			get_cpu_idle_time(smp_processor_id(),
+					  &pcpu->time_in_idle_timestamp,
+					  tunables->io_is_busy);
+		pcpu->cputime_speedadj = 0;
+	}
 	pcpu->cputime_speedadj_timestamp = pcpu->time_in_idle_timestamp;
 	expires = jiffies + usecs_to_jiffies(tunables->timer_rate);
 	mod_timer_pinned(&pcpu->cpu_timer, expires);
@@ -211,6 +229,7 @@ static void cpufreq_interactive_timer_start(
 	struct cpufreq_interactive_tunables *tunables, int cpu)
 {
 	struct cpufreq_interactive_cpuinfo *pcpu = &per_cpu(cpuinfo, cpu);
+	struct cpuinfo_x86 *c = &cpu_data(cpu);
 	unsigned long expires = jiffies +
 		usecs_to_jiffies(tunables->timer_rate);
 	unsigned long flags;
@@ -228,10 +247,16 @@ static void cpufreq_interactive_timer_start(
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	update_irq_time(pcpu);
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
-	pcpu->time_in_idle =
-		get_cpu_idle_time(cpu, &pcpu->time_in_idle_timestamp,
-				  tunables->io_is_busy);
-	pcpu->cputime_speedadj = 0;
+	if (cpu_has(c, X86_FEATURE_APERFMPERF)) {
+		rdmsrl(MSR_IA32_MPERF, pcpu->prev_mperf);
+		rdmsrl(MSR_IA32_APERF, pcpu->prev_aperf);
+		rdmsrl(MSR_IA32_TSC, pcpu->prev_tsc);
+	} else {
+		pcpu->time_in_idle =
+			get_cpu_idle_time(cpu, &pcpu->time_in_idle_timestamp,
+					  tunables->io_is_busy);
+		pcpu->cputime_speedadj = 0;
+	}
 	pcpu->cputime_speedadj_timestamp = pcpu->time_in_idle_timestamp;
 	spin_unlock_irqrestore(&pcpu->load_lock, flags);
 }
@@ -368,6 +393,7 @@ static u64 update_load(int cpu)
 	struct cpufreq_interactive_cpuinfo *pcpu = &per_cpu(cpuinfo, cpu);
 	struct cpufreq_interactive_tunables *tunables =
 		pcpu->policy->governor_data;
+	struct cpuinfo_x86 *c = &cpu_data(cpu);
 	u64 now;
 	u64 now_idle;
 	unsigned int delta_idle;
@@ -389,24 +415,28 @@ static u64 update_load(int cpu)
 	pcpu->time_in_irq = now_irq;
 	pcpu->time_in_iowait = now_iowait;
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
+	if (cpu_has(c, X86_FEATURE_APERFMPERF)) {
+		rdmsrl(MSR_IA32_MPERF, pcpu->delta_mperf);
+		pcpu->delta_mperf -= pcpu->prev_mperf;
+		rdmsrl(MSR_IA32_APERF, pcpu->delta_aperf);
+		pcpu->delta_aperf -= pcpu->prev_aperf;
+		rdmsrl(MSR_IA32_TSC, pcpu->delta_tsc);
+		pcpu->delta_tsc -= pcpu->prev_tsc;
+	} else {
+		now_idle = get_cpu_idle_time(cpu, &now, tunables->io_is_busy);
+		delta_idle = (unsigned int)(now_idle - pcpu->time_in_idle);
+		delta_time = (unsigned int)(now - pcpu->time_in_idle_timestamp);
 
-	now_idle = get_cpu_idle_time(cpu, &now, tunables->io_is_busy);
-	delta_idle = (unsigned int)(now_idle - pcpu->time_in_idle);
-#ifdef CONFIG_IRQ_TIME_ACCOUNTING
-	if (pcpu->io_busy)
-		delta_idle -= delta_iowait;
-#endif
-	delta_time = (unsigned int)(now - pcpu->time_in_idle_timestamp);
+		if (delta_time <= delta_idle)
+			active_time = 0;
+		else
+			active_time = delta_time - delta_idle;
 
-	if (delta_time <= delta_idle)
-		active_time = 0;
-	else
-		active_time = delta_time - delta_idle;
+		pcpu->cputime_speedadj += active_time * pcpu->policy->cur;
 
-	pcpu->cputime_speedadj += active_time * pcpu->policy->cur;
-
-	pcpu->time_in_idle = now_idle;
-	pcpu->time_in_idle_timestamp = now;
+		pcpu->time_in_idle = now_idle;
+		pcpu->time_in_idle_timestamp = now;
+	}
 	return now;
 }
 
@@ -420,12 +450,15 @@ static void cpufreq_interactive_timer(unsigned long data)
 		&per_cpu(cpuinfo, data);
 	struct cpufreq_interactive_tunables *tunables =
 		pcpu->policy->governor_data;
+	struct cpuinfo_x86 *c = &cpu_data(data);
 	unsigned int new_freq;
 	unsigned int loadadjfreq;
 	unsigned int index;
 	unsigned long flags;
-	unsigned int cur;
 	bool io_boosted = false;
+
+	u64 max_fvtime;
+	unsigned int cur;
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	u64 cputime_irq;
 	u64 cputime_iowait;
@@ -468,45 +501,46 @@ static void cpufreq_interactive_timer(unsigned long data)
 	cputime_iowait = cputime_iowait * 100;
 	do_div(cputime_iowait, delta_time);
 	iowait_load = (unsigned int)cputime_iowait / cur;
+	tunables->io_boosted &= ~(1 << data);
 
 	if (have_governor_per_policy()) {
 		spin_lock_irqsave(&pcpu->load_lock, flags);
 		if (irq_load >= tunables->irq_load_threshold_val
 			&& iowait_load >= tunables->iowait_load_threshold_val) {
-			io_boosted = true;
-			pcpu->io_busy = true;
-		} else if (irq_load >= tunables->irq_load_threshold_val) {
-			pcpu->io_busy = true;
-		} else {
-			pcpu->io_busy = false;
+			tunables->io_boosted |= 1 << data;
 		}
 		spin_unlock_irqrestore(&pcpu->load_lock, flags);
 	} else {
 		if (irq_load >= tunables->irq_load_threshold_val
 			&& iowait_load >= tunables->iowait_load_threshold_val) {
-			io_boosted = true;
-			pcpu->io_busy = true;
-		} else if (irq_load >= tunables->irq_load_threshold_val) {
-			pcpu->io_busy = true;
-		} else {
-			pcpu->io_busy = false;
+			tunables->io_boosted |= 1 << data;
 		}
 	}
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
 
 	spin_lock_irqsave(&pcpu->target_freq_lock, flags);
-	do_div(cputime_speedadj, delta_time);
-	loadadjfreq = (unsigned int)cputime_speedadj * 100;
-#ifdef CONFIG_INTEL_MODULE_CPU_FREQ
-	cpu_load = loadadjfreq / pcpu->policy->cur;
-#else
-	cpu_load = loadadjfreq / pcpu->target_freq;
-#endif
+	if (cpu_has(c, X86_FEATURE_APERFMPERF)) {
+		/* mperf counter is incremented at tsc rate when the cpu is
+		 * active tsc counter is always incremented => the ratio is the
+		 * cpu load APERF is recommended to be used to determine what
+		 * the average frequency of the core was during the last sample
+		 * period.  APERF/MPERF will give you a ratio of the guaranteed
+		 * frequency. => APERF/MPERF x GUAR_FREQUENCY gives the average
+		 * CPU frequency.
+		 */
+		cpu_load = 100L*pcpu->delta_mperf / pcpu->delta_tsc;
+		loadadjfreq = 100L * max_nonturbo_freq *
+			pcpu->delta_aperf / pcpu->delta_tsc;
+	} else {
+		do_div(cputime_speedadj, delta_time);
+		loadadjfreq = (unsigned int)cputime_speedadj * 100;
+		cpu_load = loadadjfreq / pcpu->target_freq;
+	}
 	tunables->boosted = tunables->boost_val || now < tunables->boostpulse_endtime;
 
 	if (cpu_load >= tunables->go_hispeed_load ||
-			 tunables->boosted || io_boosted) {
-		if (pcpu->target_freq < tunables->hispeed_freq) {
+			 tunables->boosted || tunables->io_boosted) {
+		if (pcpu->policy->cur < tunables->hispeed_freq) {
 			new_freq = tunables->hispeed_freq;
 		} else {
 			new_freq = choose_freq(pcpu, loadadjfreq);
@@ -517,7 +551,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	} else {
 		new_freq = choose_freq(pcpu, loadadjfreq);
 		if (new_freq > tunables->hispeed_freq &&
-				pcpu->target_freq < tunables->hispeed_freq)
+				pcpu->policy->cur < tunables->hispeed_freq)
 			new_freq = tunables->hispeed_freq;
 		if (now < tunables->touchboostpulse_endtime) {
 			if (new_freq < tunables->touchboost_freq)
@@ -525,10 +559,10 @@ static void cpufreq_interactive_timer(unsigned long data)
 		}
 	}
 
-	if (pcpu->target_freq >= tunables->hispeed_freq &&
-	    new_freq > pcpu->target_freq &&
-	    now - pcpu->hispeed_validate_time <
-	    freq_to_above_hispeed_delay(tunables, pcpu->target_freq)) {
+	if (pcpu->policy->cur >= tunables->hispeed_freq &&
+	    new_freq > pcpu->policy->cur &&
+	    now - pcpu->pol_hispeed_val_time <
+	    freq_to_above_hispeed_delay(tunables, pcpu->policy->cur)) {
 		trace_cpufreq_interactive_notyet(
 			data, cpu_load, pcpu->target_freq,
 			pcpu->policy->cur, new_freq);
@@ -536,7 +570,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 		goto rearm;
 	}
 
-	pcpu->hispeed_validate_time = now;
+	pcpu->loc_hispeed_val_time = now;
 
 	if (cpufreq_frequency_table_target(pcpu->policy, pcpu->freq_table,
 					   new_freq, CPUFREQ_RELATION_L,
@@ -551,9 +585,10 @@ static void cpufreq_interactive_timer(unsigned long data)
 	 * Do not scale below floor_freq unless we have been at or above the
 	 * floor frequency for the minimum sample time since last validated.
 	 */
-	if (new_freq < pcpu->floor_freq) {
-		if (now - pcpu->floor_validate_time <
-				tunables->min_sample_time) {
+	max_fvtime = max(pcpu->pol_floor_val_time, pcpu->loc_floor_val_time);
+	if (new_freq < pcpu->floor_freq &&
+	    pcpu->target_freq >= pcpu->policy->cur) {
+		if (now - max_fvtime < tunables->min_sample_time) {
 			trace_cpufreq_interactive_notyet(
 				data, cpu_load, pcpu->target_freq,
 				pcpu->policy->cur, new_freq);
@@ -572,7 +607,9 @@ static void cpufreq_interactive_timer(unsigned long data)
 
 	if (!tunables->boosted || new_freq > tunables->hispeed_freq) {
 		pcpu->floor_freq = new_freq;
-		pcpu->floor_validate_time = now;
+		if (pcpu->target_freq >= pcpu->policy->cur ||
+		    new_freq >= pcpu->policy->cur)
+			pcpu->loc_floor_val_time = now;
 	}
 
 	if (pcpu->target_freq == new_freq &&
@@ -581,7 +618,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 			data, cpu_load, pcpu->target_freq,
 			pcpu->policy->cur, new_freq);
 		spin_unlock_irqrestore(&pcpu->target_freq_lock, flags);
-		goto rearm_if_notmax;
+		goto rearm;
 	}
 
 	trace_cpufreq_interactive_target(data, cpu_load, pcpu->target_freq,
@@ -697,6 +734,9 @@ static int cpufreq_interactive_speedchange_task(void *data)
 			unsigned int j;
 			unsigned int max_freq = 0;
 
+			struct cpufreq_interactive_cpuinfo *pjcpu;
+			u64 hvt = ~0ULL, fvt = 0;
+
 			pcpu = &per_cpu(cpuinfo, cpu);
 			if (!down_read_trylock(&pcpu->enable_sem))
 				continue;
@@ -706,11 +746,19 @@ static int cpufreq_interactive_speedchange_task(void *data)
 			}
 
 			for_each_cpu(j, pcpu->policy->cpus) {
-				struct cpufreq_interactive_cpuinfo *pjcpu =
-					&per_cpu(cpuinfo, j);
+				pjcpu = &per_cpu(cpuinfo, j);
 
-				if (pjcpu->target_freq > max_freq)
+				fvt = max(fvt, pjcpu->loc_floor_val_time);
+				if (pjcpu->target_freq > max_freq) {
 					max_freq = pjcpu->target_freq;
+					hvt = pjcpu->loc_hispeed_val_time;
+				} else if (pjcpu->target_freq == max_freq) {
+					hvt = min(hvt, pjcpu->loc_hispeed_val_time);
+				}
+			}
+			for_each_cpu(j, pcpu->policy->cpus) {
+				pjcpu = &per_cpu(cpuinfo, j);
+				pjcpu->pol_floor_val_time = fvt;
 			}
 
 #ifdef CONFIG_INTEL_MODULE_CPU_FREQ
@@ -723,10 +771,15 @@ static int cpufreq_interactive_speedchange_task(void *data)
 							     pcpu->policy->cur);
 			}
 #else
-			if (max_freq != pcpu->policy->cur)
+			if (max_freq != pcpu->policy->cur) {
 				__cpufreq_driver_target(pcpu->policy,
 							max_freq,
 							CPUFREQ_RELATION_H);
+				for_each_cpu(j, pcpu->policy->cpus) {
+					pjcpu = &per_cpu(cpuinfo, j);
+					pjcpu->pol_hispeed_val_time = hvt;
+				}
+			}
 			trace_cpufreq_interactive_setspeed(cpu,
 						     pcpu->target_freq,
 						     pcpu->policy->cur);
@@ -758,18 +811,10 @@ static void cpufreq_interactive_boost(struct cpufreq_interactive_tunables *tunab
 		if (pcpu->target_freq < tunables->hispeed_freq) {
 			pcpu->target_freq = tunables->hispeed_freq;
 			cpumask_set_cpu(i, &speedchange_cpumask);
-			pcpu->hispeed_validate_time =
+			pcpu->pol_hispeed_val_time =
 				ktime_to_us(ktime_get());
 			anyboost = 1;
 		}
-
-		/*
-		 * Set floor freq and (re)start timer for when last
-		 * validated.
-		 */
-
-		pcpu->floor_freq = tunables->hispeed_freq;
-		pcpu->floor_validate_time = ktime_to_us(ktime_get());
 		spin_unlock_irqrestore(&pcpu->target_freq_lock, flags[1]);
 	}
 
@@ -804,7 +849,7 @@ static void cpufreq_interactive_touchboost(void)
 		if (pcpu->target_freq < tunables->touchboost_freq) {
 			pcpu->target_freq = tunables->touchboost_freq;
 			cpumask_set_cpu(i, &speedchange_cpumask);
-			pcpu->hispeed_validate_time =
+			pcpu->pol_hispeed_val_time =
 				ktime_to_us(ktime_get());
 			anyboost = 1;
 		}
@@ -1078,12 +1123,18 @@ static ssize_t store_timer_rate(struct cpufreq_interactive_tunables *tunables,
 		const char *buf, size_t count)
 {
 	int ret;
-	unsigned long val;
+	unsigned long val, val_round;
 
 	ret = strict_strtoul(buf, 0, &val);
 	if (ret < 0)
 		return ret;
-	tunables->timer_rate = val;
+
+	val_round = jiffies_to_usecs(usecs_to_jiffies(val));
+	if (val != val_round)
+		pr_warn("timer_rate not aligned to jiffy. Rounded up to %lu\n",
+			val_round);
+
+	tunables->timer_rate = val_round;
 	return count;
 }
 
@@ -1450,14 +1501,8 @@ static int cpufreq_interactive_idle_notifier(struct notifier_block *nb,
 					     unsigned long val,
 					     void *data)
 {
-	switch (val) {
-	case IDLE_START:
-		cpufreq_interactive_idle_start();
-		break;
-	case IDLE_END:
+	if (val == IDLE_END)
 		cpufreq_interactive_idle_end();
-		break;
-	}
 
 	return 0;
 }
@@ -1489,6 +1534,10 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 	struct cpufreq_frequency_table *freq_table;
 	struct cpufreq_interactive_tunables *tunables;
 	unsigned long flags;
+	static int scalable_bus_speed[] = {
+		83300, 100000, 133300, 116700, 80000, 93300, 90000, 88900, 87500
+	};
+	u32 lo, hi, bus_freq;
 
 	if (have_governor_per_policy())
 		tunables = policy->governor_data;
@@ -1532,7 +1581,11 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		tunables->iowait_load_threshold_val =
 				 DEFAULT_IOWAIT_LOAD_THRESHOLD;
 #endif /* CONFIG_IRQ_TIME_ACCOUNTING */
-
+		rdmsr(MSR_PLATFORM_INFO, lo, hi);
+		max_nonturbo_freq = (lo >> 8) & 0xFF;
+		rdmsr(MSR_FSB_FREQ, lo, hi);
+		bus_freq = scalable_bus_speed[lo & 0x1F];
+		max_nonturbo_freq *= bus_freq;
 		spin_lock_init(&tunables->target_loads_lock);
 		spin_lock_init(&tunables->above_hispeed_delay_lock);
 
@@ -1546,8 +1599,10 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		if (rc) {
 			kfree(tunables);
 			policy->governor_data = NULL;
-			if (!have_governor_per_policy())
+			if (!have_governor_per_policy()) {
 				common_tunables = NULL;
+				cpufreq_put_global_kobject();
+			}
 			return rc;
 		}
 
@@ -1605,17 +1660,16 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			pcpu->target_freq = policy->cur;
 			pcpu->freq_table = freq_table;
 			pcpu->floor_freq = pcpu->target_freq;
-			pcpu->floor_validate_time =
+			pcpu->pol_floor_val_time =
 				ktime_to_us(ktime_get());
-			pcpu->hispeed_validate_time =
-				pcpu->floor_validate_time;
-			pcpu->max_freq = policy->max;
+			pcpu->loc_floor_val_time = pcpu->pol_floor_val_time;
+			pcpu->pol_hispeed_val_time = pcpu->pol_floor_val_time;
+			pcpu->loc_hispeed_val_time = pcpu->pol_floor_val_time;
 			down_write(&pcpu->enable_sem);
 			del_timer_sync(&pcpu->cpu_timer);
 			del_timer_sync(&pcpu->cpu_slack_timer);
 			cpufreq_interactive_timer_start(tunables, j);
 			pcpu->governor_enabled = 1;
-			pcpu->io_busy = false;
 			up_write(&pcpu->enable_sem);
 		}
 
@@ -1660,23 +1714,6 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 
 			spin_unlock_irqrestore(&pcpu->target_freq_lock, flags);
 			up_read(&pcpu->enable_sem);
-
-			/* Reschedule timer only if policy->max is raised.
-			 * Delete the timers, else the timer callback may
-			 * return without re-arm the timer when failed
-			 * acquire the semaphore. This race may cause timer
-			 * stopped unexpectedly.
-			 */
-
-			if (policy->max > pcpu->max_freq) {
-				down_write(&pcpu->enable_sem);
-				del_timer_sync(&pcpu->cpu_timer);
-				del_timer_sync(&pcpu->cpu_slack_timer);
-				cpufreq_interactive_timer_start(tunables, j);
-				up_write(&pcpu->enable_sem);
-			}
-
-			pcpu->max_freq = policy->max;
 		}
 		break;
 	}

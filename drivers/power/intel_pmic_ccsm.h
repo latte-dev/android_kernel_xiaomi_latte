@@ -91,6 +91,10 @@
 #define SHRT_GND_DET			(1 << 3)
 #define SHRT_FLT_DET			(1 << 4)
 
+#define VBUSDETCTRL_VBUSDETTYPE_LEVEL	0
+#define VBUSDETCTRL_VBUSDETTYPE_EDGE	(1 << 1)
+#define VBUSDETCTRL_VBUSDETTYPE_MASK	(1 << 1)
+
 #define PMIC_CHRGR_INT0_MASK		0xB1
 #define PMIC_CHRGR_CCSM_INT0_MASK	0xB0
 #define PMIC_CHRGR_EXT_CHRGR_INT_MASK	0x01
@@ -149,16 +153,19 @@
 
 
 #define USBSRCDET_RETRY_CNT		5
-#define USBSRCDET_SLEEP_TIME		200
+#define USBSRCDET_SLEEP_RETRYDET	200 /* 200mSec */
 #define USBSRCDET_SUSBHWDET_MASK	(3 << 0)
 #define USBSRCDET_USBSRCRSLT_MASK	(0x0F << 2)
 #define USBSRCDET_SDCD_MASK		(1 << 6)
-#define USBSRCDET_SUSBHWDET_DETON	(1 << 0)
+#define USBSRCDET_SUSBHWDET_INPROG	(1 << 0)
 #define USBSRCDET_SUSBHWDET_DETSUCC	(1 << 1)
 #define USBSRCDET_SUSBHWDET_DETFAIL	(3 << 0)
+#define USBSRCDET_SUSBHWDET		(3 << 0)
 
 #define USBPHYCTRL_CHGDET_N_POL_MASK	(1 << 1)
 #define USBPHYCTRL_USBPHYRSTB_MASK	(1 << 0)
+
+#define USBPHYCTRL_CTYPE_START		(1 << 2)
 
 /* Registers on I2C-dev2-0x6E */
 #define USBPATH_USBSEL_MASK	(1 << 3)
@@ -247,6 +254,9 @@
 #define CHGDISFN_DIS_CCSM_VAL		0x11
 #define CHGDISFN_CCSM_MASK		0x51
 
+#define USBPHYRSTB_EN			1
+#define USBPHYRSTB_DIS			0
+
 /*Interrupt registers*/
 #define BATT_CHR_BATTDET_MASK	(1 << 2)
 /*Status registers*/
@@ -275,6 +285,10 @@
 #define BIT_POS(x) BIT(x - ((x/16)*16))
 
 #define PMIC_CCSM_IRQ_MAX 6
+
+#define VBUSDET_TYPE_TEXT_MAX_LEN	8
+#define VBUSDET_TYPE_EDGE_TEXT		"edge"
+#define VBUSDET_TYPE_LEVEL_TEXT		"level"
 
 enum pmic_models {
 	INTEL_PMIC_UNKNOWN = 0,
@@ -373,22 +387,44 @@ struct pmic_regs_def {
 	u16 addr;
 };
 
+enum cable_type {
+	CABLE_TYPE_NONE,
+	CABLE_TYPE_USB,
+	CABLE_TYPE_HOST,
+	CABLE_TYPE_SINK,
+	CABLE_TYPE_SOURCE,
+};
+
+struct pmic_cable_event {
+	struct list_head node;
+	enum cable_type ctype;
+	bool cbl_state;
+};
+
 struct pmic_chrgr_drv_context {
 	bool invalid_batt;
 	bool is_batt_present;
 	bool current_sense_enabled;
 	bool is_internal_usb_phy;
 	enum pmic_charger_cable_type charger_type;
-	bool otg_mode_enabled;
+
+	/* Vatiabled to represent extcon cable's status */
+	bool host_cable_state;
+	bool device_cable_state;
+	bool src_cable_state;
+	bool snk_cable_state;
+	bool is_usb_typec;
+	bool is_notify_otg;
+
 	bool tt_lock;
 	unsigned int irq[PMIC_CCSM_IRQ_MAX];		/* GPE_ID or IRQ# */
 	int vbus_state;
+	bool vdcin_det;
 	int irq_cnt;
 	int batt_health;
 	int pmic_model;
 	int intmap_size;
 	int reg_cnt;
-	int cable_state;
 	void __iomem *pmic_intr_iomap;
 	struct pmic_regs *reg_map;
 	struct device *dev;
@@ -397,11 +433,20 @@ struct pmic_chrgr_drv_context {
 	struct ps_pse_mod_prof *actual_bcprof;
 	struct ps_pse_mod_prof *runtime_bcprof;
 	struct intel_pmic_ccsm_platform_data *pdata;
+	/* Wakelock to prevent platform enter suspend when event processing */
+        struct wake_lock wakelock;
 	struct usb_phy *otg;
 	struct thermal_cooling_device *vbus_cdev;
 	struct list_head evt_queue;
 	struct delayed_work evt_work;
+	struct extcon_dev *edev;
 	struct extcon_specific_cable_nb host_cable;
+	struct extcon_specific_cable_nb device_cable;
+	struct extcon_specific_cable_nb src_cable;
+	struct extcon_specific_cable_nb snk_cable;
 	struct notifier_block cable_nb;
 	struct work_struct extcon_work;
+	struct list_head cable_evt_list;
+	struct miscdevice misc_dev;
+	spinlock_t cable_event_queue_lock;
 };

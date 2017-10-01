@@ -235,7 +235,14 @@ static int dc_ti_pwrsrc_handle_extcon_event(struct notifier_block *nb,
 	struct dc_pwrsrc_info *info =
 	    container_of(nb, struct dc_pwrsrc_info, extcon_nb);
 
-	schedule_delayed_work(&info->dc_pwrsrc_wrk, 0);
+	/*
+	 * After getting "USB-Host" extcon event notification, it is
+	 * taking few milli seconds to resume the i2c bus from suspend
+	 * where bq charger chip is placed. So giving a 10 ms
+	 * delay before scheduling dc_pwrsrc_wrk which infact calls
+	 * the vbus enable function.
+	 */
+	schedule_delayed_work(&info->dc_pwrsrc_wrk, msecs_to_jiffies(10));
 
 	return NOTIFY_OK;
 }

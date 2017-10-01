@@ -60,11 +60,27 @@ static u32 i2c_dw_get_clk_rate_khz(struct dw_i2c_dev *dev)
 }
 
 #ifdef CONFIG_ACPI
+/*
+ * The HCNT/LCNT information coming from ACPI should be the most accurate
+ * for given platform. However, some systems get it wrong. On such systems
+ * we get better results by calculating those based on the input clock.
+ */
+static const struct dmi_system_id dw_i2c_no_acpi_params[] = {
+	{
+		.ident = "Dell Inspiron 7348",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Inspiron 7348"),
+		},
+	},
+	{ }
+};
 
 struct dw_i2c_acpi_handler_data {
 	struct acpi_connection_info info;
 	struct platform_device *pdev;
 };
+
 
 int dw_i2c_acquire_ownership(void)
 {
@@ -135,7 +151,12 @@ dw_i2c_acpi_space_handler(u32 function, acpi_physical_address address,
 	function &= ACPI_IO_MASK; 
 	if (function == ACPI_READ) {
 		buffer = kzalloc(length, GFP_KERNEL);
-	
+		if (!buffer) {
+			pr_info("%s: buffer allocation failed!\n", __func__);
+			ACPI_FREE(ares);
+			return AE_NO_MEMORY;
+		}
+
 		msgs[0].addr = target;
 		msgs[0].flags = 0;
 		msgs[0].len = 1;
@@ -204,21 +225,6 @@ static int dw_i2c_acpi_install_space_handler(struct platform_device *pdev)
 	return 0;
 }
 
-/*
- * The HCNT/LCNT information coming from ACPI should be the most accurate
- * for given platform. However, some systems get it wrong. On such systems
- * we get better results by calculating those based on the input clock.
- */
-static const struct dmi_system_id dw_i2c_no_acpi_params[] = {
-	{
-		.ident = "Dell Inspiron 7348",
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Inspiron 7348"),
-		},
-	},
-	{ }
-};
 
 static void dw_i2c_acpi_params(struct platform_device *pdev, char method[],
 			       u16 *hcnt, u16 *lcnt, u32 *sda_hold)

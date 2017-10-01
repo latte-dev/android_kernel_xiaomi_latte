@@ -25,7 +25,6 @@ static void dump_chrg_profile(const struct ps_pse_mod_prof *chrg_prof);
 static char battery_vendor[BATTID_STR_LEN + 1] = "";
 module_param_string(battery_vendor, battery_vendor, sizeof(battery_vendor), 0444);
 MODULE_PARM_DESC(battery_vendor, "Battery vendor");
-
 static struct ps_pse_mod_prof chrg_prof;
 static struct ps_batt_chg_prof batt_chrg_prof;
 
@@ -40,7 +39,7 @@ static int em_config_get_acpi_table(char *name, void *data, int data_size)
 	status = acpi_get_table_with_size(name , 0,
 					&acpi_tbl, &tbl_size);
 	if (ACPI_SUCCESS(status)) {
-		pr_err("EM:%s  table found, size=%d\n", name, (int)tbl_size);
+		pr_info("EM:%s  table found, size=%d\n", name, (int)tbl_size);
 		if (tbl_size < (data_size + hdr_size)) {
 			pr_err("EM:%s table incomplete!!\n", name);
 		} else {
@@ -190,6 +189,31 @@ static void dump_chrg_profile(const struct ps_pse_mod_prof *chrg_prof)
 				i, chrg_prof->temp_mon_range[i].maint_chrg_cur);
 	}
 	pr_err("OEM0:temp_low_lim = %d\n", chrg_prof->temp_low_lim);
+=======
+	pr_info("OEM0:batt_id = %s\n", chrg_prof->batt_id);
+	pr_info("OEM0:battery_type = %d\n", chrg_prof->battery_type);
+	pr_info("OEM0:capacity = %d\n", chrg_prof->capacity);
+	pr_info("OEM0:voltage_max = %d\n", chrg_prof->voltage_max);
+	pr_info("OEM0:chrg_term_ma = %d\n", chrg_prof->chrg_term_ma);
+	pr_info("OEM0:low_batt_mV = %d\n", chrg_prof->low_batt_mV);
+	pr_info("OEM0:disch_tmp_ul = %d\n", chrg_prof->disch_tmp_ul);
+	pr_info("OEM0:disch_tmp_ll = %d\n", chrg_prof->disch_tmp_ll);
+	pr_info("OEM0:temp_mon_ranges = %d\n", chrg_prof->temp_mon_ranges);
+	for (i = 0; i < chrg_prof->temp_mon_ranges; i++) {
+		pr_info("OEM0:temp_mon_range[%d].up_lim = %d\n",
+				i, chrg_prof->temp_mon_range[i].temp_up_lim);
+		pr_info("OEM0:temp_mon_range[%d].full_chrg_vol = %d\n",
+				i, chrg_prof->temp_mon_range[i].full_chrg_vol);
+		pr_info("OEM0:temp_mon_range[%d].full_chrg_cur = %d\n",
+				i, chrg_prof->temp_mon_range[i].full_chrg_cur);
+		pr_info("OEM0:temp_mon_range[%d].maint_chrg_vol_ll = %d\n", i,
+				chrg_prof->temp_mon_range[i].maint_chrg_vol_ll);
+		pr_info("OEM0:temp_mon_range[%d].main_chrg_vol_ul = %d\n", i,
+				chrg_prof->temp_mon_range[i].maint_chrg_vol_ul);
+		pr_info("OEM0:temp_mon_range[%d].main_chrg_cur = %d\n",
+				i, chrg_prof->temp_mon_range[i].maint_chrg_cur);
+	}
+	pr_info("OEM0:temp_low_lim = %d\n", chrg_prof->temp_low_lim);
 }
 #endif
 

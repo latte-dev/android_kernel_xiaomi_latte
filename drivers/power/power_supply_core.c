@@ -564,9 +564,10 @@ static int ps_set_cur_charge_cntl_limit(struct thermal_cooling_device *tcd,
 	val.intval = state;
 	ret = psy->set_property(psy,
 		POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT, &val);
+	if (ret < 0)
+		return ret;
 
-	psy_charger_throttle_charger(psy, state);
-
+	ret = psy_charger_throttle_charger(psy, state);
 	return ret;
 }
 

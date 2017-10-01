@@ -217,7 +217,7 @@ static void mei_txe_remove(struct pci_dev *pdev)
 		return;
 	}
 
-	pm_runtime_get_sync(&pdev->dev);
+	pm_runtime_get_noresume(&pdev->dev);
 
 	hw = to_txe_hw(dev);
 
@@ -273,7 +273,6 @@ static void mei_txe_shutdown(struct pci_dev *pdev)
 	free_irq(pdev->irq, dev);
 	pci_disable_msi(pdev);
 }
-
 
 #ifdef CONFIG_PM_SLEEP
 static int mei_txe_pci_suspend(struct device *device)
@@ -352,7 +351,7 @@ static int mei_txe_pm_runtime_idle(struct device *device)
 	if (!dev)
 		return -ENODEV;
 	if (mei_write_is_idle(dev))
-		pm_schedule_suspend(device, MEI_TXI_RPM_TIMEOUT * 2);
+		pm_runtime_autosuspend(device);
 
 	return -EBUSY;
 }
@@ -471,7 +470,7 @@ static struct pci_driver mei_txe_driver = {
 	.id_table = mei_txe_pci_tbl,
 	.probe = mei_txe_probe,
 	.remove = mei_txe_remove,
-	.shutdown = mei_txe_shutdown,
+	.shutdown = mei_txe_remove,
 	.driver.pm = MEI_TXE_PM_OPS,
 };
 

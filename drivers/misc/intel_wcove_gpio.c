@@ -33,16 +33,20 @@
 #include <linux/extcon.h>
 #include <linux/gpio.h>
 #include <linux/acpi.h>
+#include <linux/power_supply.h>
+#include "../power/power_supply_charger.h"
+#include <linux/power/bq24192_charger.h>
 
 #define WCOVE_GPIO_VCHGIN	"vchgin_desc"
 #define WCOVE_GPIO_OTG		"otg_desc"
 #define WCOVE_GPIO_VCONN	"vconn_desc"
 
+#define MAX_UPDATE_VBUS_RETRY_COUNT	3
+#define VBUS_UPDATE_DIFFERED_DELAY	100
+
 struct wcove_gpio_info {
 	struct platform_device *pdev;
 	struct notifier_block nb;
-	struct extcon_specific_cable_nb dc_cable_obj;
-	struct extcon_specific_cable_nb sdp_cable_obj;
 	struct extcon_specific_cable_nb otg_cable_obj;
 	struct gpio_desc *gpio_vchgrin;
 	struct gpio_desc *gpio_otg;
@@ -55,79 +59,197 @@ struct wcove_gpio_info {
 
 struct wcove_gpio_event {
 	struct list_head node;
-	bool is_sdp_connected;
-	bool is_otg_connected;
+	bool is_src_connected;
 };
 
-static void wcove_gpio_ctrl_worker(struct work_struct *work)
+static struct wcove_gpio_info *wc_info;
+static inline struct power_supply *wcove_gpio_get_psy_charger(void)
+{
+	struct class_dev_iter iter;
+	struct device *dev;
+	struct power_supply *pst;
+
+	class_dev_iter_init(&iter, power_supply_class, NULL, NULL);
+	while ((dev = class_dev_iter_next(&iter))) {
+		pst = dev_get_drvdata(dev);
+		if (IS_CHARGER(pst)) {
+			class_dev_iter_exit(&iter);
+			return pst;
+		}
+	}
+	class_dev_iter_exit(&iter);
+	return NULL;
+}
+
+static int wcgpio_set_charger_state(struct wcove_gpio_info *info,
+						bool state)
+{
+	struct power_supply *psy;
+
+	psy = wcove_gpio_get_psy_charger();
+	if (psy == NULL) {
+		dev_err(&info->pdev->dev, "Unable to get psy for charger\n");
+		return -ENODEV;
+	}
+	return set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGER, state);
+}
+
+static int wcgpio_update_vbus_state(struct wcove_gpio_info *info, bool state)
+{
+	int ret;
+
+	mutex_lock(&info->lock);
+	if (state) {
+		/* put charger into HiZ mode */
+		ret = wcgpio_set_charger_state(info, false);
+		if (ret == 0) {
+			ret = bq24192_vbus_enable();
+			if (ret)
+				dev_warn(&info->pdev->dev,
+					"Error in VBUS enable %d", ret);
+		} else
+			ret = -EAGAIN;
+	} else {
+		ret = bq24192_vbus_disable();
+		if (ret)
+			dev_warn(&info->pdev->dev,
+				"Error in VBUS disable %d", ret);
+	}
+	mutex_unlock(&info->lock);
+
+	return ret;
+}
+
+int wcgpio_set_vconn_state(bool state)
+{
+	if (!wc_info)
+		return -EINVAL;
+	gpiod_set_value_cansleep(wc_info->gpio_vconn, state);
+	dev_info(&wc_info->pdev->dev, "%s: vconn=%d\n",
+						__func__, state);
+	return 0;
+}
+EXPORT_SYMBOL(wcgpio_set_vconn_state);
+
+int wcgpio_set_vbus_state(bool state)
+{
+	int ret;
+	if (!wc_info)
+		return -EINVAL;
+	ret = wcgpio_update_vbus_state(wc_info, state);
+
+	/* enable/disable vbus based on the provider(source) event */
+	if (!ret) {
+		gpiod_set_value_cansleep(wc_info->gpio_otg, state);
+		dev_info(&wc_info->pdev->dev, "%s: VBUS=%d\n",
+						__func__, state);
+	}
+	return ret;
+}
+EXPORT_SYMBOL(wcgpio_set_vbus_state);
+
+static void wcgpio_ctrl_worker(struct work_struct *work)
 {
 	struct wcove_gpio_info *info =
 		container_of(work, struct wcove_gpio_info, gpio_work);
 	struct wcove_gpio_event *evt, *tmp;
 	unsigned long flags;
+	struct list_head new_list;
+	int retry_count;
+	int ret;
+
+        if (list_empty(&info->gpio_queue))
+                return;
 
 	spin_lock_irqsave(&info->gpio_queue_lock, flags);
-	list_for_each_entry_safe(evt, tmp, &info->gpio_queue, node) {
-		list_del(&evt->node);
-		spin_unlock_irqrestore(&info->gpio_queue_lock, flags);
-
-		dev_info(&info->pdev->dev,
-				"%s:%d state=%d\n", __FILE__, __LINE__,
-				evt->is_sdp_connected || evt->is_otg_connected);
-
-		mutex_lock(&info->lock);
-		/* set high only when otg connected */
-		if (!evt->is_sdp_connected)
-			gpiod_set_value(info->gpio_otg, evt->is_otg_connected);
-		/**
-		 * set high when sdp/otg connected and set low when sdp/otg
-		 * disconnected
-		 */
-		gpiod_set_value(info->gpio_vchgrin,
-			(evt->is_sdp_connected ||
-				evt->is_otg_connected) ? 1 : 0);
-		mutex_unlock(&info->lock);
-		spin_lock_irqsave(&info->gpio_queue_lock, flags);
-		kfree(evt);
-
-	}
+        list_replace_init(&info->gpio_queue, &new_list);
 	spin_unlock_irqrestore(&info->gpio_queue_lock, flags);
 
-	return;
+	list_for_each_entry_safe(evt, tmp, &new_list, node) {
+		dev_info(&info->pdev->dev,
+				"%s:%d state=%d\n", __FILE__, __LINE__,
+				evt->is_src_connected);
+		retry_count = 0;
+
+		do {
+			/* loop is to update the vbus state in case fails, try
+			 * again upto max retry count */
+			ret = wcgpio_update_vbus_state(info,
+					evt->is_src_connected);
+			if (ret != -EAGAIN)
+				break;
+
+			msleep(VBUS_UPDATE_DIFFERED_DELAY);
+		} while (++retry_count <= MAX_UPDATE_VBUS_RETRY_COUNT);
+
+		if (ret < 0) {
+			dev_warn(&info->pdev->dev,
+				"Error in update vbus state (%d)\n", ret);
+		}
+
+		/* enable/disable vbus based on the provider(source) event */
+		gpiod_set_value_cansleep(info->gpio_otg,
+						evt->is_src_connected);
+
+		/* FIXME: vchrgin GPIO is not setting here to select
+		 * Wireless Charging */
+		list_del(&evt->node);
+		kfree(evt);
+	}
 }
 
-static int wcgpio_event_handler(struct notifier_block *nblock,
-					unsigned long event, void *param)
+static int wcgpio_check_events(struct wcove_gpio_info *info,
+					struct extcon_dev *edev)
 {
-	struct wcove_gpio_info *info =
-			container_of(nblock, struct wcove_gpio_info, nb);
-	struct extcon_dev *edev = param;
 	struct wcove_gpio_event *evt;
 
 	if (!edev)
-		return NOTIFY_DONE;
+		return -EIO;
 
 	evt = kzalloc(sizeof(*evt), GFP_ATOMIC);
 	if (!evt) {
 		dev_err(&info->pdev->dev,
 			"failed to allocate memory for SDP/OTG event\n");
-		return NOTIFY_DONE;
+		return -ENOMEM;
 	}
 
-	evt->is_sdp_connected = extcon_get_cable_state(edev, "USB");
-	evt->is_otg_connected = extcon_get_cable_state(edev, "USB-Host");
+	evt->is_src_connected = extcon_get_cable_state(edev, "USB_TYPEC_SRC");
 	dev_info(&info->pdev->dev,
-			"[extcon notification] evt: SDP - %s OTG - %s\n",
-			evt->is_sdp_connected ? "Connected" : "Disconnected",
-			evt->is_otg_connected ? "Connected" : "Disconnected");
+			"[extcon notification] evt: Provider - %s\n",
+			evt->is_src_connected ? "Connected" : "Disconnected");
 
 	INIT_LIST_HEAD(&evt->node);
 	spin_lock(&info->gpio_queue_lock);
 	list_add_tail(&evt->node, &info->gpio_queue);
 	spin_unlock(&info->gpio_queue_lock);
 
-	queue_work(system_nrt_wq, &info->gpio_work);
+	schedule_work(&info->gpio_work);
+	return 0;
+}
+
+static int wcgpio_event_handler(struct notifier_block *nblock,
+					unsigned long event, void *param)
+{
+	int ret = 0;
+	struct wcove_gpio_info *info =
+			container_of(nblock, struct wcove_gpio_info, nb);
+	struct extcon_dev *edev = param;
+
+	ret = wcgpio_check_events(info, edev);
+
+	if (ret < 0)
+		return NOTIFY_DONE;
+
 	return NOTIFY_OK;
+}
+
+static void check_initial_events(struct wcove_gpio_info *info)
+{
+	struct extcon_dev *edev;
+
+	edev = extcon_get_extcon_dev("usb-typec");
+
+	wcgpio_check_events(info, edev);
 }
 
 static int wcove_gpio_probe(struct platform_device *pdev)
@@ -140,31 +262,24 @@ static int wcove_gpio_probe(struct platform_device *pdev)
 	if (!info) {
 		dev_err(&pdev->dev, "kzalloc failed\n");
 		ret = -ENOMEM;
-		goto error_mem;
+		goto error;
 	}
 
 	info->pdev = pdev;
 	platform_set_drvdata(pdev, info);
 	mutex_init(&info->lock);
 	INIT_LIST_HEAD(&info->gpio_queue);
-	INIT_WORK(&info->gpio_work, wcove_gpio_ctrl_worker);
+	INIT_WORK(&info->gpio_work, wcgpio_ctrl_worker);
 	spin_lock_init(&info->gpio_queue_lock);
 
 	info->nb.notifier_call = wcgpio_event_handler;
-	ret = extcon_register_interest(&info->sdp_cable_obj, NULL, "USB",
-						&info->nb);
-	if (ret) {
-		dev_err(&pdev->dev,
-			"failed to register extcon notifier for SDP charger\n");
-		goto error_sdp;
-	}
-
-	ret = extcon_register_interest(&info->otg_cable_obj, NULL, "USB-Host",
+	ret = extcon_register_interest(&info->otg_cable_obj, NULL,
+						"USB_TYPEC_SRC",
 						&info->nb);
 	if (ret) {
 		dev_err(&pdev->dev,
 			"failed to register extcon notifier for otg\n");
-		goto error_otg;
+		goto error;
 	}
 
 	/* FIXME: hardcoding of the index 0, 1 & 2 should fix when upstreaming.
@@ -213,15 +328,14 @@ static int wcove_gpio_probe(struct platform_device *pdev)
 		goto error_gpio;
 	}
 	dev_dbg(&pdev->dev, "wcove gpio probed\n");
+	check_initial_events(info);
+	wc_info = info;
 
 	return 0;
 
 error_gpio:
 	extcon_unregister_interest(&info->otg_cable_obj);
-error_otg:
-	extcon_unregister_interest(&info->sdp_cable_obj);
-error_sdp:
-error_mem:
+error:
 	return ret;
 }
 
@@ -229,10 +343,8 @@ static int wcove_gpio_remove(struct platform_device *pdev)
 {
 	struct wcove_gpio_info *info =  dev_get_drvdata(&pdev->dev);
 
-	if (info) {
+	if (info)
 		extcon_unregister_interest(&info->otg_cable_obj);
-		extcon_unregister_interest(&info->sdp_cable_obj);
-	}
 
 	return 0;
 }

@@ -568,7 +568,7 @@ static int sdhci_adma_table_pre(struct sdhci_host *host,
 		 * If this triggers then we have a calculation bug
 		 * somewhere. :/
 		 */
-		WARN_ON((desc - host->adma_desc) > (128 * 2 + 1) * 4);
+		WARN_ON((desc - host->adma_desc) > (128 * 2 + 2) * 4);
 	}
 
 	if (host->quirks & SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC) {
@@ -597,7 +597,7 @@ static int sdhci_adma_table_pre(struct sdhci_host *host,
 	}
 
 	host->adma_addr = dma_map_single(mmc_dev(host->mmc),
-		host->adma_desc, (128 * 2 + 1) * 4, DMA_TO_DEVICE);
+		host->adma_desc, (128 * 2 + 2) * 4, DMA_TO_DEVICE);
 	if (dma_mapping_error(mmc_dev(host->mmc), host->adma_addr))
 		goto unmap_entries;
 	BUG_ON(host->adma_addr & 0x3);
@@ -631,7 +631,7 @@ static void sdhci_adma_table_post(struct sdhci_host *host,
 		direction = DMA_TO_DEVICE;
 
 	dma_unmap_single(mmc_dev(host->mmc), host->adma_addr,
-		(128 * 2 + 1) * 4, DMA_TO_DEVICE);
+		(128 * 2 + 2) * 4, DMA_TO_DEVICE);
 
 	dma_unmap_single(mmc_dev(host->mmc), host->align_addr,
 		128 * 4, direction);
@@ -2040,6 +2040,16 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	ier = sdhci_readl(host, SDHCI_INT_ENABLE);
 	sdhci_clear_set_irqs(host, ier, SDHCI_INT_DATA_AVAIL);
 
+	if (unlikely(host->quirks2 & SDHCI_QUIRK2_TUNING_POLL)) {
+		/*
+		 * Tuning poll doesn't need data interrupt signal.
+		 * Disable it to prevent unwanted irq requests.
+		 */
+		u32 no_data_int = sdhci_readl(host, SDHCI_SIGNAL_ENABLE);
+		no_data_int &= ~SDHCI_INT_DATA_AVAIL;
+		sdhci_writel(host, no_data_int, SDHCI_SIGNAL_ENABLE);
+	}
+
 	/*
 	 * Issue CMD19 repeatedly till Execute Tuning is set to 0 or the number
 	 * of loops reaches 40 times or a timeout of 150ms occurs.
@@ -2092,8 +2102,10 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 		host->mrq = NULL;
 
 		if (unlikely(host->quirks2 & SDHCI_QUIRK2_TUNING_POLL)) {
-			unsigned long timeout = jiffies + msecs_to_jiffies(150);
+			u64 timeout = sched_clock() + 150 * ((u64) NSEC_PER_MSEC);
+			u64 clock;
 			do {
+				clock = sched_clock();
 				unsigned int intmask =
 					sdhci_readl(host, SDHCI_INT_STATUS);
 				if (!(intmask & SDHCI_INT_DATA_AVAIL))
@@ -2103,7 +2115,7 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 						intmask & SDHCI_INT_DATA_AVAIL,
 						SDHCI_INT_STATUS);
 				break;
-			} while (!time_after(jiffies, timeout));
+			} while (!time_after64(clock, timeout));
 		} else {
 			spin_unlock_irqrestore(&host->lock, flags);
 			/* Wait for Buffer Read Ready interrupt */
@@ -3106,7 +3118,7 @@ int sdhci_add_host(struct sdhci_host *host)
 		 * (128) and potentially one alignment transfer for
 		 * each of those entries.
 		 */
-		host->adma_desc = kmalloc((128 * 2 + 1) * 4, GFP_KERNEL);
+		host->adma_desc = kmalloc((128 * 2 + 2) * 4, GFP_KERNEL);
 		host->align_buffer = kmalloc(128 * 4, GFP_KERNEL);
 		if (!host->adma_desc || !host->align_buffer) {
 			kfree(host->adma_desc);

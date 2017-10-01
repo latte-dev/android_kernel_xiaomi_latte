@@ -293,6 +293,17 @@ static int get_hangup_reasons(struct mdm_info *mdm)
 	return mdm->hangup_causes;
 }
 
+<<<<<<< HEAD
+=======
+/**
+ * mdm_ctrl_get_irq_info - get modem irq informations
+ */
+static unsigned char mdm_ctrl_get_irq_info(struct mdm_info *mdm)
+{
+	return mdm->irq_requests;
+}
+
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
 /*****************************************************************************
  *
  * Char device functions
@@ -362,6 +373,10 @@ inline bool mcd_is_initialized(struct mdm_info *mdm)
 static int mcd_init(struct mdm_info *mdm)
 {
 	int ret = 0;
+<<<<<<< HEAD
+=======
+	mdm->irq_requests = NO_EVENT;
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
 
 	if (mdm->pdata->mdm.init(mdm->pdata->modem_data)) {
 		pr_err(DRVNAME ": MDM init failed...returning -ENODEV.");
@@ -392,11 +407,19 @@ static int mcd_init(struct mdm_info *mdm)
 				ret);
 			ret = -ENODEV;
 			goto del_cpu;
+<<<<<<< HEAD
 		}
 	} else {
 		pr_info(DRVNAME ": No IRQ RST\n");
 		ret = -EIO;
 	}
+=======
+		} else
+			mdm->irq_requests |= RST_EVENT;
+	} else
+		pr_info(DRVNAME ": No IRQ RST\n");
+
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
 
 	if (mdm->pdata->cpu.get_irq_cdump(mdm->pdata->cpu_data) > 0) {
 		ret = request_irq(mdm->pdata->cpu.
@@ -410,7 +433,12 @@ static int mcd_init(struct mdm_info *mdm)
 				ret);
 			ret = -ENODEV;
 			goto free_irq;
+<<<<<<< HEAD
 		}
+=======
+		} else
+			mdm->irq_requests |= CD_EVENT;
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
 	} else
 		pr_info(DRVNAME ": No IRQ COREDUMP\n");
 
@@ -502,7 +530,11 @@ long mdm_ctrl_dev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 			ret = mcd_init(mdm);
 
+<<<<<<< HEAD
 			if ((!ret) || (ret == -EIO))
+=======
+			if (!ret)
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
 				pr_info(DRVNAME ": modem (board: %d, family: %d,pwr:%d,hub:%d)",
 					cfg.board, cfg.type,
 					cfg.pwr_on, cfg.usb_hub);
@@ -648,6 +680,20 @@ long mdm_ctrl_dev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 			mdm->polled_states);
 		break;
 
+<<<<<<< HEAD
+=======
+	case MDM_CTRL_GET_CFG:
+		param = mdm_ctrl_get_irq_info(mdm);
+
+		ret = copy_to_user((void __user *)arg, &param, sizeof(param));
+		if (ret < 0) {
+			pr_info(DRVNAME ": copy to user failed ret = %ld\n",
+				ret);
+			return -EFAULT;
+		}
+		break;
+
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
 	case MDM_CTRL_SET_CFG:
 		pr_info(DRVNAME ": already configured\n");
 		ret = -EBUSY;
@@ -733,7 +779,11 @@ static unsigned int mdm_ctrl_dev_poll(struct file *filep,
 		ret |= POLLHUP | POLLRDNORM;
 		pr_info(DRVNAME ": POLLHUP occured. Current state = 0x%x\n",
 			mdm_ctrl_get_state(mdm));
+<<<<<<< HEAD
 #ifdef CONFIG_HAS_WAKELOCK
+=======
+#ifdef CONFIG_WAKELOCK
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
 		wake_unlock(&mdm->stay_awake);
 #endif
 	}
@@ -767,8 +817,17 @@ static void mdm_cleanup(struct mdm_info *mdm)
 		destroy_workqueue(mdm->hu_wq);
 		del_timer(&mdm->flashing_timer);
 		mutex_destroy(&mdm->lock);
+<<<<<<< HEAD
 #ifdef CONFIG_HAS_WAKELOCK
 		wake_lock_destroy(&mdm->stay_awake);
+=======
+#ifdef CONFIG_WAKELOCK
+		{ 
+			char *name = (char *)mdm->stay_awake.ws.name;
+			wake_lock_destroy(&mdm->stay_awake);
+			kfree(name);
+		}
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
 #endif
 	}
 }
@@ -888,9 +947,15 @@ static int mdm_ctrl_module_probe(struct platform_device *pdev)
 		init_waitqueue_head(&mdm->wait_wq);
 		init_timer(&mdm->flashing_timer);
 
+<<<<<<< HEAD
 #ifdef CONFIG_HAS_WAKELOCK
 		snprintf(name, sizeof(name), "%s-wakelock%d", DRVNAME, i);
 		wake_lock_init(&mdm->stay_awake, WAKE_LOCK_SUSPEND, name);
+=======
+#ifdef CONFIG_WAKELOCK
+		snprintf(name, sizeof(name), "%s-wakelock%d", DRVNAME, i);
+		wake_lock_init(&mdm->stay_awake, WAKE_LOCK_SUSPEND, kstrdup(name, GFP_KERNEL));
+>>>>>>> ec5ffb5cb361199c32e82c66914f067580afb8a3
 #endif
 
 		mdm_ctrl_set_state(mdm, MDM_CTRL_STATE_OFF);
