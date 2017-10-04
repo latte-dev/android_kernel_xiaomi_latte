@@ -620,12 +620,8 @@ ssize_t show_heci_dev_props(struct device *dev,
 					(unsigned)cl->send_msg_cnt);
 				scnprintf(buf + strlen(buf),
 					PAGE_SIZE - strlen(buf),
-					"Rx IPC count: %u\n",
-					(unsigned)cl->recv_msg_cnt_ipc);
-				scnprintf(buf + strlen(buf),
-					PAGE_SIZE - strlen(buf),
-					"Rx DMA count: %u\n",
-					(unsigned)cl->recv_msg_cnt_dma);
+					"Rx count: %u\n",
+					(unsigned)cl->recv_msg_cnt);
 				scnprintf(buf + strlen(buf),
 					PAGE_SIZE - strlen(buf),
 					"FC count: %u\n",
@@ -834,14 +830,12 @@ void workqueue_init_function(struct work_struct *work)
 		__func__,
 		dev->pdev->revision == REVISION_ID_CHT_A0 ||
 		(dev->pdev->revision & REVISION_ID_SI_MASK) ==
-		REVISION_ID_CHT_Ax_SI ? "CHT Ax" :
+		REVISION_ID_CHT_A0_SI ? "CHT Ax" :
 		dev->pdev->revision == REVISION_ID_CHT_B0 ||
 		(dev->pdev->revision & REVISION_ID_SI_MASK) ==
 		REVISION_ID_CHT_Bx_SI ? "CHT Bx" :
 		(dev->pdev->revision & REVISION_ID_SI_MASK) ==
-		REVISION_ID_CHT_Kx_SI ? "CHT Kx/Cx" :
-		(dev->pdev->revision & REVISION_ID_SI_MASK) ==
-		REVISION_ID_CHT_Dx_SI ? "CHT Dx" : "Unknown",
+		REVISION_ID_CHT_Kx_SI ? "CHT Kx/Cx" : "Unknown",
 		dev->pdev->revision);
 #else
 	dev->print_log = ish_print_log_nolog;
@@ -902,7 +896,7 @@ static int ish_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		"[heci-ish] %s() running on %s revision [%02X]\n", __func__,
 		pdev->revision == REVISION_ID_CHT_A0 ||
 		(pdev->revision & REVISION_ID_SI_MASK) ==
-			REVISION_ID_CHT_Ax_SI ? "CHT A0" :
+			REVISION_ID_CHT_A0_SI ? "CHT A0" :
 		pdev->revision == REVISION_ID_CHT_B0 ||
 		(pdev->revision & REVISION_ID_SI_MASK) ==
 			REVISION_ID_CHT_Bx_SI ? "CHT B0" :

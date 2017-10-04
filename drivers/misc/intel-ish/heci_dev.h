@@ -270,7 +270,6 @@ struct heci_device {
 	const struct heci_hw_ops *ops;
 
 	size_t	mtu;
-	u32     heci_msg_hdr;
 	char hw[0] __aligned(sizeof(void *));
 };
 

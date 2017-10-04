@@ -133,7 +133,7 @@ void ish_intr_enable(struct heci_device *dev)
 	dev_dbg(&dev->pdev->dev, "ish_intr_enable\n");
 	if (dev->pdev->revision == REVISION_ID_CHT_A0 ||
 			(dev->pdev->revision & REVISION_ID_SI_MASK) ==
-			REVISION_ID_CHT_Ax_SI)
+			REVISION_ID_CHT_A0_SI)
 		ish_reg_write(dev, IPC_REG_HOST_COMM, 0x81);
 	else if (dev->pdev->revision == REVISION_ID_CHT_B0 ||
 			(dev->pdev->revision & REVISION_ID_SI_MASK) ==
@@ -160,7 +160,7 @@ void ish_intr_disable(struct heci_device *dev)
 	dev_dbg(&dev->pdev->dev, "ish_intr_disable\n");
 	if (dev->pdev->revision == REVISION_ID_CHT_A0 ||
 			(dev->pdev->revision & REVISION_ID_SI_MASK) ==
-			REVISION_ID_CHT_Ax_SI)
+			REVISION_ID_CHT_A0_SI)
 		/*ish_reg_write(dev, IPC_REG_HOST_COMM, 0xC1)*/;
 	else if (dev->pdev->revision == REVISION_ID_CHT_B0 ||
 			(dev->pdev->revision & REVISION_ID_SI_MASK) ==
@@ -474,8 +474,7 @@ static void	fw_reset_work_fn(struct work_struct *unused)
 			__func__);
 
 	} else
-		dev_err(&heci_dev->pdev->dev,
-			"[heci-ish]: FW reset failed (%d)\n", rv);
+		printk(KERN_ERR "[heci-ish]: FW reset failed (%d)\n", rv);
 }
 
 
@@ -632,7 +631,6 @@ irqreturn_t ish_irq_handler(int irq, void *dev_id)
 	sync_fw_clock(dev);
 
 	heci_hdr = (struct heci_msg_hdr *)&msg_hdr;
-	dev->heci_msg_hdr = msg_hdr;
 
 	/* Sanity check: HECI frag. length in header */
 	if (heci_hdr->length > dev->mtu) {

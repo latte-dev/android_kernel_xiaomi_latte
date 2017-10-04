@@ -100,7 +100,7 @@ void heci_device_init(struct heci_device *dev)
 			list_add_tail(&tx_buf->link,
 				&dev->wr_free_list_head.link);
 		}
-		dev_dbg(&dev->pdev->dev, "[heci-ish]: success Tx FIFO allocations\n");
+		printk(KERN_ALERT "[heci-ish]: success Tx FIFO allocations\n");
 	} while (0);
 }
 EXPORT_SYMBOL_GPL(heci_device_init);
@@ -158,7 +158,7 @@ reset_done:
 	}
 
 	if (!heci_hw_is_ready(dev)) {
-		dev_err(&dev->pdev->dev, "ISH is not ready (FWSTS).\n");
+		dev_err(&dev->pdev->dev, "ME is not ready.\n");
 		goto err;
 	}
 
@@ -245,6 +245,10 @@ EXPORT_SYMBOL_GPL(heci_reset);
 
 void heci_stop(struct heci_device *dev)
 {
+	dev_dbg(&dev->pdev->dev, "stopping the device.\n");
+	dev->dev_state = HECI_DEV_POWER_DOWN;
+	heci_reset(dev, 0);
+	flush_scheduled_work();
 }
 EXPORT_SYMBOL_GPL(heci_stop);
 
