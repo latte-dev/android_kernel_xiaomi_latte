@@ -725,7 +725,7 @@ struct chv_gpio {
 	struct irq_domain	*domain;
 	int			intr_lines[MAX_INTR_LINE_NUM];
 	char			*community_name;
-	int			print_wakeup;
+	int		print_wakeup;
 };
 
 static DEFINE_SPINLOCK(chv_reg_access_lock);
@@ -1401,16 +1401,10 @@ static void chv_gpio_irq_dispatch(struct chv_gpio *cg)
 	while ((pending = (chv_readl(reg) & chv_readl(mask_reg) & 0xFFFF))) {
 		intr_line = __ffs(pending);
 		offset = cg->intr_lines[intr_line];
-		/*
-		* For the interrupts the kernel doens't know, do ack
-		* and mask to prevent it from entering the loop again.
-		*/
 		if (unlikely(offset < 0)) {
 			mask = BIT(intr_line);
 			chv_writel(mask, reg);
-			chv_writel(chv_readl(mask_reg) & (~mask), mask_reg);
-			dev_warn(&cg->pdev->dev,
-				"unregistered irq, line %d\n", intr_line);
+			dev_warn(&cg->pdev->dev, "unregistered shared irq\n");
 			continue;
 		} else {
 			irq = irq_find_mapping(cg->domain, offset);
@@ -1441,6 +1435,20 @@ static void chv_irq_init_hw(struct chv_gpio *cg)
 
 	reg = chv_gpio_reg(&cg->chip, 0, CV_INT_STAT_REG);
 	chv_writel(0xffff, reg);
+
+	/*workaround, make sw-17 nad sw-91 select different interrupt line.
+	* set sw-91 interrupt line to 2 to avoid the conflict*/
+	if (cg->chip.ngpio == 98) {
+		u32 val;
+		void __iomem *ctrl0_reg =
+			chv_gpio_reg(&cg->chip, 91, CV_PADCTRL0_REG);
+
+		val = chv_readl(ctrl0_reg) & (~CV_INT_SEL_MASK);
+		val |= (2 << 28);
+		chv_writel(val, ctrl0_reg);
+
+		pr_err("workaround to set SW-91 itnerrupt line as 2\n");
+	}
 }
 
 
@@ -1467,39 +1475,6 @@ static const struct irq_domain_ops chv_gpio_irq_ops = {
 	.map = chv_gpio_irq_map,
 };
 
-
-#ifdef CONFIG_ACPI
-#define GPIO_ACPI_MMIO_ACCESS_START		((acpi_adr_space_type) 0x91)
-
-struct chv_gpio_acpi_handler_data {
-	struct chv_gpio *cg;
-	int id;
-};
-
-static acpi_status
-chv_gpio_mmio_access_handler(u32 function, acpi_physical_address address,
-			    u32 bits, u64 *value, void *handler_context,
-			    void *region_context)
-{
-	struct chv_gpio_acpi_handler_data *data = region_context;
-	void __iomem *reg_addr;
-	struct device *dev = &data->cg->pdev->dev;
-
-	dev_dbg(dev, "%s: function %d, address 0x%x, value 0x%x\n",
-		__func__, function, (u32)address, (u32)(*value));
-
-	reg_addr = (void __iomem *) (data->cg->reg_base + (u32)address);
-
-	if (function == ACPI_WRITE)
-		chv_writel((u32)(*value), reg_addr);
-	else if (function == ACPI_READ)
-		*value = chv_readl(reg_addr);
-	else
-		return AE_BAD_PARAMETER;
-
-	return AE_OK;
-}
-
 #ifdef CONFIG_PM_SLEEP
 static int chv_gpio_suspend_noirq(struct device *dev)
 {
@@ -1516,35 +1491,6 @@ static int chv_gpio_resume_early(struct device *dev)
 }
 #endif
 
-static int chv_gpio_acpi_request_mmio_access(struct chv_gpio *cg, int id)
-{
-	struct acpi_device *adev = ACPI_COMPANION(&cg->pdev->dev);
-	struct chv_gpio_acpi_handler_data *data;
-	acpi_status status;
-
-	if (!adev)
-		return -ENODEV;
-
-	data = devm_kzalloc(&cg->pdev->dev,
-		sizeof(struct chv_gpio_acpi_handler_data), GFP_KERNEL);
-
-	if (!data)
-		return -ENOMEM;
-
-	data->cg = cg;
-	data->id = id;
-	status = acpi_install_address_space_handler(adev->handle,
-				GPIO_ACPI_MMIO_ACCESS_START + id,
-				&chv_gpio_mmio_access_handler,
-				NULL,
-				data);
-
-	if (ACPI_FAILURE(status))
-		return -EFAULT;
-	return 0;
-}
-#endif
-
 static int
 chv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 {
@@ -1555,8 +1501,7 @@ chv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 	struct device *dev = &pdev->dev;
 	struct gpio_bank_pnp *bank;
 	int ret = 0;
-	int nbanks = ARRAY_SIZE(chv_banks_pnp);
-	int bank_id = 0;
+	int nbanks = sizeof(chv_banks_pnp) / sizeof(struct gpio_bank_pnp);
 
 	cg = devm_kzalloc(dev, sizeof(struct chv_gpio), GFP_KERNEL);
 	if (!cg) {
@@ -1580,8 +1525,6 @@ chv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 		ret = -ENODEV;
 		goto err;
 	}
-
-	bank_id = i;
 
 	mem_rc = pnp_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!mem_rc) {
