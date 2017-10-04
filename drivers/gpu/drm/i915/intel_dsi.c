@@ -1,6 +1,5 @@
 /*
  * Copyright © 2013 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -473,11 +472,7 @@ err_unref_2:
 	if (intel_dsi->dev.dev_ops->power_on)
 		intel_dsi->dev.dev_ops->power_on(&intel_dsi->dev);
 
-	/*
-	 *  delay after power on is already done in sequence
-	 *  execution, unnecessary here
-	 */
-	/* msleep(intel_dsi->panel_on_delay); */
+	msleep(intel_dsi->panel_on_delay);
 
 	/* Disable DPOunit clock gating, can stall pipe
 	 * and we need DPLL REFA always enabled */
@@ -588,14 +583,8 @@ err_unref_cursor:
 
 static void intel_dsi_enable(struct intel_encoder *encoder)
 {
-
-	DRM_DEBUG_KMS("\n");
-
+        DRM_DEBUG_KMS("\n");
 	intel_dsi_port_enable(encoder);
-	/*
-	 *Backlight work is done in lp855x_bl.c, unnecessary here
-	 *remove the code to save power on time
-	 */
 }
 
 static void intel_dsi_pre_disable(struct intel_encoder *encoder)
@@ -603,7 +592,6 @@ static void intel_dsi_pre_disable(struct intel_encoder *encoder)
 	struct drm_device *dev = encoder->base.dev;
 
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
-
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
 	int pipe = intel_crtc->pipe;
 
@@ -619,12 +607,6 @@ static void intel_dsi_pre_disable(struct intel_encoder *encoder)
 		 */
 		mdelay(40);
 	}
-
-	/*
-	 * Backlight work is done in lp855x_bl.c for A3, unnecessary here
-	 * remove the action here to avoid conflict.
-	 */
-
 	if (is_vid_mode(intel_dsi)) {
 		/* Send Shutdown command to the panel in LP mode */
 		dpi_send_cmd(intel_dsi, SHUTDOWN, DPI_LP_MODE_EN);

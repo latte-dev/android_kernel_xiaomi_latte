@@ -1,6 +1,5 @@
 /*
  * Copyright © 2014 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -484,16 +483,14 @@ static u8 *mipi_exec_i2c(struct intel_dsi *intel_dsi, u8 *data)
 	data = data + 2;
 	reg_offset = *data++;
 	payload_size = *data++;
-	/*
-	 *  slave address 0x2c is lp8556 on Xiaomi A3,
-	 *  this function done in lp855x_bl.c
-	 */
+
 	if (slave_add == 0x2c) {
-		/*
-		DRM_INFO(" bypass the LP8556 backlight ic set, function done in seprate driver \n");
-		*/
-		goto out;
-	}
+ 		/*
+ 		DRM_INFO(" bypass the LP8556 backlight ic set, function done in seprate driver \n");
+ 		*/
+ 		goto out;
+ 	}
+
 	adapter = i2c_get_adapter(bus_number);
 
 	if (!adapter) {
@@ -1000,11 +997,10 @@ static bool generic_init(struct intel_dsi_device *dsi)
 	intel_dsi->panel_off_delay = pps->panel_off_delay / 10;
 	intel_dsi->panel_pwr_cycle_delay = pps->panel_power_cycle_delay / 10;
 	printk(KERN_ERR"#### backlight_off_delay=%d -- \n", intel_dsi->backlight_off_delay);
-	printk(KERN_ERR"#### backlight_on_delay=%d -- \n", intel_dsi->backlight_on_delay);
-	printk(KERN_ERR"#### panel_on_delay =%d -- \n", intel_dsi->panel_on_delay);
-	printk(KERN_ERR"#### panel_off_delay =%d -- \n", intel_dsi->panel_off_delay);
-	printk(KERN_ERR"#### panel_pwr_cycle_delay =%d -- \n", intel_dsi->panel_pwr_cycle_delay);
-
+ 	printk(KERN_ERR"#### backlight_on_delay=%d -- \n", intel_dsi->backlight_on_delay);
+ 	printk(KERN_ERR"#### panel_on_delay =%d -- \n", intel_dsi->panel_on_delay);
+ 	printk(KERN_ERR"#### panel_off_delay =%d -- \n", intel_dsi->panel_off_delay);
+ 	printk(KERN_ERR"#### panel_pwr_cycle_delay =%d -- \n", intel_dsi->panel_pwr_cycle_delay);
 	return true;
 }
 
@@ -1079,14 +1075,12 @@ static void generic_enable(struct intel_dsi_device *dsi)
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 	struct drm_device *dev = intel_dsi->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	char *sequence = dev_priv->vbt.dsi.sequence[MIPI_SEQ_DISPLAY_ON];
 	int blank;
+	char *sequence = dev_priv->vbt.dsi.sequence[MIPI_SEQ_DISPLAY_ON];
 
 	generic_exec_sequence(intel_dsi, sequence);
-
-	blank = TP_POWER_RESUME;
-	tp_notifier_call_chain(TP_POWER_STATE_EVENT, &blank);
+	blank = FB_EVENT_RESUME;
+	fb_notifier_call_chain(FB_EVENT_MODE_CHANGE, &blank);
 }
 
 static void generic_disable(struct intel_dsi_device *dsi)
@@ -1094,13 +1088,11 @@ static void generic_disable(struct intel_dsi_device *dsi)
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 	struct drm_device *dev = intel_dsi->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	char *sequence = dev_priv->vbt.dsi.sequence[MIPI_SEQ_DISPLAY_OFF];
 	int blank;
 
-	blank = TP_POWER_SUSPEND;
-	tp_notifier_call_chain(TP_POWER_STATE_EVENT, &blank);
-
+	char *sequence = dev_priv->vbt.dsi.sequence[MIPI_SEQ_DISPLAY_OFF];
+	blank = FB_EVENT_SUSPEND;
+	fb_notifier_call_chain(FB_EVENT_MODE_CHANGE, &blank);
 	generic_exec_sequence(intel_dsi, sequence);
 }
 

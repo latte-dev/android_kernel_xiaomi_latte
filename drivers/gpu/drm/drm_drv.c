@@ -24,7 +24,6 @@
  *
  * Copyright 1999, 2000 Precision Insight, Inc., Cedar Park, Texas.
  * Copyright 2000 VA Linux Systems, Inc., Sunnyvale, California.
- * Copyright (C) 2016 XiaoMi, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -332,7 +331,8 @@ int drm_ioctl_permit(u32 flags, struct drm_file *file_priv)
 	return 0;
 }
 
-/** Prevent new IOCTLs from starting.
+/**
+ * Prevent new IOCTLs from starting.
  */
 void drm_halt(struct drm_device *dev)
 {

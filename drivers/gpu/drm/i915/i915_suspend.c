@@ -2,7 +2,6 @@
  *
  * Copyright 2008 (c) Intel Corporation
  *   Jesse Barnes <jbarnes@virtuousgeek.org>
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -193,7 +192,6 @@ static void i915_restore_vga(struct drm_device *dev)
 
 void i915_save_dpst_regs(struct drm_i915_private *dev_priv)
 {
-	/* Check if dpst is user enabled */
 	if (!dev_priv->dpst.user_enable)
 		return;
 
@@ -203,9 +201,8 @@ void i915_save_dpst_regs(struct drm_i915_private *dev_priv)
 
 void i915_restore_dpst_regs(struct drm_i915_private *dev_priv)
 {
-	/* Check if dpst is user enabled */
-	if (!dev_priv->dpst.user_enable)
-		return;
+        if (!dev_priv->dpst.user_enable)
+                return;
 
 	I915_WRITE(dev_priv->dpst.reg.blm_hist_guard, dev_priv->regfile.saveBLM_HIST_GUARD);
 	I915_WRITE(dev_priv->dpst.reg.blm_hist_ctl, dev_priv->regfile.saveBLM_HIST_CTL);

@@ -1,7 +1,6 @@
 /*
  * Copyright © 2010 Daniel Vetter
  * Copyright © 2011-2014 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -348,7 +347,7 @@ err_out:
 }
 
 static void unmap_and_free_pd(struct i915_page_directory_entry *pd,
-			 struct drm_device *dev)
+			       struct drm_device *dev)
 {
 	if (pd->page) {
 		i915_dma_unmap_single(pd, dev);
@@ -394,8 +393,8 @@ free_pd:
 
 /* Broadwell Page Directory Pointer Descriptors */
 static int gen8_write_pdp(struct intel_engine_cs *ring,
-			unsigned entry, dma_addr_t addr,
-			bool synchronous)
+			  unsigned entry, dma_addr_t addr,
+			  bool synchronous)
 {
 	struct drm_i915_private *dev_priv = ring->dev->dev_private;
 	int ret;
@@ -430,10 +429,8 @@ static int gen8_mm_switch(struct i915_hw_ppgtt *ppgtt,
 	int i, ret;
 
 	for (i = GEN8_LEGACY_PDPES - 1; i >= 0; i--) {
-		struct i915_page_directory_entry *pd = ppgtt->pdp.page_directory[i];
-		dma_addr_t pd_daddr = pd ? pd->daddr : ppgtt->scratch_pd->daddr;
-		/* The page directory might be NULL, but we need to clear out
-		 * whatever the previous context might have used. */
+		const dma_addr_t pd_daddr = i915_page_dir_dma_addr(ppgtt, i);
+
 		ret = gen8_write_pdp(ring, i, pd_daddr, synchronous);
 		if (ret)
 			return ret;
@@ -565,9 +562,9 @@ static void __gen8_do_map_pt(gen8_ppgtt_pde_t * const pde,
  * save us unnecessary kmap calls, but do no more functionally than multiple
  * calls to map_pt. */
 static void gen8_map_pagetable_range(struct i915_page_directory_entry *pd,
-				uint64_t start,
-				uint64_t length,
-				struct drm_device *dev)
+				     uint64_t start,
+				     uint64_t length,
+				     struct drm_device *dev)
 {
 	gen8_ppgtt_pde_t * const page_directory = kmap_atomic(pd->page);
 	struct i915_page_table_entry *pt;
@@ -770,10 +767,10 @@ unwind_out:
  * Return: 0 if success; negative error code otherwise.
  */
 static int gen8_ppgtt_alloc_page_directories(struct i915_hw_ppgtt *ppgtt,
-				 struct i915_page_directory_pointer_entry *pdp,
-				 uint64_t start,
-				 uint64_t length,
-				 unsigned long *new_pds)
+				     struct i915_page_directory_pointer_entry *pdp,
+				     uint64_t start,
+				     uint64_t length,
+				     unsigned long *new_pds)
 {
 	struct i915_page_directory_entry *pd;
 	uint64_t temp;
@@ -1947,7 +1944,7 @@ void i915_gem_restore_gtt_mappings(struct drm_device *dev)
 
 	if (USES_PPGTT(dev)) {
 		list_for_each_entry(vm, &dev_priv->vm_list, global_link) {
-		/* TODO: Perhaps it shouldn't be gen6 specific */
+			/* TODO: Perhaps it shouldn't be gen6 specific */
 
 			struct i915_hw_ppgtt *ppgtt =
 				container_of(vm, struct i915_hw_ppgtt, base);
@@ -2497,10 +2494,7 @@ static int ggtt_probe_common(struct drm_device *dev,
 	gtt_phys_addr = pci_resource_start(dev->pdev, 0) +
 		(pci_resource_len(dev->pdev, 0) / 2);
 
-	if (IS_CHERRYVIEW(dev))
-		dev_priv->gtt.gsm = ioremap_nocache(gtt_phys_addr, gtt_size);
-	else
-		dev_priv->gtt.gsm = ioremap_wc(gtt_phys_addr, gtt_size);
+	dev_priv->gtt.gsm = ioremap_wc(gtt_phys_addr, gtt_size);
 	if (!dev_priv->gtt.gsm) {
 		DRM_ERROR("Failed to map the gtt page table\n");
 		return -ENOMEM;

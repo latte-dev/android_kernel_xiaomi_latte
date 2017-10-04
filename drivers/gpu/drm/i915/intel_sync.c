@@ -1,6 +1,5 @@
 /**************************************************************************
  * Copyright © 2013 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -313,7 +312,6 @@ void i915_sync_hung_request(struct drm_i915_gem_request *req)
 
 	timeline = req->ctx->engine[req->ring->id].sync_timeline;
 
-
 	/* Signal the timeline. This will cause it to query the
 	 * signaled state of any waiting sync points.
 	 * If any match with ring->active_seqno then they
@@ -326,6 +324,7 @@ void i915_sync_hung_request(struct drm_i915_gem_request *req)
 
 void i915_sync_hung_ring(struct intel_engine_cs *ring)
 {
+
 	struct drm_i915_gem_request *req;
 	uint32_t active_seqno;
 

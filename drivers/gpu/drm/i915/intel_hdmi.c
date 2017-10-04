@@ -1,7 +1,6 @@
 /*
  * Copyright 2006 Dave Airlie <airlied@linux.ie>
  * Copyright © 2006-2009 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1782,18 +1781,18 @@ static void chv_hdmi_pre_enable(struct intel_encoder *encoder)
 	vlv_dpio_write(dev_priv, pipe, VLV_PCS23_DW11(ch), val);
 
 	vlv_dpio_write(dev_priv, pipe, VLV_PCS01_DW12(ch),
-		DPIO_LANESTAGGER_STRAP(stagger) |
-		DPIO_LANESTAGGER_STRAP_OVRD |
-		DPIO_TX1_STAGGER_MASK(0x1f) |
-		DPIO_TX1_STAGGER_MULT(6) |
-		DPIO_TX2_STAGGER_MULT(0));
+		       DPIO_LANESTAGGER_STRAP(stagger) |
+		       DPIO_LANESTAGGER_STRAP_OVRD |
+		       DPIO_TX1_STAGGER_MASK(0x1f) |
+		       DPIO_TX1_STAGGER_MULT(6) |
+		       DPIO_TX2_STAGGER_MULT(0));
 
 	vlv_dpio_write(dev_priv, pipe, VLV_PCS23_DW12(ch),
-		DPIO_LANESTAGGER_STRAP(stagger) |
-		DPIO_LANESTAGGER_STRAP_OVRD |
-		DPIO_TX1_STAGGER_MASK(0x1f) |
-		DPIO_TX1_STAGGER_MULT(7) |
-		DPIO_TX2_STAGGER_MULT(5));
+		       DPIO_LANESTAGGER_STRAP(stagger) |
+		       DPIO_LANESTAGGER_STRAP_OVRD |
+		       DPIO_TX1_STAGGER_MASK(0x1f) |
+		       DPIO_TX1_STAGGER_MULT(7) |
+		       DPIO_TX2_STAGGER_MULT(5));
 /* FIXME: Fix up value only after power analysis */
 	/* Clear calc init */
 	val = vlv_dpio_read(dev_priv, pipe, VLV_PCS01_DW10(ch));

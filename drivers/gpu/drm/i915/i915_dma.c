@@ -2,7 +2,6 @@
  */
 /*
  * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
- * Copyright (C) 2016 XiaoMi, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
