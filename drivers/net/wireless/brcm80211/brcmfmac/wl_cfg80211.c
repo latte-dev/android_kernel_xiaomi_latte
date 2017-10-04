@@ -1097,8 +1097,7 @@ static void brcmf_link_down(struct brcmf_cfg80211_vif *vif)
 			brcmf_err("WLC_DISASSOC failed (%d)\n", err);
 		}
 		clear_bit(BRCMF_VIF_STATUS_CONNECTED, &vif->sme_state);
-		cfg80211_disconnected(vif->wdev.netdev, 0, NULL, 0,
-				      false, GFP_KERNEL);
+		cfg80211_disconnected(vif->wdev.netdev, 0, NULL, 0, GFP_KERNEL);
 
 	}
 	clear_bit(BRCMF_VIF_STATUS_CONNECTING, &vif->sme_state);
@@ -1759,8 +1758,7 @@ brcmf_cfg80211_disconnect(struct wiphy *wiphy, struct net_device *ndev,
 		return -EIO;
 
 	clear_bit(BRCMF_VIF_STATUS_CONNECTED, &ifp->vif->sme_state);
-	cfg80211_disconnected(ndev, reason_code, NULL, 0,
-			      false, GFP_KERNEL);
+	cfg80211_disconnected(ndev, reason_code, NULL, 0, GFP_KERNEL);
 
 	memcpy(&scbval.ea, &profile->bssid, ETH_ALEN);
 	scbval.val = cpu_to_le32(reason_code);
@@ -4683,7 +4681,7 @@ brcmf_notify_connect_status(struct brcmf_if *ifp,
 			if (test_and_clear_bit(BRCMF_VIF_STATUS_CONNECTED,
 					       &ifp->vif->sme_state))
 				cfg80211_disconnected(ndev, 0, NULL, 0,
-						      false, GFP_KERNEL);
+						      GFP_KERNEL);
 		}
 		brcmf_link_down(ifp->vif);
 		brcmf_init_prof(ndev_to_prof(ndev));

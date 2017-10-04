@@ -64,7 +64,7 @@ static void _wil6210_disconnect(struct wil6210_priv *wil, void *bssid)
 		clear_bit(wil_status_fwconnected, &wil->status);
 		cfg80211_disconnected(ndev,
 				      WLAN_STATUS_UNSPECIFIED_FAILURE,
-				      NULL, 0, false, GFP_KERNEL);
+				      NULL, 0, GFP_KERNEL);
 	} else if (test_bit(wil_status_fwconnecting, &wil->status)) {
 		cfg80211_connect_result(ndev, bssid, NULL, 0, NULL, 0,
 					WLAN_STATUS_UNSPECIFIED_FAILURE,

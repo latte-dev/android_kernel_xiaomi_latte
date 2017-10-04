@@ -121,7 +121,7 @@ mwifiex_reset_connect_state(struct mwifiex_private *priv, u16 reason_code)
 	if (priv->bss_mode == NL80211_IFTYPE_STATION ||
 	    priv->bss_mode == NL80211_IFTYPE_P2P_CLIENT) {
 		cfg80211_disconnected(priv->netdev, reason_code, NULL, 0,
-				      false, GFP_KERNEL);
+				      GFP_KERNEL);
 	}
 	memset(priv->cfg_bssid, 0, ETH_ALEN);
 
