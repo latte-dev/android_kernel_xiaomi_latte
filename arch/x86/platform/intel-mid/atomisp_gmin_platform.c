@@ -85,10 +85,8 @@ struct gmin_subdev {
 	struct gpio_desc *gpio1;
 	struct regulator *v1p8_reg;
 	struct regulator *v2p8_reg;
-#ifdef CONFIG_MACH_XIAOMI_LATTE
 	struct regulator *v1p2_reg;
 	struct regulator *vprog4d_reg;
-#endif
 	enum atomisp_camera_port csi_port;
 	unsigned int csi_lanes;
 	enum atomisp_input_format csi_fmt;
@@ -275,10 +273,8 @@ int atomisp_gmin_remove_subdev(struct v4l2_subdev *sd)
 			if (pmic_id == PMIC_REGULATOR) {
 				regulator_put(gmin_subdevs[i].v1p8_reg);
 				regulator_put(gmin_subdevs[i].v2p8_reg);
-#ifdef CONFIG_MACH_XIAOMI_LATTE
 				regulator_put(gmin_subdevs[i].v1p2_reg);
 				regulator_put(gmin_subdevs[i].vprog4d_reg);
-#endif
 			}
 			gmin_subdevs[i].subdev = NULL;
 		}
@@ -375,7 +371,6 @@ static struct gmin_subdev *gmin_subdev_add(struct v4l2_subdev *subdev)
 		pmic_id);
 
 	gmin_subdevs[i].subdev = subdev;
-#ifdef CONFIG_MACH_XIAOMI_LATTE
 	dev_info(dev, "suddev name = %s", subdev->name);
 	if (0 == strcmp(subdev->name, "t4ka3 3-0037")) {
 		gmin_subdevs[i].clock_num = 0;
@@ -389,30 +384,8 @@ static struct gmin_subdev *gmin_subdev_add(struct v4l2_subdev *subdev)
 		gmin_subdevs[i].csi_lanes = 2;
 
 	}
-#else
-	gmin_subdevs[i].clock_num = gmin_get_var_int(dev, "CamClk", 0);
-	/*WA:CHT requires XTAL clock as PLL is not stable.*/
-	gmin_subdevs[i].clock_src = gmin_get_var_int(dev, "ClkSrc",
-							VLV2_CLK_PLL_19P2MHZ);
-	gmin_subdevs[i].csi_port = gmin_get_var_int(dev, "CsiPort", 0);
-	gmin_subdevs[i].csi_lanes = gmin_get_var_int(dev, "CsiLanes", 1);
-#endif
 	gmin_subdevs[i].gpio0 = gpiod_get_index(dev, "cam_gpio0", 0);
 	gmin_subdevs[i].gpio1 = gpiod_get_index(dev, "cam_gpio1", 1);
-#ifndef CONFIG_MACH_XIAOMI_LATTE
-	gmin_subdevs[i].eldo1_1p8v = gmin_get_var_int(dev, "eldo1_1p8v",
-							ELDO1_1P8V);
-	gmin_subdevs[i].eldo1_sel_reg =
-		gmin_get_var_int(dev, "eldo1_sel_reg", ELDO1_SEL_REG);
-	gmin_subdevs[i].eldo1_ctrl_shift =
-		gmin_get_var_int(dev, "eldo1_ctrl_shift", ELDO1_CTRL_SHIFT);
-	gmin_subdevs[i].eldo2_1p8v =
-		gmin_get_var_int(dev, "eldo2_1p8v", ELDO2_1P8V);
-	gmin_subdevs[i].eldo2_sel_reg = gmin_get_var_int(dev, "eldo2_sel_reg",
-							ELDO2_SEL_REG);
-	gmin_subdevs[i].eldo2_ctrl_shift =
-		gmin_get_var_int(dev, "eldo2_ctrl_shift", ELDO2_CTRL_SHIFT);
-#endif
 
 	if (!IS_ERR(gmin_subdevs[i].gpio0)) {
 		ret = gpiod_direction_output(gmin_subdevs[i].gpio0, 0);
@@ -433,11 +406,10 @@ static struct gmin_subdev *gmin_subdev_add(struct v4l2_subdev *subdev)
 	if (pmic_id == PMIC_REGULATOR) {
 		gmin_subdevs[i].v1p8_reg = regulator_get(dev, "V1P8SX");
 		gmin_subdevs[i].v2p8_reg = regulator_get(dev, "V2P8SX");
-#ifdef CONFIG_MACH_XIAOMI_LATTE
 		gmin_subdevs[i].v1p2_reg = regulator_get(dev, "V1P2SX");
 		gmin_subdevs[i].vprog4d_reg = regulator_get(dev, "VPROG4D");
 
-#endif
+
 		/* Note: ideally we would initialize v[12]p8_on to the
 		 * output of regulator_is_enabled(), but sadly that
 		 * API is broken with the current drivers, returning
@@ -572,7 +544,6 @@ int gmin_v1p8_ctrl(struct v4l2_subdev *subdev, int on)
 	if (v1p8_gpio >= 0)
 		gpio_set_value(v1p8_gpio, on);
 
-#ifdef CONFIG_MACH_XIAOMI_LATTE
 	if (gs->v1p8_reg) {
 		if (on) {
 			ret = regulator_enable(gs->v1p2_reg);
@@ -584,14 +555,6 @@ int gmin_v1p8_ctrl(struct v4l2_subdev *subdev, int on)
 			return ret;
 		}
 	}
-#else
-	if (gs->v1p8_reg) {
-		if (on)
-			return regulator_enable(gs->v1p8_reg);
-		else
-			return regulator_disable(gs->v1p8_reg);
-	}
-#endif
 
 	if (pmic_id == PMIC_AXP) {
 		if (on)
@@ -645,7 +608,6 @@ int gmin_v2p8_ctrl(struct v4l2_subdev *subdev, int on)
 	if (v2p8_gpio >= 0)
 		gpio_set_value(v2p8_gpio, on);
 
-#ifdef CONFIG_MACH_XIAOMI_LATTE
 	if (gs->v2p8_reg) {
 		if (on) {
 			ret = regulator_enable(gs->vprog4d_reg);
@@ -657,14 +619,6 @@ int gmin_v2p8_ctrl(struct v4l2_subdev *subdev, int on)
 			return ret;
 		};
 	}
-#else
-	if (gs->v2p8_reg) {
-		if (on)
-			return regulator_enable(gs->v2p8_reg);
-		else
-			return regulator_disable(gs->v2p8_reg);
-	}
-#endif
 
 	if (pmic_id == PMIC_AXP) {
 		if (on)
