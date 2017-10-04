@@ -69,6 +69,14 @@ EXPORT_SYMBOL(spid);
 #define CRYSTAL_ON      0x63
 #define CRYSTAL_OFF     0x62
 
+/*Whiskey Cove reg*/
+#define WCOVE_V1P8SX_CTRL	0x57
+#define WCOVE_V2P8SX_CTRL	0x5d
+#define WCOVE_CTRL_MASK		0x7
+#define WCOVE_CTRL_ENABLE	0x2
+#define WCOVE_CTRL_DISABLE	0x0
+
+
 struct gmin_subdev {
 	struct v4l2_subdev *subdev;
 	int clock_num;
@@ -77,7 +85,6 @@ struct gmin_subdev {
 	struct gpio_desc *gpio1;
 	struct regulator *v1p8_reg;
 	struct regulator *v2p8_reg;
-	struct regulator *v1p2_reg;
 	struct regulator *vprog4d_reg;
 	enum atomisp_camera_port csi_port;
 	unsigned int csi_lanes;
@@ -85,7 +92,6 @@ struct gmin_subdev {
 	enum atomisp_bayer_order csi_bayer;
 	bool v1p8_on;
 	bool v2p8_on;
-	bool v1p2_on;
 	int eldo1_sel_reg, eldo1_1p8v, eldo1_ctrl_shift;
 	int eldo2_sel_reg, eldo2_1p8v, eldo2_ctrl_shift;
 };
@@ -399,7 +405,6 @@ static struct gmin_subdev *gmin_subdev_add(struct v4l2_subdev *subdev)
 		gmin_subdevs[i].v1p8_reg = regulator_get(dev, "V1P8SX");
 		gmin_subdevs[i].v2p8_reg = regulator_get(dev, "V2P8SX");
 		gmin_subdevs[i].vprog4d_reg = regulator_get(dev, "VPROG4D");
-		gmin_subdevs[i].v1p2_reg = regulator_get(dev, "V1P2A");
 
 		/* Note: ideally we would initialize v[12]p8_on to the
 		 * output of regulator_is_enabled(), but sadly that
@@ -508,26 +513,6 @@ static int axp_v2p8_off(void)
 {
 	return axp_regulator_set(ALDO1_SEL_REG, ALDO1_2P8V, ALDO1_CTRL3_REG,
 				 ALDO1_CTRL3_SHIFT, false);
-}
-
-int gmin_v1p2_ctrl(struct v4l2_subdev *subdev, int on)
-{
-	struct gmin_subdev *gs = find_gmin_subdev(subdev);
-
-	if (gs && gs->v1p2_on == on)
-		return 0;
-	gs->v1p2_on = on;
-
-	if (gs->v1p2_reg) {
-		if (on)
-			return regulator_enable(gs->v1p2_reg);
-		else
-			return regulator_disable(gs->v1p2_reg);
-	}
-
-	/*TODO:v1p2 needs to extend to other PMICs*/
-
-	return -EINVAL;
 }
 
 int gmin_v1p8_ctrl(struct v4l2_subdev *subdev, int on)
@@ -712,7 +697,6 @@ static struct camera_sensor_platform_data gmin_plat = {
 	.gpio1_ctrl = gmin_gpio1_ctrl,
 	.v1p8_ctrl = gmin_v1p8_ctrl,
 	.v2p8_ctrl = gmin_v2p8_ctrl,
-	.v1p2_ctrl = gmin_v1p2_ctrl,
 	.flisclk_ctrl = gmin_flisclk_ctrl,
 	.platform_init = gmin_platform_init,
 	.platform_deinit = gmin_platform_deinit,
