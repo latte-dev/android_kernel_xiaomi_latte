@@ -1323,6 +1323,15 @@ static int intel_sst_suspend(struct device *dev)
 	sst_drv_ctx->sst_suspend_state = true;
 	mutex_unlock(&ctx->sst_lock);
 
+	ret = intel_sst_runtime_suspend(dev);
+	if (ret){
+		dev_err(dev, "can't suspend, ret[%d]\n", ret);
+		mutex_lock(&ctx->sst_lock);
+		sst_drv_ctx->sst_suspend_state = false;
+		mutex_unlock(&ctx->sst_lock);
+		return ret;
+	}
+
 	if (ctx->pdata->start_recovery_timer)
 		sst_set_timer(&ctx->monitor_lpe, false);
 

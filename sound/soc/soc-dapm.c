@@ -3446,27 +3446,12 @@ int snd_soc_dapm_new_controls(struct snd_soc_dapm_context *dapm,
 }
 EXPORT_SYMBOL_GPL(snd_soc_dapm_new_controls);
 
-static int snd_soc_get_hw_params(struct snd_pcm_hw_params *params,
-		const struct snd_soc_pcm_stream *config)
-{
-	hw_param_interval(params, SNDRV_PCM_HW_PARAM_RATE)->min =
-		config->rate_min;
-	hw_param_interval(params, SNDRV_PCM_HW_PARAM_RATE)->max =
-		config->rate_max;
-
-	hw_param_interval(params, SNDRV_PCM_HW_PARAM_CHANNELS)->min
-		= config->channels_min;
-	hw_param_interval(params, SNDRV_PCM_HW_PARAM_CHANNELS)->max
-		= config->channels_max;
-	return 0;
-}
-
 static int snd_soc_dai_link_event(struct snd_soc_dapm_widget *w,
 				  struct snd_kcontrol *kcontrol, int event)
 {
 	struct snd_soc_dapm_path *source_p, *sink_p;
 	struct snd_soc_dai *source, *sink;
-	struct snd_soc_pcm_stream *config = w->params;
+	const struct snd_soc_pcm_stream *config = w->params;
 	struct snd_pcm_substream substream;
 	struct snd_pcm_hw_params *params = NULL;
 	u64 fmt;
@@ -3505,9 +3490,18 @@ static int snd_soc_dai_link_event(struct snd_soc_dapm_widget *w,
 		ret = -ENOMEM;
 		goto out;
 	}
-
 	snd_mask_set(hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT), fmt);
-	snd_soc_get_hw_params(params, config);
+
+	hw_param_interval(params, SNDRV_PCM_HW_PARAM_RATE)->min =
+		config->rate_min;
+	hw_param_interval(params, SNDRV_PCM_HW_PARAM_RATE)->max =
+		config->rate_max;
+
+	hw_param_interval(params, SNDRV_PCM_HW_PARAM_CHANNELS)->min
+		= config->channels_min;
+	hw_param_interval(params, SNDRV_PCM_HW_PARAM_CHANNELS)->max
+		= config->channels_max;
+
 	memset(&substream, 0, sizeof(substream));
 
 	switch (event) {
@@ -3536,19 +3530,6 @@ static int snd_soc_dai_link_event(struct snd_soc_dapm_widget *w,
 
 		if (source->driver->ops && source->driver->ops->hw_params) {
 			substream.stream = SNDRV_PCM_STREAM_CAPTURE;
-
-			if (w->dai_link->be_fixup) {
-				ret =  w->dai_link->be_fixup(w->dai_link, source);
-
-				if (ret != 0) {
-					dev_err(source->dev, "ASoC: fix_up_be()	failed: %d\n", ret);
-					goto out;
-				}
-				if (w->dai_link->params) {
-					config = w->dai_link->params;
-					snd_soc_get_hw_params(params, config);
-				}
-			}
 			ret = source->driver->ops->hw_params(&substream,
 							     params, source);
 			if (ret != 0) {
@@ -3560,20 +3541,6 @@ static int snd_soc_dai_link_event(struct snd_soc_dapm_widget *w,
 
 		if (sink->driver->ops && sink->driver->ops->hw_params) {
 			substream.stream = SNDRV_PCM_STREAM_PLAYBACK;
-
-			if (w->dai_link->be_fixup) {
-				ret =  w->dai_link->be_fixup(w->dai_link, sink);
-
-				if (ret != 0) {
-					dev_err(source->dev, "ASoC: fix_up_be() failed: %d\n", ret);
-					goto out;
-				}
-
-				if (w->dai_link->params) {
-					config = w->dai_link->params;
-					snd_soc_get_hw_params(params, config);
-				}
-			}
 			ret = sink->driver->ops->hw_params(&substream, params,
 							   sink);
 			if (ret != 0) {
@@ -3623,7 +3590,7 @@ out:
 }
 
 int snd_soc_dapm_new_pcm(struct snd_soc_card *card,
-			 struct snd_soc_dai_link *dai_link,
+			 const struct snd_soc_pcm_stream *params,
 			 struct snd_soc_dapm_widget *source,
 			 struct snd_soc_dapm_widget *sink)
 {
@@ -3656,10 +3623,7 @@ int snd_soc_dapm_new_pcm(struct snd_soc_card *card,
 		return -ENOMEM;
 	}
 
-	w->dai_link = dai_link;
-
-	if (dai_link->params)
-		w->params = dai_link->params;
+	w->params = params;
 
 	memset(&routes, 0, sizeof(routes));
 

@@ -311,8 +311,6 @@ int snd_soc_put_strobe(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol);
 int snd_soc_info_bytes_ext(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_info *ucontrol);
-int snd_soc_bytes_tlv_callback(struct snd_kcontrol *kcontrol,
-	int op_flag, unsigned int size, unsigned int __user *tlv);
 
 /**
  * struct snd_soc_jack_pin - Describes a pin to update based on jack detection
@@ -689,9 +687,6 @@ struct snd_soc_dai_link {
 	int (*be_hw_params_fixup)(struct snd_soc_pcm_runtime *rtd,
 			struct snd_pcm_hw_params *params);
 
-	/* BE fixup method for CODEC<->CODEC dailink */
-	int (*be_fixup)(struct snd_soc_dai_link *dai_link,
-			struct snd_soc_dai *dai);
 	/* machine stream operations */
 	const struct snd_soc_ops *ops;
 	const struct snd_soc_compr_ops *compr_ops;
@@ -890,13 +885,6 @@ struct soc_bytes_ext {
 	struct list_head list;
 	struct snd_kcontrol *dcontrol;
 	int index;
-	int tlv_index;
-
-	/* used for TLV byte control */
-	int (*get)(struct snd_kcontrol *kcontrol,
-			unsigned int __user *bytes, unsigned int size);
-	int (*put)(struct snd_kcontrol *kcontrol,
-			const unsigned int __user *bytes, unsigned int size);
 
 	unsigned int pvt_data_len;
 	char *pvt_data;

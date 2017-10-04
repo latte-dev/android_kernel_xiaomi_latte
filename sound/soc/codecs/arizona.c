@@ -1917,7 +1917,7 @@ static int arizona_hw_params(struct snd_pcm_substream *substream,
 	const int *rates;
 	int i, ret, val;
 	int channels = params_channels(params);
- 	int chan_limit = arizona->pdata.max_channels_clocked[dai->id - 1];
+	int chan_limit = arizona->pdata.max_channels_clocked[dai->id - 1];
 	int tdm_width = arizona->tdm_width[dai->id - 1];
 	int tdm_slots = arizona->tdm_slots[dai->id - 1];
 	int bclk, lrclk, wl, frame, bclk_target;

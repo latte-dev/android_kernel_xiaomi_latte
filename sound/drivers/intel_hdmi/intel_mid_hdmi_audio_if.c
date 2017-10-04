@@ -382,16 +382,7 @@ int had_process_hot_plug(struct snd_intelhad *intelhaddata)
 	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 
 	pr_debug("Processing HOT_PLUG, buf_id = %d\n", buf_id);
-	 /* Query display driver for audio register base */
-	if (intelhaddata->reg_ops.hdmi_audio_get_register_base
-		(&intelhaddata->audio_reg_base)) {
-			pr_err("Unable to get audio reg base from Display driver\n");
-			goto err;
-	}
-	if(intelhaddata->audio_reg_base == 0){
-		pr_err("audio reg base value is NULL\n");
-		goto err;
-	}
+
 	/* Safety check */
 	if (substream) {
 		pr_debug("There should not be active PB from ALSA\n");
@@ -403,10 +394,6 @@ int had_process_hot_plug(struct snd_intelhad *intelhaddata)
 
 	had_build_channel_allocation_map(intelhaddata);
 
-	return retval;
-err:
-	pm_runtime_disable(intelhaddata->dev);
-	intelhaddata->dev = NULL;
 	return retval;
 }
 
@@ -450,7 +437,6 @@ int had_process_hot_unplug(struct snd_intelhad *intelhaddata)
 	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 	kfree(intelhaddata->chmap->chmap);
 	intelhaddata->chmap->chmap = NULL;
-	intelhaddata->audio_reg_base = 0;
 	pr_debug("%s: unlocked -> returned\n", __func__);
 
 	return retval;

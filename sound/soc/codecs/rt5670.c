@@ -64,9 +64,7 @@ struct rt5670_init_reg {
 static struct rt5670_init_reg init_list[] = {
 	{ RT5670_DIG_MISC	, 0xc019 }, /* fa[0]=1, fa[3]=1'b MCLK det,
 						fa[15:14]=11'b for pdm */
-	{ RT5670_IL_CMD         , 0x0005 },
 	{ RT5670_IL_CMD2	, 0x0010 }, /* set Inline Command Window */
-	{ RT5670_IL_CMD3	, 0x0009 },
 	{ RT5670_A_JD_CTRL1     , 0x0001 }, /* set JD1 mode 1 (1 port) */
 	{ RT5670_PRIV_INDEX	, 0x0014 },
 	{ RT5670_PRIV_DATA	, 0x9a8a },
@@ -193,7 +191,7 @@ static const u16 rt5670_reg[RT5670_VENDOR_ID2 + 1] = {
 	[RT5670_SV_ZCD1] = 0x0809,
 	[RT5670_IL_CMD] = 0x0001,
 	[RT5670_IL_CMD2] = 0x0049,
-	[RT5670_IL_CMD3] = 0x0024,
+	[RT5670_IL_CMD3] = 0x0009,
 	[RT5670_DRC_HL_CTRL1] = 0x8000,
 	[RT5670_ADC_MONO_HP_CTRL1] = 0xb300,
 	[RT5670_ADC_STO2_HP_CTRL1] = 0xb300,
