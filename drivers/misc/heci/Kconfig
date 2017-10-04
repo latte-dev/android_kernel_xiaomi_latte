@@ -1,4 +1,4 @@
-config INTEL_ISH
+config INTEL_ISS
 	tristate "Intel Integrated Sensors Solution"
 	depends on X86 && PCI
 	help
@@ -7,20 +7,20 @@ config INTEL_ISH
 	  Placeholder for description line 3.
 	  Placeholder for description line 4.
 
-config ISH_PATH_SENSCOL
+config ISS_PATH_SENSCOL
 	tristate "ISS path through sensor-collection"
-	depends on INTEL_ISH
+	depends on INTEL_ISS
 	help
-	  Enables sensor-collection path for ISH
+	  Enables sensor-collection path for hid-sensor-hub.
 	  Placeholder for description line 2.
 	  Placeholder for description line 3.
 	  Placeholder for description line 4.
 
-config ISH_PATH_IIO
+config ISS_PATH_IIO
 	tristate "ISS path through IIO"
-	depends on INTEL_ISH
+	depends on INTEL_ISS
 	help
-	  Enables IIO path for ISH
+	  Enables IIO path for hid-sensor-hub.
 	  Placeholder for description line 2.
 	  Placeholder for description line 3.
 	  Placeholder for description line 4.
