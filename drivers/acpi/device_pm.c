@@ -2,7 +2,6 @@
  * drivers/acpi/device_pm.c - ACPI device power management routines.
  *
  * Copyright (C) 2012, Intel Corp.
- * Copyright (C) 2016 XiaoMi, Inc.
  * Author: Rafael J. Wysocki <rafael.j.wysocki@intel.com>
  *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -720,7 +719,7 @@ int acpi_pm_device_sleep_wake(struct device *dev, bool enable)
 	error = __acpi_device_sleep_wake(adev, acpi_target_system_state(),
 					 enable);
 	if (!error)
-		dev_dbg(dev, "System wakeup %s by ACPI\n",
+		dev_info(dev, "System wakeup %s by ACPI\n",
 				enable ? "enabled" : "disabled");
 
 	return error;
@@ -860,7 +859,7 @@ int acpi_dev_suspend_late(struct device *dev)
 		return 0;
 
 	target_state = acpi_target_system_state();
-	wakeup = device_may_wakeup(dev) && acpi_device_can_wakeup(adev);
+	wakeup = device_may_wakeup(dev);
 	error = __acpi_device_sleep_wake(adev, target_state, wakeup);
 	if (wakeup && error)
 		return error;
