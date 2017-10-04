@@ -37,6 +37,8 @@
 
 #include "rt5645.h"
 
+#define RT5645_DET_EXT_MIC 0
+/* #define USE_INT_CLK */
 #define JD1_FUNC
 /* #define ALC_DRC_FUNC */
 #define USE_ASRC
@@ -1650,6 +1652,8 @@ static int rt5645_bst2_event(struct snd_soc_dapm_widget *w,
 	case SND_SOC_DAPM_POST_PMU:
 		snd_soc_update_bits(codec, RT5645_PWR_ANLG2,
 			RT5645_PWR_BST2_P, RT5645_PWR_BST2_P);
+		snd_soc_update_bits(codec, RT5645_PWR_ANLG2,
+			RT5645_PWR_MB1, RT5645_PWR_MB1);
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
@@ -2162,6 +2166,7 @@ static const struct snd_soc_dapm_route rt5645_dapm_routes[] = {
 	{ "BST1", NULL, "Mic Det Power" },
 	{ "BST2", NULL, "IN2P" },
 	{ "BST2", NULL, "IN2N" },
+	{ "BST2", NULL, "micbias1" },
 
 	{ "INL VOL", NULL, "IN2P" },
 	{ "INR VOL", NULL, "IN2N" },
@@ -3055,7 +3060,7 @@ static int rt5645_probe(struct snd_soc_codec *codec)
 	snd_soc_update_bits(codec, RT5645_PWR_ANLG1, RT5645_LDO_SEL_MASK, 0x0);
 
 	/* dc_calibrate(codec); */
-	codec->dapm.bias_level = SND_SOC_BIAS_OFF;
+	codec->dapm.bias_level = SND_SOC_BIAS_OFF;/*SND_SOC_BIAS_STANDBY;*/
 	rt5645->codec = codec;
 	rt5645->combo_jack_en = true; /* enable combo jack */
 
