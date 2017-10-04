@@ -78,9 +78,7 @@ static struct snd_soc_jack_gpio hs_gpio = {
 		.name			= "cht-codec-int",
 		.report			= SND_JACK_HEADSET |
 					  SND_JACK_HEADPHONE |
-					  SND_JACK_BTN_0 |
-					  SND_JACK_BTN_1 |
-					  SND_JACK_BTN_2,
+					  SND_JACK_BTN_0,
 		.debounce_time		= CHT_INTR_DEBOUNCE,
 		.jack_status_check	= cht_hs_detection,
 };
@@ -362,29 +360,25 @@ static void cht_check_hs_button_status(struct work_struct *work)
 	if (((jack->status & SND_JACK_HEADSET) == SND_JACK_HEADSET)
 			&& ctx->process_button_events) {
 
-		status = rt5645_button_detect(codec);
-		switch (status) {
-		case RT5645_STA_HOLD_UP_BTN:
-			/* Up */
-			jack_type = SND_JACK_HEADSET |
-				SND_JACK_BTN_1;
-			break;
-		case RT5645_STA_HOLD_CENTER_BTN:
-			/* Center */
-			jack_type = SND_JACK_HEADSET |
-				SND_JACK_BTN_0;
-			break;
-		case RT5645_STA_HOLD_DOWN_BTN:
-			/* Down */
-			jack_type = SND_JACK_HEADSET |
-				SND_JACK_BTN_2;
-			break;
-		default:
-			/* Release */
-			jack_type = SND_JACK_HEADSET;
-			break;
+		status = rt5645_check_jd_status(codec);
+		if (!status) {
+			/* confirm jack is connected */
+			status = rt5645_button_detect(codec);
+			if (jack->status & SND_JACK_BTN_0) {
+				/* if button was previosly in pressed state*/
+				if (!status) {
+					pr_debug("BR event received\n");
+					jack_type = SND_JACK_HEADSET;
+				}
+			} else {
+				/* If button was previously in released state */
+				if (status) {
+					pr_debug("BP event received\n");
+					jack_type = SND_JACK_HEADSET |
+								SND_JACK_BTN_0;
+				}
+			}
 		}
-
 		/* There could be button interrupts during jack removal.
 		 * There can be situations where a button interrupt is generated
 		 * first but no jack removal interrupt is generated.
@@ -647,9 +641,6 @@ static int cht_audio_init(struct snd_soc_pcm_runtime *runtime)
 	cht_set_bias_level(card, &card->dapm, SND_SOC_BIAS_OFF);
 	card->dapm.idle_bias_off = true;
 
-	snd_soc_update_bits(codec, RT5645_IL_CMD, RT5645_INLINE_EN,
-			RT5645_INLINE_EN);
-
 	desc = devm_gpiod_get_index(codec->dev, NULL, 0);
 	if (!IS_ERR(desc)) {
 		codec_gpio = desc_to_gpio(desc);
@@ -696,8 +687,6 @@ static int cht_audio_init(struct snd_soc_pcm_runtime *runtime)
 		return ret;
 	}
 	snd_jack_set_key(ctx->jack.jack, SND_JACK_BTN_0, KEY_MEDIA);
-	snd_jack_set_key(ctx->jack.jack, SND_JACK_BTN_1, KEY_VOLUMEUP);
-	snd_jack_set_key(ctx->jack.jack, SND_JACK_BTN_2, KEY_VOLUMEDOWN);
 	ret = snd_soc_jack_add_gpios(&ctx->jack, 1, &hs_gpio);
 	if (ret) {
 		pr_err("adding jack GPIO failed\n");
