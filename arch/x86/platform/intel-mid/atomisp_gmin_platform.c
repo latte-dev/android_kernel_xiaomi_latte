@@ -84,7 +84,6 @@ struct gmin_subdev {
 	struct regulator *v1p8_reg;
 	struct regulator *v2p8_reg;
 	struct regulator *v1p2_reg;
-	struct regulator *v2p8_vcm_reg;
 	struct regulator *vprog4d_reg;
 	enum atomisp_camera_port csi_port;
 	unsigned int csi_lanes;
@@ -93,7 +92,6 @@ struct gmin_subdev {
 	bool v1p8_on;
 	bool v2p8_on;
 	bool v1p2_on;
-	bool v2p8_vcm_on;
 	int eldo1_sel_reg, eldo1_1p8v, eldo1_ctrl_shift;
 	int eldo2_sel_reg, eldo2_1p8v, eldo2_ctrl_shift;
 };
@@ -159,23 +157,6 @@ EXPORT_SYMBOL_GPL(atomisp_get_platform_data);
 
 static int af_power_ctrl(struct v4l2_subdev *subdev, int flag)
 {
-	struct gmin_subdev *gs = find_gmin_subdev(subdev);
-
-	if (gs && gs->v2p8_vcm_on == flag)
-		return 0;
-	gs->v2p8_vcm_on = flag;
-
-	/*
-	 * The power here is used for dw9817,
-	 * regulator is from rear sensor
-	*/
-	if (gs->v2p8_vcm_reg) {
-		if (flag)
-			return regulator_enable(gs->v2p8_vcm_reg);
-		else
-			return regulator_disable(gs->v2p8_vcm_reg);
-	}
-
 	return 0;
 }
 
@@ -292,7 +273,6 @@ int atomisp_gmin_remove_subdev(struct v4l2_subdev *sd)
 				regulator_put(gmin_subdevs[i].v1p8_reg);
 				regulator_put(gmin_subdevs[i].v2p8_reg);
 				regulator_put(gmin_subdevs[i].v1p2_reg);
-				regulator_put(gmin_subdevs[i].v2p8_vcm_reg);
 				regulator_put(gmin_subdevs[i].vprog4d_reg);
 			}
 			gmin_subdevs[i].subdev = NULL;
@@ -424,9 +404,8 @@ static struct gmin_subdev *gmin_subdev_add(struct v4l2_subdev *subdev)
 	if (pmic_id == PMIC_REGULATOR) {
 		gmin_subdevs[i].v1p8_reg = regulator_get(dev, "V1P8SX");
 		gmin_subdevs[i].v2p8_reg = regulator_get(dev, "V2P8SX");
-		gmin_subdevs[i].v2p8_vcm_reg = regulator_get(dev, "VPROG4B");
-		gmin_subdevs[i].v1p2_reg = regulator_get(dev, "V1P2SX");
 		gmin_subdevs[i].vprog4d_reg = regulator_get(dev, "VPROG4D");
+		gmin_subdevs[i].v1p2_reg = regulator_get(dev, "V1P2A");
 
 		/* Note: ideally we would initialize v[12]p8_on to the
 		 * output of regulator_is_enabled(), but sadly that
