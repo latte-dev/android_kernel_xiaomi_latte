@@ -2133,7 +2133,7 @@ intel_plane_init(struct drm_device *dev, enum pipe pipe, int plane)
 			     plane_formats, num_plane_formats,
 			     false);
 
-	if (ret) {
+	if (ret) 
 		kfree(intel_plane);
 	else {
 		if (IS_CHERRYVIEW(dev) && STEP_FROM(STEP_B0) && pipe == PIPE_B) {

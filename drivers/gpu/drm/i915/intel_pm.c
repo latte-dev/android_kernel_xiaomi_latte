@@ -1730,15 +1730,6 @@ vlv_force_ddr_low_frequency(struct drm_i915_private *dev_priv, bool mode)
 {
 	if (mode != dev_priv->force_low_ddr_freq) {
 		dev_priv->force_low_ddr_freq = mode;
-		vlv_set_ddr_dvfs(dev_priv, mode);
-	}
-}
-
-void
-vlv_force_ddr_low_frequency(struct drm_i915_private *dev_priv, bool mode)
-{
-	if (mode != dev_priv->force_low_ddr_freq) {
-		dev_priv->force_low_ddr_freq = mode;
 
 		/* Change DVFS frequency directly only if higher DVFS is being
 		 * set. Low DVFS will be set only from maxfifo function */

@@ -1297,8 +1297,6 @@ static void i915_scheduler_wait_fence_signaled(struct sync_fence *fence,
 static bool i915_scheduler_async_fence_wait(struct drm_device *dev,
 					    struct i915_scheduler_queue_entry *node)
 {
-	struct drm_i915_private         *dev_priv = node->params.ring->dev->dev_private;
-	struct i915_scheduler           *scheduler = dev_priv->scheduler;
 	struct i915_sync_fence_waiter	*fence_waiter;
 	struct sync_fence		*fence = node->params.fence_wait;
 	int				signaled;

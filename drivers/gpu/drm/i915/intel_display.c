@@ -11334,7 +11334,6 @@ int intel_set_disp_calc_flip(struct drm_mode_set_display *disp,
 				pfit_control &=  MASK_PFIT_SCALING_MODE;
 				pfit_control |= pfit_mode;
 			}
-pfit_out:
 			intel_crtc->pfit_control = pfit_control;
 			if (pfit_control != pfitcontrol || scaling_src_size != intel_crtc->scaling_src_size)
 				dev_priv->pfit_changed = true;
@@ -12580,57 +12579,6 @@ static void update_scanline_offset(struct intel_crtc *crtc)
 		crtc->scanline_offset = 2;
 	} else
 		crtc->scanline_offset = 1;
-}
-
-/*
- * This function implements support for retrying modeset
- * with lower link rate/lane count if previous crtc_enable
- * failed. This is done as per below logic.
- *
- * This function performs simple task of checking if
- * DP/edp is active or not. if it is not active, we call
- * compute_config to update the link rate and lane count
- * and try crtc_enable again.
- * This will continue as long as compute_config succeeds.
- * if there is no more combinations to try then it will
- * fail resulting in exiting the function.
- */
-static void intel_set_mode_dp(struct intel_crtc *intel_crtc)
-{
-	struct drm_device *dev = intel_crtc->base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_encoder *encoder;
-	bool found = false;
-
-	/* get the encoder first */
-	for_each_encoder_on_crtc(dev, &intel_crtc->base, encoder) {
-		if ((encoder->type == INTEL_OUTPUT_EDP) ||
-		   (encoder->type == INTEL_OUTPUT_DISPLAYPORT)) {
-			found = true;
-			break;
-		}
-	}
-
-	if (!found)
-		return;
-
-	/*
-	 * compute config for DP decrements the link_rate every time
-	 * it is called. This will result in each crtc_enable
-	 * retried with different link_rates and when called with
-	 * lowest link rate it will return false and exit the loop
-	 */
-	while ((!intel_crtc->active) &&
-		(encoder->compute_config(encoder, &intel_crtc->config))) {
-		DRM_DEBUG_KMS("Display not up, retrying\n");
-
-		/* retry enable */
-		dev_priv->display.crtc_enable(&intel_crtc->base);
-
-		/* TBD: need to update pipe_config->dither */
-	}
-
-
 }
 
 static int __intel_set_mode(struct drm_crtc *crtc,

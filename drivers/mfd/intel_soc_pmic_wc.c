@@ -803,16 +803,6 @@ static void wc_set_v2p8_pdata(void)
 		sizeof(struct wcove_regulator_info), WCOVE_ID_V2P8SX + 1);
 }
 
-static void wc_set_v1p2_pdata(void)
-{
-	memcpy((void *)&wcove_v1p2sx_data, (void *)&v1p2sx_data,
-			sizeof(struct regulator_init_data));
-
-	/* register camera regulator for whiskey cove PMIC */
-	intel_soc_pmic_set_pdata("wcove_regulator", &wcove_v1p2sx_info,
-		sizeof(struct wcove_regulator_info), WCOVE_ID_V1P2SX + 1);
-}
-
 static void wc_set_vprog4d_pdata(void)
 {
 	memcpy((void *)&wcove_vprog4d_data, (void *)&vprog4d_data,

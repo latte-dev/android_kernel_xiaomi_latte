@@ -4834,7 +4834,8 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	u8 sink_irq_vector;
 	enum intel_display_power_domain power_domain;
 	struct edid *edid = NULL;
-	struct intel_crtc *intel_crtc = NULL;
+	struct intel_crtc *intel_crtc = crtc ? to_intel_crtc(crtc) : NULL;
+        struct intel_connector *intel_connector = to_intel_connector(connector);
 
 	intel_runtime_pm_get(dev_priv);
 

@@ -1086,6 +1086,7 @@ int intel_execlists_handle_ctx_events(struct intel_engine_cs *ring, bool do_lock
 	u8 read_pointer;
 	u8 write_pointer;
 	u32 status;
+        u32 status_id;
 	u32 submit_contexts = 0;
 
 	if (do_lock)

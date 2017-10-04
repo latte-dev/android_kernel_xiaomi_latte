@@ -311,10 +311,7 @@ void i915_sync_hung_request(struct drm_i915_gem_request *req)
 	if (WARN_ON(!req))
 		return;
 
-	if (i915.enable_execlists)
-		timeline = req->ctx->engine[req->ring->id].sync_timeline;
-	else
-		timeline = req->ctx->legacy_hw_ctx.sync_timeline;
+	timeline = req->ctx->engine[req->ring->id].sync_timeline;
 
 
 	/* Signal the timeline. This will cause it to query the

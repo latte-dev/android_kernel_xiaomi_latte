@@ -28,6 +28,7 @@ struct power_supply_charger {
 	struct work_struct wireless_chrgr_work;
 	struct mutex evt_lock;
 	struct power_supply_cable_props cable_props;
+        wait_queue_head_t wait_chrg_enable;
 };
 
 static struct power_supply_charger psy_chrgr;
