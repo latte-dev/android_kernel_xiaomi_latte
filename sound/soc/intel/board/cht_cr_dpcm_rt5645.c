@@ -42,13 +42,13 @@
 #define CHT_PLAT_CLK_3_HZ	19200000
 
 #define CHT_INTR_DEBOUNCE               0
-#define CHT_HS_INSERT_DET_DELAY         300
-#define CHT_HS_REMOVE_DET_DELAY         400
+#define CHT_HS_INSERT_DET_DELAY         500
+#define CHT_HS_REMOVE_DET_DELAY         500
 #define CHT_BUTTON_DET_DELAY            100
 #define CHT_HS_DET_POLL_INTRVL          100
 #define CHT_BUTTON_EN_DELAY             1500
 
-#define CHT_HS_DET_RETRY_COUNT          2
+#define CHT_HS_DET_RETRY_COUNT          6
 
 struct cht_mc_private {
 	struct snd_soc_jack jack;
@@ -97,20 +97,26 @@ static inline void cht_force_enable_pin(struct snd_soc_codec *codec,
 static inline void cht_set_codec_power(struct snd_soc_codec *codec,
 								int jack_type)
 {
+	const char *board_name;
 	switch (jack_type) {
 	case SND_JACK_HEADSET:
-		cht_force_enable_pin(codec, "micbias1", true);
-		cht_force_enable_pin(codec, "micbias2", true);
+		board_name = dmi_get_system_info(DMI_BOARD_NAME);
+		pr_debug("Setting the micbias for %s\n", board_name);
+		if (strcmp(board_name, "Cherry Trail FFD") == 0)
+			cht_force_enable_pin(codec, "micbias1", true);
+		else
+			cht_force_enable_pin(codec, "micbias2", true);
 		cht_force_enable_pin(codec, "JD Power", true);
+		cht_force_enable_pin(codec, "Mic Det Power", true);
 		break;
 	case SND_JACK_HEADPHONE:
 		cht_force_enable_pin(codec, "JD Power", true);
-		cht_force_enable_pin(codec, "micbias1", false);
+		cht_force_enable_pin(codec, "Mic Det Power", false);
 		cht_force_enable_pin(codec, "micbias2", false);
 		break;
 	case 0:
 		cht_force_enable_pin(codec, "JD Power", false);
-		cht_force_enable_pin(codec, "micbias1", false);
+		cht_force_enable_pin(codec, "Mic Det Power", false);
 		cht_force_enable_pin(codec, "micbias2", false);
 		break;
 	default:
@@ -118,12 +124,12 @@ static inline void cht_set_codec_power(struct snd_soc_codec *codec,
 	}
 	snd_soc_dapm_sync(&codec->dapm);
 }
-
 /* Identify the jack type as Headset/Headphone/None */
 static int cht_check_jack_type(struct snd_soc_jack *jack,
 					struct snd_soc_codec *codec)
 {
 	int status, jack_type = 0;
+	/*const char *board_name;*/
 	struct cht_mc_private *ctx = container_of(jack,
 					struct cht_mc_private, jack);
 
@@ -148,11 +154,7 @@ static int cht_check_jack_type(struct snd_soc_jack *jack,
 	} else
 		jack_type = 0;
 
-	if (jack_type)
-		pr_info("%s: Jack type detected: %s\n", __func__,
-		(jack_type == SND_JACK_HEADSET) ? "Headset" : "Headphone");
-	else
-		pr_info("%s: No jack device connected\n", __func__);
+	pr_debug("Jack type detected:%d\n", jack_type);
 
 	return jack_type;
 }
