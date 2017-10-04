@@ -871,14 +871,12 @@ static int power_ctrl(struct v4l2_subdev *sd, bool flag)
 		return dev->platform_data->power_ctrl(sd, flag);
 
 	if (flag) {
-		ret |= dev->platform_data->v1p5_ctrl(sd, 1);
 		ret |= dev->platform_data->v1p8_ctrl(sd, 1);
 		ret |= dev->platform_data->v2p8_ctrl(sd, 1);
 		usleep_range(10000, 15000);
 	}
 
 	if (!flag || ret) {
-		ret |= dev->platform_data->v1p5_ctrl(sd, 0);
 		ret |= dev->platform_data->v1p8_ctrl(sd, 0);
 		ret |= dev->platform_data->v2p8_ctrl(sd, 0);
 	}
@@ -1241,9 +1239,9 @@ static int ov2680_s_stream(struct v4l2_subdev *sd, int enable)
 
 	mutex_lock(&dev->input_lock);
 	if(enable )
-		ov2680_debug(&client->dev, "ov2680_s_stream one\n");
+		ov2680_debug(&client->dev, "ov2680_s_stream one \n");
 	else
-		ov2680_debug(&client->dev, "ov2680_s_stream off\n");
+		ov2680_debug(&client->dev, "ov2680_s_stream off \n");
 
 	ret = ov2680_write_reg(client, OV2680_8BIT, OV2680_SW_STREAM,
 				enable ? OV2680_START_STREAMING :
