@@ -823,8 +823,7 @@ void workqueue_init_function(struct work_struct *work)
 
 	spin_lock_init(&dev->log_spinlock);
 
-	dev->print_log(dev,
-		"[heci-ish]: %s():+++ [Build "BUILD_ID "]\n",
+	dev->print_log(dev, "[heci-ish]: %s():+++ [Build "BUILD_ID "]\n",
 		__func__);
 	dev->print_log(dev, "[heci-ish] %s() running on %s revision [%02X]\n",
 		__func__,
@@ -889,8 +888,7 @@ static int ish_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	int err;
 	int	rv;
 
-	ISH_INFO_PRINT(
-	KERN_ERR "[heci-ish]: %s():+++ [Build "BUILD_ID "]\n",
+	ISH_INFO_PRINT(KERN_ERR "[heci-ish]: %s():+++ [Build "BUILD_ID "]\n",
 		__func__);
 	ISH_INFO_PRINT(KERN_ERR
 		"[heci-ish] %s() running on %s revision [%02X]\n", __func__,

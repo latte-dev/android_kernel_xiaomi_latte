@@ -867,8 +867,6 @@ static inline void fix_cl_hdr(struct heci_msg_hdr *hdr, size_t length,
 	hdr->reserved = 0;
 }
 
-/* Suspend and resume notification*/
-
 /*Global var for suspend & resume*/
 u32 current_state = 0;
 u32 supported_states = 0 | SUSPEND_STATE_BIT;

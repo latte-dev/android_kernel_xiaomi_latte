@@ -231,7 +231,7 @@ struct heci_device {
 	spinlock_t	wr_msg_spinlock;
 */
 	struct hbm_version version;
-	struct heci_me_client *me_clients; /* Note: memory has to be allocated*/
+	struct heci_me_client *me_clients; /* Note: memory has to be allocated */
 	DECLARE_BITMAP(me_clients_map, HECI_CLIENTS_MAX);
 	DECLARE_BITMAP(host_clients_map, HECI_CLIENTS_MAX);
 	u8 me_clients_num;
@@ -314,7 +314,6 @@ static inline bool heci_host_is_ready(struct heci_device *dev)
 {
 	return dev->ops->host_is_ready(dev);
 }
-
 static inline bool heci_hw_is_ready(struct heci_device *dev)
 {
 	return dev->ops->hw_is_ready(dev);
