@@ -18,7 +18,7 @@
 #define PLATFORM_CONFIG__H
 
 /* Build ID string */
-#define BUILD_ID	"243-reset-flow-release-fix"
+#define BUILD_ID        "236-dx-si-dma-impl-upstream-rc"
 
 #define	ISH_DEBUG	0
 #if ISH_DEBUG
