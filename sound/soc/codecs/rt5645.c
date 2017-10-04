@@ -58,7 +58,7 @@ static struct rt5645_init_reg init_list[] = {
 	{ RT5645_IL_CMD3	, 0x0009 },
 	{ RT5645_PRIV_INDEX	, 0x003d },
 	{ RT5645_PRIV_DATA	, 0x3600 },
-	{ RT5645_A_JD_CTRL1	, 0x0201 }, /* mode 2, one port used in JD*/
+	{ RT5645_A_JD_CTRL1	, 0x0202 },/* for combo jack 1.8v */
 	{ RT5645_GEN_CTRL2	, 0x0028 },
 
 	/* playback */
@@ -619,7 +619,6 @@ int rt5645_button_detect(struct snd_soc_codec *codec)
 			pr_debug("%s(): button release\n", __func__);
 			btn_type = 0;
 	}
-	snd_soc_update_bits(codec, RT5645_INT_IRQ_ST, 0x4, 0x0);
 
 	return btn_type;
 }

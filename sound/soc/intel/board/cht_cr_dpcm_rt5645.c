@@ -44,7 +44,7 @@
 #define CHT_INTR_DEBOUNCE               0
 #define CHT_HS_INSERT_DET_DELAY         300
 #define CHT_HS_REMOVE_DET_DELAY         400
-#define CHT_BUTTON_DET_DELAY            0
+#define CHT_BUTTON_DET_DELAY            100
 #define CHT_HS_DET_POLL_INTRVL          100
 #define CHT_BUTTON_EN_DELAY             1500
 
@@ -363,19 +363,16 @@ static void cht_check_hs_button_status(struct work_struct *work)
 		status = rt5645_button_detect(codec);
 		switch (status) {
 		case RT5645_STA_HOLD_UP_BTN:
-		case RT5645_STA_ONE_UP_BTN:
 			/* Up */
 			jack_type = SND_JACK_HEADSET |
 				SND_JACK_BTN_1;
 			break;
 		case RT5645_STA_HOLD_CENTER_BTN:
-		case RT5645_STA_ONE_CENTER_BTN:
 			/* Center */
 			jack_type = SND_JACK_HEADSET |
 				SND_JACK_BTN_0;
 			break;
 		case RT5645_STA_HOLD_DOWN_BTN:
-		case RT5645_STA_ONE_DOWN_BTN:
 			/* Down */
 			jack_type = SND_JACK_HEADSET |
 				SND_JACK_BTN_2;
