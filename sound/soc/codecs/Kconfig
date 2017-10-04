@@ -62,7 +62,6 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_PCM3008
 	select SND_SOC_RT5631 if I2C
 	select SND_SOC_RT5640 if I2C
-	select SND_SOC_RT5645 if I2C
 	select SND_SOC_RT5651 if I2C
 	select SND_SOC_RT5659 if I2C
 	select SND_SOC_TFA98xx if I2C
@@ -340,9 +339,6 @@ config SND_SOC_RT56XX
 	default y if SND_SOC_RT5651
 
 config SND_SOC_RT5640
-	tristate
-
-config SND_SOC_RT5645
 	tristate
 
 config SND_SOC_RT5651
