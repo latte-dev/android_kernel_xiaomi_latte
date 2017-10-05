@@ -2,7 +2,6 @@
  * hsu.h: Intel High Speed UART Header File
  *
  * (C) Copyright 2014 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
