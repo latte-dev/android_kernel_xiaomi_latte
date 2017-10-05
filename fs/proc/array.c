@@ -2,7 +2,6 @@
  *  linux/fs/proc/array.c
  *
  *  Copyright (C) 1992  by Linus Torvalds
- *  Copyright (C) 2016 XiaoMi, Inc.
  *  based on ideas by Darren Senn
  *
  * Fixes:
