@@ -765,16 +765,6 @@ static struct wcove_regulator_info wcove_v2p8sx_info = {
 	.init_data = &wcove_v2p8sx_data,
 };
 
-
-static void wc_set_v1p2_pdata(void)
-{
-	memcpy((void *)&wcove_v1p2a_data, (void *)&v1p2a_data,
-			sizeof(struct regulator_init_data));
-
-	intel_soc_pmic_set_pdata("wcove_regulator", &wcove_v1p2a_info,
-		sizeof(struct wcove_regulator_info), WCOVE_ID_V1P2A + 1);
-
-}
 static struct wcove_regulator_info wcove_v1p2sx_info = {
 	.init_data = &wcove_v1p2sx_data,
 };
@@ -782,6 +772,7 @@ static struct wcove_regulator_info wcove_v1p2sx_info = {
 static struct wcove_regulator_info wcove_vprog4d_info = {
 	.init_data = &wcove_vprog4d_data,
 };
+
 
 static void wc_set_v1p8_pdata(void)
 {
@@ -801,6 +792,26 @@ static void wc_set_v2p8_pdata(void)
 	/* register camera regulator for whiskey cove PMIC */
 	intel_soc_pmic_set_pdata("wcove_regulator", &wcove_v2p8sx_info,
 		sizeof(struct wcove_regulator_info), WCOVE_ID_V2P8SX + 1);
+}
+
+static void wc_set_v1p2sx_pdata(void)
+{
+	memcpy((void *)&wcove_v1p2sx_data, (void *)&v1p2sx_data,
+			sizeof(struct regulator_init_data));
+
+	/* register camera regulator for whiskey cove PMIC */
+	intel_soc_pmic_set_pdata("wcove_regulator", &wcove_v1p2sx_info,
+		sizeof(struct wcove_regulator_info), WCOVE_ID_V1P2SX + 1);
+}
+
+static void wc_set_v1p2_pdata(void)
+{
+	memcpy((void *)&wcove_v1p2a_data, (void *)&v1p2a_data,
+			sizeof(struct regulator_init_data));
+
+	intel_soc_pmic_set_pdata("wcove_regulator", &wcove_v1p2a_info,
+		sizeof(struct wcove_regulator_info), WCOVE_ID_V1P2A + 1);
+
 }
 
 static void wc_set_vprog4d_pdata(void)
@@ -978,7 +989,7 @@ static int whiskey_cove_init(void)
 
 	wc_set_v1p8_pdata();
 	wc_set_v2p8_pdata();
-	wc_set_v1p2_pdata();
+        wc_set_v1p2sx_pdata();
 	wc_set_vprog4d_pdata();
 	wc_set_thermal_pdata();
 	wcove_init_done = true;
