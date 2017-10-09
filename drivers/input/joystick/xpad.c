@@ -1251,7 +1251,6 @@ static int xpad_probe(struct usb_interface *intf, const struct usb_device_id *id
 		} else {
 			xpad->xtype = XTYPE_XBOX;
 		}
-
 		if (dpad_to_buttons)
 			xpad->mapping |= MAP_DPAD_TO_BUTTONS;
 		if (triggers_to_buttons)
