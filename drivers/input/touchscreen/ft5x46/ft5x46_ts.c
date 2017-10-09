@@ -1960,7 +1960,7 @@ static void configure_sleep(struct ft5x46_data *data)
 	int ret;
 
 	data->tp_notif.notifier_call = tp_notifier_cb;
-	ret = tp_register_client(&ft_data->tp_notif);
+	ret = fb_register_client(&ft_data->tp_notif);
 	if (ret) {
 		dev_err(data->dev,
 			"Unable to register tp_notifier, err: %d\n", ret);
