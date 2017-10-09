@@ -3,7 +3,6 @@
 /*
  *
  * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
- * Copyright (C) 2016 XiaoMi, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -366,7 +365,7 @@ static const struct intel_device_info intel_cherryview_info = {
 	.need_gfx_hws = 1, .has_hotplug = 1,
 	.ring_mask = RENDER_RING | BSD_RING | BLT_RING | VEBOX_RING,
 	.is_valleyview = 1,
-	.has_dpst = 1,
+	.has_dpst = 0,
 	.has_rs = 1,
 	.display_mmio_offset = VLV_DISPLAY_BASE,
 	GEN_CHV_PIPEOFFSETS,
@@ -560,7 +559,10 @@ static int i915_drm_freeze(struct drm_device *dev)
 	struct drm_crtc *crtc;
 	int ret;
 	u32 i;
-	char *envp[] = { "GSTATE=3", NULL };
+	char *envp_d3[] = { "GSTATE=3", NULL };
+	char *envp_d0[] = { "GSTATE=0", NULL };
+
+	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp_d3);
 
 	/* ignore lid events during suspend */
 	mutex_lock(&dev_priv->modeset_restore_lock);
@@ -581,8 +583,10 @@ static int i915_drm_freeze(struct drm_device *dev)
 
 		error = i915_gem_suspend(dev);
 		if (error) {
+			kobject_uevent_env(&dev->primary->kdev->kobj,
+						KOBJ_CHANGE, envp_d0);
 			dev_err(&dev->pdev->dev,
-				"GEM idle failed, resume might fail error:%8x\n", error);
+				"GEM idle failed, resume might fail\n");
 			return error;
 		}
 
@@ -636,8 +640,6 @@ static int i915_drm_freeze(struct drm_device *dev)
 	if (ret)
 		WARN(1, "Suspend complete failed: %d\n", ret);
 
-	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
-
 	return 0;
 }
 
@@ -645,7 +647,6 @@ int i915_suspend(struct drm_device *dev, pm_message_t state)
 {
 	int error;
 
-	trace_printk("suspend began, event = 0x%x\n", state.event);
 	if (!dev || !dev->dev_private) {
 		DRM_ERROR("dev: %p\n", dev);
 		DRM_ERROR("DRM not initialized, aborting suspend.\n");
@@ -669,7 +670,6 @@ int i915_suspend(struct drm_device *dev, pm_message_t state)
 		pci_set_power_state(dev->pdev, PCI_D3hot);
 	}
 
-	trace_printk("suspend finished\n");
 	return 0;
 }
 
@@ -730,7 +730,6 @@ static int __i915_drm_thaw(struct drm_device *dev, bool restore_gtt_mappings)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret;
 	char *envp[] = { "GSTATE=0", NULL };
-	struct intel_engine_cs *ring;
 
 	if (IS_VALLEYVIEW(dev) && !IS_CHERRYVIEW(dev)) {
 		intel_uncore_early_sanitize(dev);
@@ -768,28 +767,24 @@ static int __i915_drm_thaw(struct drm_device *dev, bool restore_gtt_mappings)
 			DRM_ERROR("failed to re-initialize GPU, declaring wedged!\n");
 			atomic_set_mask(I915_WEDGED, &dev_priv->gpu_error.reset_counter);
 		}
-		ring = &dev_priv->ring[RCS];
 		mutex_unlock(&dev->struct_mutex);
 
 		/* We need working interrupts for modeset enabling ... */
 		drm_irq_install(dev, dev->pdev->irq);
-		trace_printk("line %d, next_context_status_buffer = %x\n", __LINE__, ring->next_context_status_buffer);
+
 		intel_modeset_init_hw(dev);
-		trace_printk("line %d, next_context_status_buffer = %x\n", __LINE__, ring->next_context_status_buffer);
+
 		/* We need to load HuC after enabling irq */
 		if (ret == 0)
 			intel_chv_huc_load(dev);
-		trace_printk("line %d, next_context_status_buffer = %x\n", __LINE__, ring->next_context_status_buffer);
 
 		if (display_is_on(dev)) {
 			drm_modeset_lock_all(dev);
 			intel_modeset_setup_hw_state(dev, true);
-			trace_printk("line %d, display is on, next_context_status_buffer = %x\n", __LINE__, ring->next_context_status_buffer);
 			drm_modeset_unlock_all(dev);
-		} else {
-			trace_printk("line %d, display is off, next_context_status_buffer = %x\n", __LINE__, ring->next_context_status_buffer);
+		} else
 			intel_display_set_init_power(dev_priv, false);
-		}
+
 		/*
 		 * ... but also need to make sure that hotplug processing
 		 * doesn't cause havoc. Like in the driver load code we don't
@@ -797,8 +792,6 @@ static int __i915_drm_thaw(struct drm_device *dev, bool restore_gtt_mappings)
 		 * notifications.
 		 * */
 		intel_hpd_init(dev);
-		/* Config may have changed between suspend and resume */
-		drm_helper_hpd_irq_event(dev);
 	}
 
 	intel_opregion_init(dev);
@@ -821,6 +814,9 @@ static int __i915_drm_thaw(struct drm_device *dev, bool restore_gtt_mappings)
 
 	sysfs_notify(&dev->primary->kdev->kobj, NULL, "thaw");
 	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
+
+	/* Config may have changed between suspend and resume */
+	schedule_work(&dev_priv->probe_hotplug_work);
 
 	return 0;
 }
@@ -860,7 +856,6 @@ int i915_resume(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret;
 
-	trace_printk("resume begin\n");
 	/*
 	 * Platforms with opregion should have sane BIOS, older ones (gen3 and
 	 * earlier) need to restore the GTT mappings since the BIOS might clear
@@ -871,7 +866,6 @@ int i915_resume(struct drm_device *dev)
 		return ret;
 
 	drm_kms_helper_poll_enable(dev);
-	trace_printk("resume finished\n");
 	return 0;
 }
 
@@ -914,7 +908,6 @@ int i915_handle_hung_ring(struct drm_device *dev, uint32_t ringid)
 	uint32_t completed_seqno;
 	struct drm_crtc *crtc;
 	struct intel_crtc *intel_crtc;
-	struct drm_i915_gem_request *request;
 	struct intel_unpin_work *unpin_work;
 	struct intel_context *current_context = NULL;
 	uint32_t hw_context_id1 = ~0u;
@@ -952,12 +945,59 @@ int i915_handle_hung_ring(struct drm_device *dev, uint32_t ringid)
 	/* Take wake lock to prevent power saving mode */
 	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
-	/* Search the request list to see which batch buffer caused
-	* the hang. Only checks requests that haven't yet completed.*/
-	list_for_each_entry(request, &ring->request_list, list) {
-		if (request && (request->seqno > completed_seqno))
-			i915_set_reset_status(dev_priv, request->ctx, false);
-	}
+
+	/*
+	 * The driver keeps some counters for each context, called batch_active
+	 * and batch_pending. These are used to track how many batch buffers
+	 * have been impacted by a reset. There does not seem to be a precise
+	 * requirement for what these mean, so for the moment they are:
+	 *
+	 * batch_active for a context is incremented if it owns
+	 * the batch buffer that is active on the hung ring.
+	 *
+	 * batch_pending for a context is incremented for each batch
+	 * that it owns that is not marked complete when its ring is
+	 * reset.
+	 *
+	 * If a context has batch_active > 0 then it has submitted work that
+	 * has hung one of the engines - bad boy! If also batch_pending > 0
+	 * then it has other work submitted behind the hanging batch. When
+	 * TDR is enabled the ring reset does not cause these batch buffers
+	 * to be discarded and they may well execute fine after the hang is
+	 * cleared, but they should probably be considered suspect. If TDR is
+	 * not enabled (or in the case of certain signals or if a ring hangs
+	 * to frequently) then the hang will cause a full GPU reset, meaning
+	 * all rings will be reset and ALL pending batch buffers discarded and
+	 * added to the batch_pending count for their respective contexts.
+	 *
+	 * If a context has batch_active=0 but batch_pending>0 then it had
+	 * batch buffers for a ring that was reset and the batch buffers were
+	 * not marked complete (the batch buffer could have been active at
+	 * time of reset, but was not active on the hung ring). When TDR is
+	 * enabled these pending batches are just those, for this context,
+	 * that are queued up behind the hanging batch. When a full GPU
+	 * reset occurs (no TDR or a signal or hanging too frequently) then
+	 * these pending batches are from all rings and may have been active
+	 * at the time of the reset, but not on the hung ring.
+	 *
+	 * Roughly:
+	 *   batch_active > 0 means your context has hung an engine.
+	 *   batch_pending> 0 means your context has affected batches.
+	 *
+	 * NOTE: in the case of multiple hangs/resets by TDR then multiple
+	 * counting of batches can happen. So you can really only use the
+	 * fact that these counts are zero or non-zero.
+	 *
+	 * Also note that these counts do not get cleared, they just keep
+	 * accumulating. If you keep the context and continue using it you
+	 * need to be aware of this.
+	*/
+	/*
+	 *  Search the request lists and update context reset stats.
+	 *  i915_gem.c has a fn to do this.
+	*/
+	i915_gem_reset_ring_status(dev_priv, ring);
+
 
 	if (i915.enable_execlists) {
 		enum context_submission_status status =
@@ -1004,6 +1044,9 @@ int i915_handle_hung_ring(struct drm_device *dev, uint32_t ringid)
 		DRM_DEBUG_TDR("Simulated gpu hang, rst stop_rings bits %08x\n",
 			(0x1 << ringid));
 		dev_priv->gpu_error.stop_rings &= ~(0x1 << ringid);
+		/* if all hangs are cleared, then clear the ALLOW_BAN/ERROR bits */
+		if ((dev_priv->gpu_error.stop_rings & ((1 << I915_NUM_RINGS) - 1)) == 0)
+			dev_priv->gpu_error.stop_rings = 0;
 	}
 
 	ret = intel_ring_disable(ring, current_context);
@@ -1436,16 +1479,23 @@ static int i915_pm_suspend(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	int ret;
 
+	trace_i915_pm_suspend_enter(drm_dev);
 	if (!drm_dev || !drm_dev->dev_private) {
 		dev_err(dev, "DRM not initialized, aborting suspend.\n");
+		trace_i915_pm_suspend_exit(drm_dev, -ENODEV);
 		return -ENODEV;
 	}
 
-	if (drm_dev->switch_power_state == DRM_SWITCH_POWER_OFF)
+	if (drm_dev->switch_power_state == DRM_SWITCH_POWER_OFF) {
+		trace_i915_pm_suspend_exit(drm_dev, 0);
 		return 0;
+	}
 
-	return i915_drm_freeze(drm_dev);
+	ret = i915_drm_freeze(drm_dev);
+	trace_i915_pm_suspend_exit(drm_dev, ret);
+	return ret;
 }
 
 static int i915_pm_suspend_late(struct device *dev)
@@ -1483,8 +1533,13 @@ static int i915_pm_resume(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	int ret;
 
-	return i915_resume(drm_dev);
+	trace_i915_pm_resume_enter(drm_dev);
+	ret = i915_resume(drm_dev);
+	trace_i915_pm_resume_exit(drm_dev, ret);
+
+	return ret;
 }
 
 static int i915_pm_freeze(struct device *dev)
@@ -1933,14 +1988,21 @@ static int intel_runtime_suspend(struct device *device)
 	struct drm_device *dev = pci_get_drvdata(pdev);
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret, i;
-	char *envp[] = { "GSTATE=3", NULL };
+	char *envp_d3[] = { "GSTATE=3", NULL };
+	char *envp_d0[] = { "GSTATE=0", NULL };
 
-	if (WARN_ON_ONCE(!(dev_priv->rps.enabled && intel_enable_rc6(dev))))
+	trace_intel_runtime_suspend_enter(dev);
+	if (WARN_ON_ONCE(!(dev_priv->rps.enabled && intel_enable_rc6(dev)))) {
+		trace_intel_runtime_suspend_exit(dev, -ENODEV);
 		return -ENODEV;
+	}
 
-	if (WARN_ON_ONCE(!HAS_RUNTIME_PM(dev)))
+	if (WARN_ON_ONCE(!HAS_RUNTIME_PM(dev))) {
+		trace_intel_runtime_suspend_exit(dev, -ENODEV);
 		return -ENODEV;
+	}
 
+	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp_d3);
 	assert_force_wake_inactive(dev_priv);
 
 	DRM_DEBUG_KMS("Suspending device\n");
@@ -1953,13 +2015,14 @@ static int intel_runtime_suspend(struct device *device)
 	 * for consistency return -EAGAIN, which will reschedule this suspend.
 	 */
 	if (!mutex_trylock(&dev->struct_mutex)) {
+		kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp_d0);
 		DRM_DEBUG_KMS("device lock contention, deffering suspend\n");
 		/*
 		 * Bump the expiration timestamp, otherwise the suspend won't
 		 * be rescheduled.
 		 */
 		pm_runtime_mark_last_busy(device);
-
+		trace_intel_runtime_suspend_exit(dev, -EAGAIN);
 		return -EAGAIN;
 	}
 
@@ -1986,9 +2049,11 @@ static int intel_runtime_suspend(struct device *device)
 
 	ret = intel_suspend_complete(dev_priv);
 	if (ret) {
+		kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp_d0);
 		DRM_ERROR("Runtime suspend failed, disabling it (%d)\n", ret);
 		intel_runtime_pm_restore_interrupts(dev);
 
+		trace_intel_runtime_suspend_exit(dev, ret);
 		return ret;
 	}
 
@@ -2006,8 +2071,7 @@ static int intel_runtime_suspend(struct device *device)
 	 */
 	intel_opregion_notify_adapter(dev, PCI_D1);
 
-	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
-
+	trace_intel_runtime_suspend_exit(dev, 0);
 	DRM_DEBUG_KMS("Device suspended\n");
 	return 0;
 }
@@ -2026,8 +2090,11 @@ static int intel_runtime_resume(struct device *device)
 	u32 gtfifodbg;
 	char *envp[] = { "GSTATE=0", NULL };
 
-	if (WARN_ON_ONCE(!HAS_RUNTIME_PM(dev)))
+	trace_intel_runtime_resume_enter(dev);
+	if (WARN_ON_ONCE(!HAS_RUNTIME_PM(dev))) {
+		trace_intel_runtime_resume_exit(dev, -ENODEV);
 		return -ENODEV;
+	}
 
 	DRM_DEBUG_KMS("Resuming device\n");
 
@@ -2063,6 +2130,8 @@ static int intel_runtime_resume(struct device *device)
 
 	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
 
+	schedule_work(&dev_priv->probe_hotplug_work);
+	trace_intel_runtime_resume_exit(dev, ret);
 	return ret;
 }
 
@@ -2197,9 +2266,8 @@ static void i915_pm_shutdown(struct pci_dev *pdev)
 	struct drm_device *drm_dev = pci_get_drvdata(pdev);
 	struct drm_i915_private *dev_priv = drm_dev->dev_private;
 
-
 	if (drm_dev->switch_power_state == DRM_SWITCH_POWER_OFF)
-		return ;
+		return;
 
 	/* make sure drm stops processing new ioctls */
 	drm_halt(drm_dev);
@@ -2208,17 +2276,14 @@ static void i915_pm_shutdown(struct pci_dev *pdev)
 	if (drm_wait_idle(drm_dev, 5000))
 		DRM_ERROR("Failed to halt DRM. going for shutdown anyway...\n");
 
-	mutex_lock(&drm_dev->struct_mutex);
 	/* take struct_mutex to avoid sync issue with i915_gem_fault */
+	mutex_lock(&drm_dev->struct_mutex);
 	dev_priv->shutdown_in_progress = true;
 	mutex_unlock(&drm_dev->struct_mutex);
 
-	if (i915_is_device_suspended(drm_dev)) {
-		/* Device already in suspend state */
+	/* Device already in suspend state */
+	if (i915_is_device_suspended(drm_dev))
 		return;
-	}
-
-	/* If KMS is active, we do the leavevt stuff here */
 
 	i915_drm_freeze(drm_dev);
 	pci_disable_device(drm_dev->pdev);

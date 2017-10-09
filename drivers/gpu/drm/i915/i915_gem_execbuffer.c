@@ -1,6 +1,5 @@
 /*
  * Copyright © 2008,2010 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -543,7 +542,11 @@ i915_gem_execbuffer_reserve_vma(struct i915_vma *vma,
 	if (entry->flags & __EXEC_OBJECT_NEEDS_BIAS)
 		flags |= BATCH_OFFSET_BIAS | PIN_OFFSET_BIAS;
 
-	ret = i915_gem_object_pin(obj, vma->vm, entry->alignment, flags);
+	ret = i915_gem_object_pin(obj, 
+				  vma->vm,
+				  entry->pad_to_size,
+				  entry->alignment,
+				  flags);
 	if (ret)
 		return ret;
 
@@ -607,6 +610,9 @@ eb_vma_misplaced(struct i915_vma *vma)
 
 	if (entry->alignment &&
 	    vma->node.start & (entry->alignment - 1))
+		return true;
+
+	if (vma->node.size < entry->pad_to_size)
 		return true;
 
 	if (entry->flags & __EXEC_OBJECT_NEEDS_MAP && !obj->map_and_fenceable)
@@ -896,6 +902,14 @@ validate_exec_list(struct drm_device *dev,
 
 		if (exec[i].flags & invalid_flags)
 			return -EINVAL;
+
+		/* pad_to_size was once a reserved field, so sanitize it */
+		if (exec[i].flags & EXEC_OBJECT_PAD_TO_SIZE) {
+			if (offset_in_page(exec[i].pad_to_size))
+				return -EINVAL;
+		} else
+			exec[i].pad_to_size = 0;
+
 
 		/* First check for malicious input causing overflow in
 		 * the worst case where we need to allocate the entire
@@ -1629,6 +1643,10 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 	ret = i915_gem_execbuffer_reserve(ring, &eb->vmas, &need_relocs);
 	if (ret)
 		goto err;
+
+	/* XXX: Reserve has possibly change PDEs which means we must do a
+	 * context switch before we can coherently read some of the reserved
+	 * VMAs. */
 
 	/* The objects are in their final locations, apply the relocations. */
 	if (need_relocs)

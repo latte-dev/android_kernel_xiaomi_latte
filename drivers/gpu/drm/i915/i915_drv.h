@@ -3,7 +3,6 @@
 /*
  *
  * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
- * Copyright (C) 2016 XiaoMi, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -50,6 +49,9 @@
 #include <linux/pm_qos.h>
 #include <linux/bitops.h>
 #include <linux/shmem_fs.h>
+#ifdef CONFIG_EXTCON
+#include <linux/extcon.h>
+#endif
 #ifdef CONFIG_SUPPORT_LPDMA_HDMI_AUDIO
 	#include "hdmi_audio_if.h"
 #endif
@@ -680,21 +682,16 @@ struct intel_context {
 	struct drm_i915_file_private *file_priv;
 	struct i915_ctx_hang_stats hang_stats;
 	struct i915_hw_ppgtt *ppgtt;
+	struct drm_i915_private *dev_priv;
 
 	/* Legacy ring buffer submission */
 	struct {
 		struct drm_i915_gem_object *rcs_state;
 		bool initialized;
-#ifdef CONFIG_DRM_I915_SYNC
-		struct i915_sync_timeline *sync_timeline;
-#endif
 	} legacy_hw_ctx;
 
 	/* Execlists */
 	bool rcs_initialized;
-	struct intel_ringbuffer *indirect_ctx_wa_bb;
-	struct intel_ringbuffer *per_ctx_wa_bb;
-
 	struct {
 		struct drm_i915_gem_object *state;
 		struct intel_ringbuffer *ringbuf;
@@ -741,6 +738,81 @@ struct i915_fbc {
 	} no_fbc_reason;
 
 	bool disable;
+};
+
+/**
+ * DRRS Support Type:
+ * DRRS_NOT_SUPPORTED		: DRRS not supported
+ * STATIC_DRRS_SUPPORT		: Need a complete modeset for DRRS
+ * SEAMLESS_DRRS_SUPPORT	: Seamless vrefresh switch is supported on HW
+ * SEAMLESS_DRRS_SUPPORT_SW	: Seamless vrefresh switch is supported on SW
+ */
+enum drrs_support_type {
+	DRRS_NOT_SUPPORTED = 0,
+	STATIC_DRRS_SUPPORT = 1,
+	SEAMLESS_DRRS_SUPPORT = 2,
+	SEAMLESS_DRRS_SUPPORT_SW = 3,
+};
+
+/**
+ * Different DRRS States:
+ * DRRS_HIGH_RR	: Refreshrate of Fixed mode. [Maximum Vrefresh]
+ * DRRS_LOW_RR	: Refreshrate of Downclock mode. [Minimum vrefresh]
+ */
+enum drrs_refresh_rate_type {
+	DRRS_HIGH_RR,
+	DRRS_LOW_RR,
+	DRRS_MAX_RR,
+};
+
+struct drrs_info {
+	enum drrs_support_type type;
+	enum drrs_refresh_rate_type current_rr_type;
+	enum drrs_refresh_rate_type target_rr_type;
+};
+
+struct i915_drrs;
+
+/**
+ * intel_idleness_drrs_work:
+ * work		: Deferred work to declare the Idleness, if not disturbed.
+ * crtc		: Target drm_crtc
+ * interval	: Time to defer the deferred work
+ */
+struct intel_idleness_drrs_work {
+	struct delayed_work work;
+	struct i915_drrs *drrs;
+
+	/* Idleness interval in mSec*/
+	int interval;
+};
+
+/* Encoder related function pointers */
+struct drrs_encoder_ops {
+	int (*init)(struct i915_drrs *, struct drm_display_mode *);
+	void (*exit)(struct i915_drrs *);
+	void (*set_drrs_state)(struct i915_drrs *);
+	bool (*is_drrs_hr_state_pending)(struct i915_drrs *);
+};
+
+struct i915_drrs {
+	/* Whether another pipe is enabled in parallel */
+	bool is_clone;
+
+	/* Whether DRRS is supported on this Panel */
+	bool has_drrs;
+
+	/* Holds the DRRS state machine states */
+	struct drrs_info drrs_state;
+
+	/* Pointer to the relevant connector */
+	struct intel_connector *connector;
+
+	struct intel_idleness_drrs_work *idleness_drrs_work;
+
+	/* Functions to hold encoder specific DRRS functions */
+	struct drrs_encoder_ops *encoder_ops;
+	struct mutex drrs_mutex;
 };
 
 struct i915_psr {
@@ -1363,6 +1435,17 @@ struct i915_gpu_error {
 	u32 stop_rings;
 #define I915_STOP_RING_ALLOW_BAN       (1 << 31)
 #define I915_STOP_RING_ALLOW_WARN      (1 << 30)
+
+	/*
+	 * Bit mask for simulation of lost context event IRQs on each
+	 * respective engine.
+	 *
+	 *   Bits 0:3:		Number of lost IRQs to be faked on RCS
+	 *   Bits 4:7:		Number of lost IRQs to be faked on VCS
+	 *   Bits 8:11:		Number of lost IRQs to be faked on BCS
+	 *   Bits 12:15:	Number of lost IRQs to be faked on VECS
+	 *   Bits 16:19:	Number of lost IRQs to be faked on VCS2
+	 */
 	u32 faked_lost_ctx_event_irq;
 
 	unsigned long total_resets;
@@ -1383,12 +1466,6 @@ struct ddi_vbt_port_info {
 	uint8_t supports_dvi:1;
 	uint8_t supports_hdmi:1;
 	uint8_t supports_dp:1;
-};
-
-enum drrs_support_type {
-	DRRS_NOT_SUPPORTED = 0,
-	STATIC_DRRS_SUPPORT = 1,
-	SEAMLESS_DRRS_SUPPORT = 2
 };
 
 struct intel_vbt_data {
@@ -1650,6 +1727,7 @@ struct drm_i915_private {
 	u32 pipestat_irq_mask[I915_MAX_PIPES];
 
 	struct work_struct hotplug_work;
+	struct work_struct probe_hotplug_work;
 	struct {
 		unsigned long hpd_last_jiffies;
 		int hpd_cnt;
@@ -1664,6 +1742,7 @@ struct drm_i915_private {
 	u32 hotplug_status;
 
 	struct i915_fbc fbc;
+	struct i915_drrs *drrs[I915_MAX_PIPES];
 	struct intel_opregion opregion;
 	struct intel_vbt_data vbt;
 	bool scaling_reqd;
@@ -1712,6 +1791,7 @@ struct drm_i915_private {
 		bool enabled;		/* actual functional state */
 		bool pipe_mismatch;	/* Indicates pipe mismatch between user mode and kernel */
 		bool display_off;	/* Indicates that Display is off (could be power gated also) */
+		bool disabled_by_hdmi;	/* Indicates that HDMI connect has disabled DPST */
 		bool is_video_mode_enabled;
 		struct {
 			bool is_valid;
@@ -1727,8 +1807,15 @@ struct drm_i915_private {
 	struct snd_intel_had_interface *had_interface;
 	void *had_pvt_data;
 	int tmds_clock_speed;
+	int link_rate;
 	int hdmi_audio_interrupt_mask;
 	struct work_struct hdmi_audio_wq;
+#endif
+
+#ifdef CONFIG_EXTCON
+	/* Android uses switch to inform userspace about hotplug events. */
+	struct extcon_dev hotplug_switch;
+	struct intel_digital_port *audio_port;
 #endif
 
 	/* Atomicity fixes */
@@ -1743,6 +1830,7 @@ struct drm_i915_private {
 	bool quick_modeset;
 	bool maxfifo_enabled;
 	bool gamma_enabled[I915_MAX_PIPES];
+	bool degamma_enabled[I915_MAX_PIPES];
 	bool csc_enabled[I915_MAX_PIPES];
 	bool is_resuming;
 	bool is_video_playing;  /* Indicates enabling only in videomode */
@@ -1912,6 +2000,13 @@ struct drm_i915_private {
 
 	struct i915_runtime_pm pm;
 	bool thaw_early_done;
+
+	struct intel_digital_port *hpd_irq_port[I915_MAX_PORTS];
+	u32 long_hpd_port_mask;
+	u32 short_hpd_port_mask;
+	u32 simulate_dp_in_progress;
+	struct work_struct dig_port_work;
+	struct delayed_work simulate_work;
 
 	/* Old dri1 support infrastructure, beware the dragons ya fools entering
 	 * here! */
@@ -2202,6 +2297,8 @@ struct drm_i915_gem_request {
 	uint32_t uniq;
 };
 
+#include "i915_trace.h"
+
 void i915_gem_request_free(struct kref *req_ref);
 void i915_gem_complete_requests_ring(struct intel_engine_cs *ring,
 				     bool lazy_coherency);
@@ -2221,6 +2318,7 @@ i915_gem_request_get_ring(struct drm_i915_gem_request *req)
 static inline void
 i915_gem_request_reference(struct drm_i915_gem_request *req)
 {
+	trace_i915_gem_request_reference(req);
 	kref_get(&req->ref);
 }
 
@@ -2228,6 +2326,7 @@ static inline void
 i915_gem_request_unreference(struct drm_i915_gem_request *req)
 {
 	WARN_ON(!mutex_is_locked(&req->ring->dev->struct_mutex));
+	trace_i915_gem_request_unreference(req);
 	kref_put(&req->ref, i915_gem_request_free);
 }
 
@@ -2370,6 +2469,9 @@ enum context_submission_status {
 #define IS_HSW_ULX(dev)		((dev)->pdev->device == 0x0A0E || \
 				 (dev)->pdev->device == 0x0A1E)
 #define IS_PRELIMINARY_HW(intel_info) ((intel_info)->is_preliminary)
+#define IS_PLATFORM_HAS_DRRS(dev)	IS_VALLEYVIEW(dev)
+#define IS_ENCODER_SUPPORTS_DRRS(type)	((type == INTEL_OUTPUT_DSI) || \
+					(type == INTEL_OUTPUT_EDP))
 
 /*
  * The genX designation typically refers to the render engine, so render
@@ -2464,7 +2566,9 @@ enum context_submission_status {
 
 #define GT_FREQUENCY_MULTIPLIER 50
 
-#include "i915_trace.h"
+/* platform details */
+#define PCI_CHV_REV_ID_PACKAGE_TYPE_MASK	0x3
+#define PCI_CHV_REV_ID_PACKAGE_TYPE_T3		0x2
 
 extern const struct drm_ioctl_desc i915_ioctls[];
 extern struct drm_display_mode rot_mode;
@@ -2515,6 +2619,7 @@ struct i915_params {
 	int use_mmio_flip;
 	int memtrack_debug;
 	int scheduler_override;
+	int enable_dpst_wa;
 };
 extern struct i915_params i915 __read_mostly;
 
@@ -2687,6 +2792,7 @@ void i915_gem_close_object(struct drm_gem_object *gem_obj,
 #define PIN_OFFSET_MASK (~4095)
 int __must_check i915_gem_object_pin(struct drm_i915_gem_object *obj,
 				     struct i915_address_space *vm,
+				     uint32_t size,
 				     uint32_t alignment,
 				     uint64_t flags);
 int __must_check i915_vma_unbind(struct i915_vma *vma);
@@ -2752,6 +2858,9 @@ void i915_gem_object_unpin_fence(struct drm_i915_gem_object *obj);
 
 struct drm_i915_gem_request *
 i915_gem_find_active_request(struct intel_engine_cs *ring);
+
+void i915_gem_reset_ring_status(struct drm_i915_private *dev_priv,
+					struct intel_engine_cs *ring);
 
 bool i915_gem_retire_requests(struct drm_device *dev);
 void i915_gem_retire_requests_ring(struct intel_engine_cs *ring);
@@ -2906,7 +3015,8 @@ i915_gem_obj_ggtt_pin(struct drm_i915_gem_object *obj,
 		      uint32_t alignment,
 		      unsigned flags)
 {
-	return i915_gem_object_pin(obj, obj_to_ggtt(obj), alignment, flags | PIN_GLOBAL);
+	return i915_gem_object_pin(obj, obj_to_ggtt(obj), 0, alignment,
+				   flags | PIN_GLOBAL);
 }
 
 static inline int
@@ -2936,13 +3046,16 @@ i915_gem_context_get(struct drm_i915_file_private *file_priv, u32 id);
 void i915_gem_context_free(struct kref *ctx_ref);
 struct drm_i915_gem_object *
 i915_gem_alloc_context_obj(struct drm_device *dev, size_t size);
+
 static inline void i915_gem_context_reference(struct intel_context *ctx)
 {
+	trace_i915_gem_context_reference(ctx);
 	kref_get(&ctx->ref);
 }
 
 static inline void i915_gem_context_unreference(struct intel_context *ctx)
 {
+	trace_i915_gem_context_unreference(ctx);
 	kref_put(&ctx->ref, i915_gem_context_free);
 }
 
@@ -3147,6 +3260,8 @@ void intel_panel_actually_set_backlight(struct intel_connector *conn, u32 level)
 void i915_dpst_display_on(struct drm_device *dev);
 void i915_dpst_display_off(struct drm_device *dev);
 int i915_dpst_enable_disable(struct drm_device *dev, unsigned int val);
+int i915_dpst_sanitize_wa(struct drm_device *dev, int enable_dpst_wa);
+void i915_dpst_wa_action(struct drm_device *dev, bool enable);
 
 /* intel_acpi.c */
 #ifdef CONFIG_ACPI

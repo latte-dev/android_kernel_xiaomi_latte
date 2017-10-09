@@ -1,6 +1,5 @@
 /*
  * Copyright © 2013 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -29,6 +28,7 @@
 #include <drm/drm_crtc.h>
 #include <linux/mfd/intel_soc_pmic.h>
 #include "intel_drv.h"
+#include "intel_dsi_drrs.h"
 
 #define HV_DDI0_HPD_GPIONC_0_PCONF0		0x4130
 #define HV_DDI0_HPD_GPIONC_0_PAD		0x4138
@@ -403,6 +403,8 @@
 #define FLIS_DSI_TXCNTRL		0x15
 #define BIT_FILS_DSI_TXCNTRL_HS_IO_SEL	(1 << 0)
 
+#define CHV_CMD_MODE_TEARING_DELAY	0x20
+
 struct intel_dsi_device {
 	unsigned int panel_id;
 	const char *name;
@@ -463,6 +465,8 @@ struct intel_dsi {
 
 	struct intel_connector *attached_connector;
 
+	struct dsi_drrs dsi_drrs;
+
 	/* if true, use HS mode, otherwise LP */
 	bool hs;
 
@@ -521,6 +525,13 @@ struct intel_dsi {
 	struct drm_i915_gem_object *gem_obj;
 	void *cmd_buff;
 	dma_addr_t cmd_buff_phy_addr;
+
+	struct drm_i915_gem_object *gem_obj_2;
+	void *cmd_buff_2;
+	dma_addr_t cmd_buff_phy_addr_2;
+
+	struct drm_i915_gem_object *cursor_obj;
+	void *cursor_buff[4];
 };
 
 static inline struct intel_dsi *enc_to_intel_dsi(struct drm_encoder *encoder)

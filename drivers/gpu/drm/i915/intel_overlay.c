@@ -701,9 +701,11 @@ static int intel_overlay_do_put_image(struct intel_overlay *overlay,
 	if (ret != 0)
 		return ret;
 
-	ret = i915_gem_object_put_fence(new_bo);
-	if (ret)
-		goto out_unpin;
+	if (new_bo->map_and_fenceable) {
+		ret = i915_gem_object_put_fence(new_bo);
+		if (ret)
+			goto out_unpin;
+	}
 
 	if (!overlay->active) {
 		u32 oconfig;

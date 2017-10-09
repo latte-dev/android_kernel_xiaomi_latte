@@ -1,6 +1,5 @@
 /*
  * Copyright © 2012 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1431,7 +1430,6 @@ u32 vlv_calculate_wm(struct intel_crtc *crtc, int pixel_size)
 	hdisplay = crtc->config.pipe_src_w;
 	clock = crtc->config.adjusted_mode.crtc_clock;
 
-	/* for now keping max latency*/
 	latency = DDR_WAKEUP_LATENCY;
 
 	if (clock)
@@ -1518,13 +1516,14 @@ void vlv_update_dsparb(struct intel_crtc *intel_crtc)
 		sr = 0;
 	}
 
-	if ((I915_READ(DSPFW1) & VLV_FW_SR_MASK) != (sr << 23))
-		I915_WRITE_BITS(DSPFW1, (sr << 23), VLV_FW_SR_MASK);
+	if ((I915_READ(DSPFW1) & VLV_FW_SR_MASK) != (sr << FW1_SR_WM))
+		I915_WRITE_BITS(DSPFW1, (sr << FW1_SR_WM), VLV_FW_SR_MASK);
 
-	if ((I915_READ(DSPHOWM) & VLV_DSPHOWM_SR_MASK) != ((sr >> 9) << 24))
-		I915_WRITE(DSPHOWM, (I915_READ(DSPHOWM) &
-						~(VLV_DSPHOWM_SR_MASK)) |
-					((sr >> 9) << 24));
+	if ((I915_READ(DSPHOWM) & VLV_DSPHOWM_SR_MASK) !=
+		((sr >> NUM_SR_BITS) << SHOWM_SR_WM_HO))
+			I915_WRITE(DSPHOWM, (I915_READ(DSPHOWM) &
+				~(VLV_DSPHOWM_SR_MASK)) |
+				((sr >> NUM_SR_BITS) << SHOWM_SR_WM_HO));
 
 	switch (pipe) {
 	case PIPE_A:
@@ -1546,8 +1545,11 @@ void vlv_update_dsparb(struct intel_crtc *intel_crtc)
 							VLV_FW_PIPEA_SB_MASK);
 
 
-		dsphowm = (pa >> 8) | ((sa >> 8) << VLV_DSPHOWM_PIPEA_SA_SHIFT)
-				| ((sb >> 8) << VLV_DSPHOWM_PIPEA_SB_SHIFT);
+		dsphowm = (pa >> NIBBLE_HIGH) |
+				((sa >> NIBBLE_HIGH) <<
+					VLV_DSPHOWM_PIPEA_SA_SHIFT) |
+				((sb >> NIBBLE_HIGH) <<
+					VLV_DSPHOWM_PIPEA_SB_SHIFT);
 
 		if ((I915_READ(DSPHOWM) & VLV_DSPHOWM_PIPEA_MASK) !=  dsphowm)
 			I915_WRITE(DSPHOWM, (I915_READ(DSPHOWM) &
@@ -1577,9 +1579,12 @@ void vlv_update_dsparb(struct intel_crtc *intel_crtc)
 			I915_WRITE_BITS(DSPFW7, (sb << VLV_FW_PIPEB_SD_SHIFT),
 							VLV_FW_PIPEB_SD_MASK);
 
-		dsphowm = ((pa >> 8) << VLV_DSPHOWM_PIPEB_PB_SHIFT) |
-				((sa >> 8) << VLV_DSPHOWM_PIPEB_SC_SHIFT) |
-				((sb >> 8) << VLV_DSPHOWM_PIPEB_SD_SHIFT);
+		dsphowm = ((pa >> NIBBLE_HIGH) <<
+					VLV_DSPHOWM_PIPEB_PB_SHIFT) |
+				((sa >> NIBBLE_HIGH) <<
+					VLV_DSPHOWM_PIPEB_SC_SHIFT) |
+				((sb >> NIBBLE_HIGH) <<
+					VLV_DSPHOWM_PIPEB_SD_SHIFT);
 
 		if ((I915_READ(DSPHOWM) & VLV_DSPHOWM_PIPEB_MASK) !=  dsphowm)
 			I915_WRITE(DSPHOWM, (I915_READ(DSPHOWM) &
@@ -1606,9 +1611,9 @@ void vlv_update_dsparb(struct intel_crtc *intel_crtc)
 			I915_WRITE_BITS(DSPFW8, (sb << VLV_FW_PIPEC_SF_SHIFT),
 							VLV_FW_PIPEC_SF_MASK);
 
-		dsphowm = ((pa >> 8) << VLV_DSPHOWM_PIPEC_PC_SHIFT) |
-			((sa >> 8) << VLV_DSPHOWM_PIPEC_SE_SHIFT) |
-			((sb >> 8) << VLV_DSPHOWM_PIPEC_SF_SHIFT);
+		dsphowm = ((pa >> NIBBLE_HIGH) << VLV_DSPHOWM_PIPEC_PC_SHIFT) |
+			((sa >> NIBBLE_HIGH) << VLV_DSPHOWM_PIPEC_SE_SHIFT) |
+			((sb >> NIBBLE_HIGH) << VLV_DSPHOWM_PIPEC_SF_SHIFT);
 		if ((I915_READ(DSPHOWM) & VLV_DSPHOWM_PIPEC_MASK) != dsphowm)
 			I915_WRITE(DSPHOWM, (I915_READ(DSPHOWM) &
 					~(VLV_DSPHOWM_PIPEC_MASK)) | dsphowm);
@@ -1643,7 +1648,7 @@ void vlv_set_ddr_dvfs(struct drm_i915_private *dev_priv,
 		config = &((to_intel_crtc(crtc))->config);
 
 		/* DDR freq should be high for resolution greater than 19x12 */
-		if ((config->pipe_src_w * config->pipe_src_h) > (1536 * 2048))
+		if ((config->pipe_src_w * config->pipe_src_h) > (1920 * 1200))
 			val = CHV_FORCE_DDR_HIGH_FREQ;
 	}
 
@@ -1723,6 +1728,7 @@ void intel_update_maxfifo(struct drm_i915_private *dev_priv,
 			I915_WRITE(FW_BLC_SELF_VLV, ~FW_CSPWRDWNEN);
 		dev_priv->maxfifo_enabled = false;
 	}
+	trace_i915_maxfifo_update(to_intel_crtc(crtc), enable);
 }
 
 void
@@ -1730,11 +1736,7 @@ vlv_force_ddr_low_frequency(struct drm_i915_private *dev_priv, bool mode)
 {
 	if (mode != dev_priv->force_low_ddr_freq) {
 		dev_priv->force_low_ddr_freq = mode;
-
-		/* Change DVFS frequency directly only if higher DVFS is being
-		 * set. Low DVFS will be set only from maxfifo function */
-		if (!dev_priv->force_low_ddr_freq)
-			vlv_set_ddr_dvfs(dev_priv, mode);
+		vlv_set_ddr_dvfs(dev_priv, mode);
 	}
 }
 
@@ -3849,8 +3851,6 @@ void vlv_set_rc6_mode(struct drm_device *dev, bool disable)
 		return;
 	}
 
-	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
-
 	dev_priv->rps.rc6_disable = disable;
 
 	if (disable)
@@ -4907,14 +4907,12 @@ static void valleyview_cleanup_gt_powersave(struct drm_device *dev)
 	valleyview_cleanup_pctx(dev);
 }
 
-static void cherryview_enable_rps(struct drm_device *dev)
+static void cherryview_enable_rc6(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_engine_cs *ring;
-	u32 gtfifodbg, val, rc6_mode = 0, pcbr;
+	u32 gtfifodbg, rc6_mode = 0, pcbr;
 	int i;
-
-	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
 
 	gtfifodbg = I915_READ(GTFIFODBG);
 	if (gtfifodbg) {
@@ -4924,10 +4922,6 @@ static void cherryview_enable_rps(struct drm_device *dev)
 	}
 
 	cherryview_check_pctx(dev_priv);
-
-	/* 1a & 1b: Get forcewake during program sequence. Although the driver
-	 * hasn't enabled a state yet where we need forcewake, BIOS may have.*/
-	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
 	/* 2a: Program RC6 thresholds.*/
 	I915_WRITE(GEN6_RC6_WAKE_RATE_LIMIT, 40 << 16);
@@ -4959,7 +4953,17 @@ static void cherryview_enable_rps(struct drm_device *dev)
 						(pcbr >> VLV_PCBR_ADDR_SHIFT))
 		vlv_set_rc6_mode(dev, false);
 
-	I915_WRITE(GEN6_RC_CONTROL, rc6_mode);
+	intel_print_rc6_info(dev, rc6_mode);
+}
+
+static void cherryview_enable_rps(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 val;
+
+	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
+
+	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
 	/* 4 Program defaults and thresholds for RPS*/
 	I915_WRITE(GEN6_RP_UP_THRESHOLD, 59400);
@@ -5014,8 +5018,6 @@ static void valleyview_enable_rc6(struct drm_device *dev)
 	struct intel_engine_cs *ring;
 	u32 gtfifodbg, rc6_mode = 0, pcbr;
 	int i;
-
-	WARN_ON(!mutex_is_locked(&dev_priv->rps.hw_lock));
 
 	valleyview_check_pctx(dev_priv);
 
@@ -5949,14 +5951,13 @@ void intel_enable_gt_powersave(struct drm_device *dev)
 		}
 
 		/*
-		 * Enabling RC6 for VLV here itself and only deferring turbo
+		 * Enabling RC6 for VLV/CHV here itself and only deferring turbo
 		 * enabling.
 		 */
-		if (IS_VALLEYVIEW(dev) && !IS_CHERRYVIEW(dev)) {
-			mutex_lock(&dev_priv->rps.hw_lock);
+		if (IS_CHERRYVIEW(dev))
+			cherryview_enable_rc6(dev);
+		else if (IS_VALLEYVIEW(dev))
 			valleyview_enable_rc6(dev);
-			mutex_unlock(&dev_priv->rps.hw_lock);
-		}
 
 		/*
 		 * PCU communication is slow and this doesn't need to be
@@ -7154,10 +7155,26 @@ static void chv_dpio_cmn_power_well_enable(struct drm_i915_private *dev_priv,
 			   DPLL_REFA_CLK_ENABLE_VLV);
 		I915_WRITE(DPLL(PIPE_B), I915_READ(DPLL(PIPE_B)) |
 			   DPLL_REFA_CLK_ENABLE_VLV | DPLL_INTEGRATED_CRI_CLK_VLV);
+
+		/* Enable Powerdown/mode signals from driver configuration */
+		I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) |
+			  PHY_CHN0_DOUBLE_CHANNEL_POWERDOWN_OVERRIDE);
+		I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) &
+			  ~(PHY_CHN0_DOUBLE_CHANNEL_POWERDOWN_LANE_MASK));
+		I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) |
+			  PHY_CHN1_DOUBLE_CHANNEL_POWERDOWN_OVERRIDE);
+		I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) &
+			  ~(PHY_CHN1_DOUBLE_CHANNEL_POWERDOWN_LANE_MASK));
 	} else {
 		phy = DPIO_PHY1;
 		I915_WRITE(DPLL(PIPE_C), I915_READ(DPLL(PIPE_C)) |
 			   DPLL_REFA_CLK_ENABLE_VLV | DPLL_INTEGRATED_CRI_CLK_VLV);
+
+		/* Enable Powerdown/mode signals from driver configuration */
+		I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) |
+			  PHY_CHN0_SINGLE_CHANNEL_POWERDOWN_OVERRIDE);
+		I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) &
+			  ~(PHY_CHN0_SINGLE_CHANNEL_POWERDOWN_LANE_MASK));
 	}
 	udelay(1); /* >10ns for cmnreset, >0ns for sidereset */
 	vlv_set_power_well(dev_priv, power_well, true);
@@ -7180,8 +7197,24 @@ static void chv_dpio_cmn_power_well_disable(struct drm_i915_private *dev_priv,
 
 	if (power_well->data == PUNIT_POWER_WELL_DPIO_CMN_BC) {
 		phy = DPIO_PHY0;
+
+		/* Disable Powerdown/mode signals from driver configuration */
+		I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) |
+			  PHY_CHN0_DOUBLE_CHANNEL_POWERDOWN_LANE_MASK);
+		I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) &
+			  ~(PHY_CHN0_DOUBLE_CHANNEL_POWERDOWN_OVERRIDE));
+		I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) |
+			  PHY_CHN1_DOUBLE_CHANNEL_POWERDOWN_LANE_MASK);
+		I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) &
+			  ~(PHY_CHN1_DOUBLE_CHANNEL_POWERDOWN_OVERRIDE));
 	} else {
 		phy = DPIO_PHY1;
+
+		/* Disable Powerdown/mode signals from driver configuration */
+		I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) |
+			  PHY_CHN0_SINGLE_CHANNEL_POWERDOWN_LANE_MASK);
+		I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) &
+			 ~(PHY_CHN0_SINGLE_CHANNEL_POWERDOWN_OVERRIDE));
 	}
 
 	I915_WRITE(DISPLAY_PHY_CONTROL, I915_READ(DISPLAY_PHY_CONTROL) &

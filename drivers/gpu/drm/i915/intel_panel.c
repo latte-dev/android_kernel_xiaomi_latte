@@ -1,7 +1,6 @@
 /*
  * Copyright © 2006-2010 Intel Corporation
  * Copyright (c) 2006 Dave Airlie <airlied@linux.ie>
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -447,9 +446,9 @@ static u32 intel_panel_compute_brightness(struct intel_connector *connector,
 	struct drm_device *dev = connector->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_panel *panel = &connector->panel;
-
 	if (!panel->backlight.present)
 		return 0;
+
 	WARN_ON(panel->backlight.max == 0);
 
 	if (i915.invert_brightness < 0)
@@ -775,7 +774,7 @@ static void vlv_disable_mipi_backlight(struct intel_connector *connector)
 
 	intel_panel_actually_set_backlight(connector, 0);
 
-	if (intel_dsi->dev.dev_ops->disable_backlight)
+	if (intel_dsi != NULL && intel_dsi->dev.dev_ops->disable_backlight)
 		intel_dsi->dev.dev_ops->disable_backlight(&intel_dsi->dev);
 
 	if (dev_priv->vbt.dsi.config->pmic_soc_blc) {
@@ -1099,7 +1098,7 @@ static void vlv_enable_mipi_backlight(struct intel_connector *connector)
 	if (dev_priv->vbt.dsi.config->pmic_soc_blc)
 		lpio_enable_backlight(dev);
 
-	if (intel_dsi->dev.dev_ops->enable_backlight)
+	if (intel_dsi != NULL && intel_dsi->dev.dev_ops->enable_backlight)
 		intel_dsi->dev.dev_ops->enable_backlight(&intel_dsi->dev);
 
 	intel_panel_actually_set_backlight(connector, panel->backlight.level);
@@ -1202,7 +1201,7 @@ static int intel_backlight_device_register(struct intel_connector *connector)
 	 * registration of multiple backlight devices in the driver.
 	 */
 	panel->backlight.device =
-		backlight_device_register("intel_backlight_useless",
+		backlight_device_register("intel_backlight_disabled",
 					  connector->base.kdev,
 					  connector,
 					  &intel_backlight_device_ops, &props);

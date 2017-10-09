@@ -2,7 +2,6 @@
  */
 /*
  * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
- * Copyright (C) 2016 XiaoMi, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -1940,6 +1939,13 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	i915_adf_wrapper_init(dev_priv);
 #endif
 
+	/*
+	 * i915.enable_dpst_wa is intended for a dpst workaround. This W/A is
+	 * required only for CHV. Sanitize prevents it from affecting other
+	 * HWs.
+	 */
+	i915.enable_dpst_wa = i915_dpst_sanitize_wa(dev, i915.enable_dpst_wa);
+
 	return 0;
 
 out_power_well:
@@ -1985,6 +1991,12 @@ int i915_driver_unload(struct drm_device *dev)
 		return ret;
 	}
 
+#ifdef CONFIG_EXTCON
+	if (&dev_priv->hotplug_switch) {
+		extcon_dev_unregister(&dev_priv->hotplug_switch);
+		kfree(dev_priv->hotplug_switch.name);
+	}
+#endif
 	intel_fini_runtime_pm(dev_priv);
 
 	intel_gpu_ips_teardown();

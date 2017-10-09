@@ -1,6 +1,5 @@
 /*
  * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
- * Copyright (C) 2016 XiaoMi, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -60,6 +59,27 @@
 #define I915_L3_PARITY_UEVENT		"L3_PARITY_ERROR"
 #define I915_ERROR_UEVENT		"ERROR"
 #define I915_RESET_UEVENT		"RESET"
+
+/*
+ * due to SELinux restrictions in Android, uevents are no longer
+ * accessible to usermode processes, so gpu reset events are now
+ * also notified via a generic netlink socket.
+ */
+#define GPU_RESET_GENL_MCAST_GROUP_NAME 	"i915_rst_mcast"
+/* attributes */
+enum {
+	I915_GPU_RST_A_UNSPEC,
+	I915_GPU_RST_A_MCGRP_ID,
+	I915_GPU_RST_A_END,
+};
+
+/* commands */
+enum {
+	I915_GPU_RST_C_UNSPEC,
+	I915_GPU_RST_C_RESET,
+	I915_GPU_RST_C_GET_MCGRP_ID,
+	I915_GPU_RST_C_END,
+};
 
 /* Each region is a minimum of 16k, and there are at most 255 of them.
  */
@@ -836,10 +856,15 @@ struct drm_i915_gem_exec_object2 {
 #define EXEC_OBJECT_NEEDS_FENCE (1<<0)
 #define EXEC_OBJECT_NEEDS_GTT	(1<<1)
 #define EXEC_OBJECT_WRITE	(1<<2)
-#define __EXEC_OBJECT_UNKNOWN_FLAGS -(EXEC_OBJECT_WRITE<<1)
+#define EXEC_OBJECT_PAD_TO_SIZE	(1<<3)
+#define __EXEC_OBJECT_UNKNOWN_FLAGS -(EXEC_OBJECT_PAD_TO_SIZE<<1)
 	__u64 flags;
 
-	__u64 rsvd1;
+	union {
+		__u64 rsvd1;
+		__u64 pad_to_size;
+	};
+
 	__u64 rsvd2;
 };
 

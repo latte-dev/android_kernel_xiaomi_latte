@@ -1,6 +1,5 @@
 /**************************************************************************
  * Copyright © 2013 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -160,17 +159,13 @@ struct sync_timeline_ops i915_sync_timeline_ops = {
 };
 
 int i915_sync_timeline_create(struct drm_device *dev,
-			      const char *name,
 			      struct intel_context *ctx,
 			      struct intel_engine_cs *ring)
 {
 	struct i915_sync_timeline **timeline;
 	struct i915_sync_timeline *local;
 
-	if (i915.enable_execlists)
-		timeline = &ctx->engine[ring->id].sync_timeline;
-	else
-		timeline = &ctx->legacy_hw_ctx.sync_timeline;
+	timeline = &ctx->engine[ring->id].sync_timeline;
 
 	if (*timeline)
 		return 0;
@@ -178,7 +173,7 @@ int i915_sync_timeline_create(struct drm_device *dev,
 	local = (struct i915_sync_timeline *)
 			sync_timeline_create(&i915_sync_timeline_ops,
 				     sizeof(struct i915_sync_timeline),
-				     name);
+				     ring->name);
 
 	if (!local)
 		return -EINVAL;
@@ -218,10 +213,7 @@ void i915_sync_timeline_destroy(struct intel_context *ctx,
 {
 	struct i915_sync_timeline **timeline;
 
-	if (i915.enable_execlists)
-		timeline = &ctx->engine[ring->id].sync_timeline;
-	else
-		timeline = &ctx->legacy_hw_ctx.sync_timeline;
+	timeline = &ctx->engine[ring->id].sync_timeline;
 
 	if (*timeline) {
 		sync_timeline_destroy(&(*timeline)->obj);
@@ -255,10 +247,7 @@ int i915_sync_create_fence(struct drm_i915_gem_request *req,
 		return -EINVAL;
 	}
 
-	if (i915.enable_execlists)
-		timeline = req->ctx->engine[req->ring->id].sync_timeline;
-	else
-		timeline = req->ctx->legacy_hw_ctx.sync_timeline;
+	timeline = req->ctx->engine[req->ring->id].sync_timeline;
 
 	if (!timeline) {
 		DRM_DEBUG_DRIVER("Missing timeline! [ring:%s, ctx:%p, seqno:%u]\n",
@@ -308,13 +297,7 @@ void i915_sync_timeline_advance(struct intel_context *ctx,
 {
 	struct i915_sync_timeline *timeline;
 
-	if (!ctx)
-		return;
-
-	if (i915.enable_execlists)
-		timeline = ctx->engine[ring->id].sync_timeline;
-	else
-		timeline = ctx->legacy_hw_ctx.sync_timeline;
+	timeline = ctx->engine[ring->id].sync_timeline;
 
 	if (timeline)
 		i915_sync_timeline_signal(timeline, value);
@@ -327,11 +310,7 @@ void i915_sync_hung_request(struct drm_i915_gem_request *req)
 	if (WARN_ON(!req))
 		return;
 
-	if (i915.enable_execlists)
-		timeline = req->ctx->engine[req->ring->id].sync_timeline;
-	else
-		timeline = req->ctx->legacy_hw_ctx.sync_timeline;
-
+	timeline = req->ctx->engine[req->ring->id].sync_timeline;
 
 	/* Signal the timeline. This will cause it to query the
 	 * signaled state of any waiting sync points.
@@ -345,6 +324,7 @@ void i915_sync_hung_request(struct drm_i915_gem_request *req)
 
 void i915_sync_hung_ring(struct intel_engine_cs *ring)
 {
+
 	struct drm_i915_gem_request *req;
 	uint32_t active_seqno;
 
@@ -366,6 +346,7 @@ void i915_sync_hung_ring(struct intel_engine_cs *ring)
 		DRM_DEBUG_DRIVER("Request not found for hung seqno!\n");
 		return;
 	}
+
 	i915_sync_hung_request(req);
 }
 

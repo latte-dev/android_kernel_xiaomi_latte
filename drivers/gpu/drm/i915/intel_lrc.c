@@ -1,6 +1,5 @@
 /*
  * Copyright © 2014 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -215,17 +214,17 @@ static int intel_lr_context_pin(struct intel_engine_cs *ring,
  * without causing a stall */
 static int logical_ring_test_space(struct intel_ringbuffer *ringbuf, int min_space)
 {
-
-
-
+	//struct intel_engine_cs *ring = ringbuf->ring;
+	//struct drm_device *dev = ring->dev;
+	//struct drm_i915_private *dev_priv = dev->dev_private;
 
 	if (ringbuf->space < min_space) {
 		/* Need to update the actual ring space. Otherwise, the system
 		 * hangs forever testing a software copy of the space value that
 		 * never changes!
 		 */
-
-
+		//ringbuf->head  = I915_READ_HEAD(ring);
+		//ringbuf->space = intel_ring_space(ringbuf);
 		intel_ring_update_space(ringbuf);
 
 		if (ringbuf->space < min_space)
@@ -320,8 +319,7 @@ static void execlists_elsp_write(struct intel_engine_cs *ring,
 	desc[3] = (u32)(temp >> 32);
 	desc[2] = (u32)temp;
 
-	trace_printk("RP:%d, execlists_elsp_write :%x,%x,%x,%x\n", ring->next_context_status_buffer, desc[0], desc[1], desc[2], desc[3]);
-
+	trace_execlists_elsp_write(ring, desc[0], desc[1], desc[2], desc[3]);
 	/* Set Force Wakeup bit to prevent GT from entering C6 while ELSP writes
 	 * are in progress.
 	 *
@@ -805,6 +803,17 @@ static void execlists_context_unqueue(struct intel_engine_cs *ring)
 		return;
 
 	execlists_fetch_requests(ring, &req0, &req1);
+	trace_execlists_context_unqueue(ring, req0, req1);
+
+	/* check for a simulated hang request */
+	if (intel_ring_stopped(ring)) {
+		/*
+		 * mark the request at the head of the queue as submitted
+		 * but dont actually submit it
+		 */
+		req0->elsp_submitted++;
+		return;
+	}
 
 	WARN_ON(req1 && req1->elsp_submitted);
 
@@ -812,7 +821,6 @@ static void execlists_context_unqueue(struct intel_engine_cs *ring)
 					 req1 ? req1->ctx : NULL,
 					 req1 ? req1->tail : 0));
 
-	trace_printk("unqueue commit: req0->tail=%x,req1->tail=%x\n", req0->tail, req1 ? req1->tail : 0);
 	req0->elsp_submitted++;
 	if (req1)
 		req1->elsp_submitted++;
@@ -832,7 +840,8 @@ static void execlists_context_unqueue(struct intel_engine_cs *ring)
  * the elsp_counter in this special case the execlist state machine would
  * expect a corresponding lite restore interrupt, which is never produced.
  */
-static void execlists_TDR_context_unqueue(struct intel_engine_cs *ring)
+static void execlists_TDR_context_unqueue(struct intel_engine_cs *ring,
+					  bool from_force_resubmit)
 {
 	struct intel_ctx_submit_request *req0 = NULL, *req1 = NULL;
 
@@ -858,7 +867,17 @@ static void execlists_TDR_context_unqueue(struct intel_engine_cs *ring)
 	WARN_ON(execlists_submit_context(ring, req0->ctx, req0->tail,
 					 req1 ? req1->ctx : NULL,
 					 req1 ? req1->tail : 0));
-	trace_printk("TDR unqueue commit: req0->tail=%x,req1->tail=%x\n", req0->tail, req1 ? req1->tail : 0);
+
+	/*
+	 * force_resubmit is not sent during a hang, so increment the elsp
+	 * resubmit counter to keep it in sync with the number of ctx events
+	 * we'll get from hw.
+	 */
+	if (from_force_resubmit) {
+		req0->elsp_submitted++;
+		if (req1)
+			req1->elsp_submitted++;
+	}
 }
 
 /**
@@ -910,7 +929,7 @@ intel_execlists_TDR_get_submitted_context(struct intel_engine_cs *ring,
 	tmpreq = list_first_entry_or_null(&ring->execlist_queue,
 		struct intel_ctx_submit_request, execlist_link);
 
-	if (tmpreq) {
+	if (tmpreq && tmpreq->ctx) {
 		sw_context =
 			intel_execlists_ctx_id((tmpreq->ctx)->engine[ring->id].state);
 
@@ -928,8 +947,7 @@ intel_execlists_TDR_get_submitted_context(struct intel_engine_cs *ring,
 			 * assert if we do). Just rely on the execlist code to provide
 			 * indirect protection.
 			 */
-			if (tmpreq->ctx)
-				tmpctx = tmpreq->ctx;
+			tmpctx = tmpreq->ctx;
 
 			if (ctx)
 				i915_gem_context_reference(tmpctx);
@@ -942,13 +960,23 @@ intel_execlists_TDR_get_submitted_context(struct intel_engine_cs *ring,
 				hw_context,
 				sw_context);
 		}
-
 	}
 
 	if (tmpctx) {
-		status = ((hw_context == sw_context) && (0 != hw_context)) ?
-			CONTEXT_SUBMISSION_STATUS_OK :
-			CONTEXT_SUBMISSION_STATUS_SUBMITTED;
+		/*
+		 * Check for simuated hang. In this case the head entry in the
+		 * sw execlist queue will not have been submitted to the ELSP, so
+		 * the hw and sw context id's may well disagree, but we still want
+		 * to proceed with hang recovery. So we return OK which allows
+		 * the TDR recovery mechanism to proceed with a ring reset.
+		 */
+		if (intel_ring_stopped(ring)) {
+			status = CONTEXT_SUBMISSION_STATUS_OK;
+		} else {
+			status = ((hw_context == sw_context) && (0 != hw_context)) ?
+				CONTEXT_SUBMISSION_STATUS_OK :
+				CONTEXT_SUBMISSION_STATUS_SUBMITTED;
+		}
 	} else {
 		/*
 		 * If we don't have any queue entries and the
@@ -976,9 +1004,11 @@ intel_execlists_TDR_get_submitted_context(struct intel_engine_cs *ring,
 }
 
 static bool execlists_check_remove_request(struct intel_engine_cs *ring,
-					   u32 request_id)
+						u8 read_pointer)
 {
 	struct intel_ctx_submit_request *head_req;
+	struct drm_i915_private *dev_priv = ring->dev->dev_private;
+	u32 request_id;
 
 	assert_spin_locked(&ring->execlist_lock);
 
@@ -989,6 +1019,8 @@ static bool execlists_check_remove_request(struct intel_engine_cs *ring,
 	if (head_req != NULL) {
 		struct drm_i915_gem_object *ctx_obj =
 				head_req->ctx->engine[ring->id].state;
+		request_id = I915_READ(RING_CONTEXT_STATUS_BUF(ring) +
+				       (read_pointer % 6) * 8 + 4);
 		if (intel_execlists_ctx_id(ctx_obj) == request_id) {
 			WARN(head_req->elsp_submitted == 0,
 			     "Never submitted head request\n");
@@ -1018,7 +1050,7 @@ static bool execlists_check_remove_request(struct intel_engine_cs *ring,
  * 	false: If the current IRQ is to be processed as normal.
  */
 static inline bool fake_lost_ctx_event_irq(struct drm_i915_private *dev_priv,
-				struct intel_engine_cs *ring)
+				           struct intel_engine_cs *ring)
 {
 	u32 *faked_lost_irq_mask =
 		&dev_priv->gpu_error.faked_lost_ctx_event_irq;
@@ -1065,12 +1097,10 @@ static inline bool fake_lost_ctx_event_irq(struct drm_i915_private *dev_priv,
 int intel_execlists_handle_ctx_events(struct intel_engine_cs *ring, bool do_lock)
 {
 	struct drm_i915_private *dev_priv = ring->dev->dev_private;
-	struct intel_engine_cs *ring_rcs;
 	u32 status_pointer;
 	u8 read_pointer;
 	u8 write_pointer;
 	u32 status;
-	u32 status_id;
 	u32 submit_contexts = 0;
 
 	if (do_lock)
@@ -1079,61 +1109,51 @@ int intel_execlists_handle_ctx_events(struct intel_engine_cs *ring, bool do_lock
 	status_pointer = I915_READ(RING_CONTEXT_STATUS_PTR(ring));
 
 	read_pointer = ring->next_context_status_buffer;
-	write_pointer = status_pointer & 0x07;
+	write_pointer = status_pointer & GEN8_CSB_PTR_MASK;
 	if (read_pointer > write_pointer)
-		write_pointer += 6;
+		write_pointer += GEN8_CSB_ENTRIES;
 
-	ring_rcs = &dev_priv->ring[RCS];
-	trace_printk("ring address: %p, ring RCS address:%p\n", ring, ring_rcs);
-	trace_printk("ring status_buffer:%d,ring RCS status_buffer:%d  :%d,%d\n", ring->next_context_status_buffer,
-		ring_rcs->next_context_status_buffer, read_pointer, write_pointer);
-
+	trace_intel_execlists_handle_ctx_events(ring, status_pointer,
+		    read_pointer);
 	while (read_pointer < write_pointer) {
 		read_pointer++;
+
 		status = I915_READ(RING_CONTEXT_STATUS_BUF(ring) +
-				(read_pointer % 6) * 8);
-		status_id = I915_READ(RING_CONTEXT_STATUS_BUF(ring) +
-				(read_pointer % 6) * 8 + 4);
-		trace_printk("RCS read pointer, status:%x, status_id:%x\n", status, status_id);
+				(read_pointer % GEN8_CSB_ENTRIES) * 8);
 
 		if (status & GEN8_CTX_STATUS_PREEMPTED) {
 			if (status & GEN8_CTX_STATUS_LITE_RESTORE) {
 				if (fake_lost_ctx_event_irq(dev_priv, ring)) {
-					/*
-					 * If we want to simulate the loss of a
-					 * context event IRQ (only for such
-					 * events that could affect the
-					 * execlist queue, since this is
-					 * something that could affect the
-					 * HW/driver consistency checker) then
-					 * just exit the IRQ handler early with
-					 * no side-effects!  We want to pretend
-					 * like this IRQ never happened.  The
-					 * next time the IRQ handler is entered
-					 * for this engine the CSB events
-					 * should remain in the CSB, waiting to
-					 * be processed.
-					 */
-					goto exit;
+				    /*
+				     * If we want to simulate the loss of a
+				     * context event IRQ (only for such events
+				     * that could affect the execlist queue,
+				     * since this is something that could
+				     * affect the HW/driver consistency
+				     * checker) then just exit the IRQ handler
+				     * early with no side-effects!  We want to
+				     * pretend like this IRQ never happened.
+				     * The next time the IRQ handler is entered
+				     * for this engine the CSB events should
+				     * remain in the CSB, waiting to be
+				     * processed.
+				     */
+				    goto exit;
 				}
-				if (execlists_check_remove_request(ring, status_id))
+				if (execlists_check_remove_request(ring,
+								read_pointer))
 					WARN(1, "Lite Restored request removed from queue\n");
 			} else
-				/*For such request be preempted by itself, its elsp submit count
-				*will be 2, so need remove it in here to make sure it can be removed.
-				*So driver will not wait this request for ever and caused fence timeout.
-				*/
-				if (execlists_check_remove_request(ring, status_id))
-					WARN(1, "Preemption without Lite Restore, - WA in place\n");
+				WARN(1, "Preemption without Lite Restore\n");
 		}
 
 		 if ((status & GEN8_CTX_STATUS_ACTIVE_IDLE) ||
-		     (status & GEN8_CTX_STATUS_ELEMENT_SWITCH)) {
+			(status & GEN8_CTX_STATUS_ELEMENT_SWITCH)) {
 
 			if (fake_lost_ctx_event_irq(dev_priv, ring))
 			    goto exit;
 
-			if (execlists_check_remove_request(ring, status_id))
+			if (execlists_check_remove_request(ring, read_pointer))
 				submit_contexts++;
 		}
 	}
@@ -1142,10 +1162,10 @@ int intel_execlists_handle_ctx_events(struct intel_engine_cs *ring, bool do_lock
 		execlists_context_unqueue(ring);
 
 	WARN(submit_contexts > 2, "More than two context complete events?\n");
-	ring->next_context_status_buffer = write_pointer % 6;
+	ring->next_context_status_buffer = write_pointer % GEN8_CSB_ENTRIES;
 
 	I915_WRITE(RING_CONTEXT_STATUS_PTR(ring),
-		   ((u32)ring->next_context_status_buffer & 0x07) << 8);
+		((u32)ring->next_context_status_buffer & GEN8_CSB_PTR_MASK) << 8);
 
 exit:
 	if (do_lock)
@@ -1175,13 +1195,13 @@ static int execlists_context_queue(struct intel_engine_cs *ring,
 	req->ring = ring;
 	req->tail = tail;
 
+	trace_execlists_context_queue(req);
 	if (IS_GEN8(ring->dev)) {
 		struct intel_ringbuffer *ringbuf = to->engine[ring->id].ringbuf;
 		/*
 		 * Here are two extra NOOPs as padding to avoid lite restore of
 		 * a context with HEAD==TAIL.
 		 */
-		trace_printk("queue ringbuf: H:%x, T:%x\n", ringbuf->head, ringbuf->tail);
 		intel_logical_ring_emit(ringbuf, MI_NOOP);
 		intel_logical_ring_emit(ringbuf, MI_NOOP);
 		intel_logical_ring_advance(ringbuf);
@@ -1212,7 +1232,6 @@ static int execlists_context_queue(struct intel_engine_cs *ring,
 	}
 
 	list_add_tail(&req->execlist_link, &ring->execlist_queue);
-	trace_printk("execlist_queue :%d, %s, pid(%d),tail = %x\n", num_elements, current->comm, task_pid_nr(current), req->tail);
 	if (num_elements == 0)
 		execlists_context_unqueue(ring);
 
@@ -1344,7 +1363,7 @@ int intel_execlists_TDR_context_queue(struct intel_engine_cs *ring,
 		    (unsigned int) c_ctxid, ring->name,
 		    (unsigned int) to_ctxid);
 
-		execlists_TDR_context_unqueue(ring);
+		execlists_TDR_context_unqueue(ring, false);
 
 		spin_unlock_irqrestore(&ring->execlist_lock, flags);
 	}
@@ -1871,9 +1890,6 @@ void intel_logical_ring_advance_and_submit(struct intel_ringbuffer *ringbuf)
 
 	intel_logical_ring_advance(ringbuf);
 
-	if (intel_ring_stopped(ring))
-		return;
-
 	execlists_context_queue(ring, ctx, ringbuf->tail);
 }
 
@@ -2173,211 +2189,247 @@ static int intel_logical_ring_workarounds_emit(struct intel_engine_cs *ring,
 	return 0;
 }
 
-static struct intel_ringbuffer *
-create_wa_bb(struct intel_context *ctx,
-	     struct intel_engine_cs *ring,
-	     uint32_t bb_size)
+#define wa_ctx_emit(batch, cmd)						\
+	do {								\
+		if (WARN_ON(index >= (PAGE_SIZE / sizeof(uint32_t)))) {	\
+			return -ENOSPC;					\
+		}							\
+		batch[index++] = (cmd);					\
+	} while (0)
+
+static inline uint32_t wa_ctx_start(struct i915_wa_ctx_bb *wa_ctx,
+				    uint32_t offset,
+				    uint32_t start_alignment)
 {
-	struct drm_device *dev = ring->dev;
-	struct intel_ringbuffer *ringbuf;
-	int ret;
-
-	ringbuf = kzalloc(sizeof(*ringbuf), GFP_KERNEL);
-	if (!ringbuf)
-		return NULL;
-
-	ringbuf->ring = ring;
-	ringbuf->FIXME_lrc_ctx = ctx;
-
-	ringbuf->size = roundup(bb_size, PAGE_SIZE);
-	ringbuf->effective_size = ringbuf->size;
-	ringbuf->head = 0;
-	ringbuf->tail = 0;
-	ringbuf->space = ringbuf->size;
-	ringbuf->last_retired_head = -1;
-
-	ret = intel_alloc_ringbuffer_obj(dev, ringbuf);
-	if (ret) {
-		DRM_DEBUG_DRIVER("Failed to allocate ringbuffer obj %s: %d\n",
-				ring->name, ret);
-		kfree(ringbuf);
-		return NULL;
-	}
-
-	ret = intel_pin_and_map_ringbuffer_obj(dev, ringbuf);
-	if (ret) {
-		DRM_ERROR("Failed to pin and map %s w/a batch: %d\n",
-			  ring->name, ret);
-		intel_destroy_ringbuffer_obj(ringbuf);
-		kfree(ringbuf);
-		return NULL;
-	}
-
-	return ringbuf;
+	return wa_ctx->offset = ALIGN(offset, start_alignment);
 }
+
+static inline int wa_ctx_end(struct i915_wa_ctx_bb *wa_ctx,
+			     uint32_t offset,
+			     uint32_t size_alignment)
+{
+	wa_ctx->size = offset - wa_ctx->offset;
+
+	WARN(wa_ctx->size % size_alignment,
+	     "wa_ctx_bb failed sanity checks: size %d is not aligned to %d\n",
+	     wa_ctx->size, size_alignment);
+	return 0;
+}
+
+/**
+ * gen8_init_indirectctx_bb() - initialize indirect ctx batch with WA
+ *
+ * @ring: only applicable for RCS
+ * @wa_ctx: structure representing wa_ctx
+ *  offset: specifies start of the batch, should be cache-aligned. This is updated
+ *    with the offset value received as input.
+ *  size: size of the batch in DWORDS but HW expects in terms of cachelines
+ * @batch: page in which WA are loaded
+ * @offset: This field specifies the start of the batch, it should be
+ *  cache-aligned otherwise it is adjusted accordingly.
+ *  Typically we only have one indirect_ctx and per_ctx batch buffer which are
+ *  initialized at the beginning and shared across all contexts but this field
+ *  helps us to have multiple batches at different offsets and select them based
+ *  on a criteria. At the moment this batch always start at the beginning of the page
+ *  and at this point we don't have multiple wa_ctx batch buffers.
+ *
+ *  The number of WA applied are not known at the beginning; we use this field
+ *  to return the no of DWORDS written.
+ *
+ *  It is to be noted that this batch does not contain MI_BATCH_BUFFER_END
+ *  so it adds NOOPs as padding to make it cacheline aligned.
+ *  MI_BATCH_BUFFER_END will be added to perctx batch and both of them together
+ *  makes a complete batch buffer.
+ *
+ * Return: non-zero if we exceed the PAGE_SIZE limit.
+ */
 
 static int gen8_init_indirectctx_bb(struct intel_engine_cs *ring,
-				    struct intel_context *ctx)
+				    struct i915_wa_ctx_bb *wa_ctx,
+				    uint32_t *const batch,
+				    uint32_t *offset)
 {
-	unsigned long flags = 0;
-	u32 scratch_addr;
-	struct intel_ringbuffer *ringbuf = NULL;
-
-	if (!get_pipe_control_scratch_addr(ring)) {
-		DRM_ERROR("scratch page not allocated for %s\n", ring->name);
-		return -EINVAL;
-	}
-
-	ringbuf = create_wa_bb(ctx, ring, PAGE_SIZE);
-	if (!ringbuf)
-		return -ENOMEM;
-
-	ctx->indirect_ctx_wa_bb = ringbuf;
+	uint32_t scratch_addr;
+	uint32_t index = wa_ctx_start(wa_ctx, *offset, CACHELINE_DWORDS);
 
 	/* WaDisableCtxRestoreArbitration:bdw,chv */
-	intel_logical_ring_emit(ringbuf, MI_ARB_ON_OFF | MI_ARB_DISABLE);
+	wa_ctx_emit(batch, MI_ARB_ON_OFF | MI_ARB_DISABLE);
 
-	/* WaFlushCoherentL3CacheLinesAtContextSwitch:bdw,chv */
-	intel_logical_ring_emit(ringbuf, GFX_OP_PIPE_CONTROL(6));
-	intel_logical_ring_emit(ringbuf, PIPE_CONTROL_GLOBAL_GTT_IVB |
-				PIPE_CONTROL_DC_FLUSH_ENABLE);
-	intel_logical_ring_emit(ringbuf, 0);
-	intel_logical_ring_emit(ringbuf, 0);
-	intel_logical_ring_emit(ringbuf, 0);
-	intel_logical_ring_emit(ringbuf, 0);
+	/* WaFlushCoherentL3CacheLinesAtContextSwitch:bdw */
+	if (IS_BROADWELL(ring->dev)) {
+		struct drm_i915_private *dev_priv = to_i915(ring->dev);
+		uint32_t l3sqc4_flush = (I915_READ(GEN8_L3SQCREG4) |
+					 GEN8_LQSC_FLUSH_COHERENT_LINES);
+
+		wa_ctx_emit(batch, MI_LOAD_REGISTER_IMM(1));
+		wa_ctx_emit(batch, GEN8_L3SQCREG4);
+		wa_ctx_emit(batch, l3sqc4_flush);
+
+		wa_ctx_emit(batch, GFX_OP_PIPE_CONTROL(6));
+		wa_ctx_emit(batch, (PIPE_CONTROL_CS_STALL |
+				    PIPE_CONTROL_DC_FLUSH_ENABLE));
+		wa_ctx_emit(batch, 0);
+		wa_ctx_emit(batch, 0);
+		wa_ctx_emit(batch, 0);
+		wa_ctx_emit(batch, 0);
+
+		wa_ctx_emit(batch, MI_LOAD_REGISTER_IMM(1));
+		wa_ctx_emit(batch, GEN8_L3SQCREG4);
+		wa_ctx_emit(batch, l3sqc4_flush & ~GEN8_LQSC_FLUSH_COHERENT_LINES);
+	}
 
 	/* WaClearSlmSpaceAtContextSwitch:bdw,chv */
-	flags = PIPE_CONTROL_FLUSH_RO_CACHES |
-		PIPE_CONTROL_GLOBAL_GTT_IVB |
-		PIPE_CONTROL_CS_STALL |
-		PIPE_CONTROL_QW_WRITE;
-
 	/* Actual scratch location is at 128 bytes offset */
-	scratch_addr = get_pipe_control_scratch_addr(ring) + 2*CACHELINE_BYTES;
-	scratch_addr |= PIPE_CONTROL_GLOBAL_GTT;
+	scratch_addr = ring->scratch.gtt_offset + 2*CACHELINE_BYTES;
 
-	intel_logical_ring_emit(ringbuf, GFX_OP_PIPE_CONTROL(6));
-	intel_logical_ring_emit(ringbuf, flags);
-	intel_logical_ring_emit(ringbuf, scratch_addr);
-	intel_logical_ring_emit(ringbuf, 0);
-	intel_logical_ring_emit(ringbuf, 0);
-	intel_logical_ring_emit(ringbuf, 0);
+	wa_ctx_emit(batch, GFX_OP_PIPE_CONTROL(6));
+	wa_ctx_emit(batch, (PIPE_CONTROL_FLUSH_L3 |
+			    PIPE_CONTROL_GLOBAL_GTT_IVB |
+			    PIPE_CONTROL_CS_STALL |
+			    PIPE_CONTROL_QW_WRITE));
+	wa_ctx_emit(batch, scratch_addr);
+	wa_ctx_emit(batch, 0);
+	wa_ctx_emit(batch, 0);
+	wa_ctx_emit(batch, 0);
 
-	/* Padding to align with cache line */
-	intel_logical_ring_emit(ringbuf, 0);
-	intel_logical_ring_emit(ringbuf, 0);
-	intel_logical_ring_emit(ringbuf, 0);
+	/* Pad to end of cacheline */
+	while (index % CACHELINE_DWORDS)
+		wa_ctx_emit(batch, MI_NOOP);
 
 	/*
-	 * No MI_BATCH_BUFFER_END is required in Indirect ctx BB because
-	 * execution depends on the size defined in CTX_RCS_INDIRECT_CTX
+	 * MI_BATCH_BUFFER_END is not required in Indirect ctx BB because
+	 * execution depends on the length specified in terms of cache lines
+	 * in the register CTX_RCS_INDIRECT_CTX
 	 */
 
-	return 0;
+	return wa_ctx_end(wa_ctx, *offset = index, CACHELINE_DWORDS);
 }
 
+/**
+ * gen8_init_perctx_bb() - initialize per ctx batch with WA
+ *
+ * @ring: only applicable for RCS
+ * @wa_ctx: structure representing wa_ctx
+ *  offset: specifies start of the batch, should be cache-aligned.
+ *  size: size of the batch in DWORDS but HW expects in terms of cachelines
+ * @batch: page in which WA are loaded
+ * @offset: This field specifies the start of this batch.
+ *   This batch is started immediately after indirect_ctx batch. Since we ensure
+ *   that indirect_ctx ends on a cacheline this batch is aligned automatically.
+ *
+ *   The number of DWORDS written are returned using this field.
+ *
+ *  This batch is terminated with MI_BATCH_BUFFER_END and so we need not add padding
+ *  to align it with cacheline as padding after MI_BATCH_BUFFER_END is redundant.
+ */
 static int gen8_init_perctx_bb(struct intel_engine_cs *ring,
-			       struct intel_context *ctx)
+			       struct i915_wa_ctx_bb *wa_ctx,
+			       uint32_t *const batch,
+			       uint32_t *offset)
 {
-	unsigned long flags = 0;
-	u32 scratch_addr;
-	struct intel_ringbuffer *ringbuf = NULL;
-
-	if (!get_pipe_control_scratch_addr(ring)) {
-		DRM_ERROR("scratch page not allocated for %s\n", ring->name);
-		return -EINVAL;
-	}
-
-	ringbuf = create_wa_bb(ctx, ring, PAGE_SIZE);
-	if (!ringbuf)
-		return -ENOMEM;
-
-	ctx->per_ctx_wa_bb = ringbuf;
-
-	/* Actual scratch location is at 128 bytes offset */
-	scratch_addr = get_pipe_control_scratch_addr(ring) + 2*CACHELINE_BYTES;
-	scratch_addr |= PIPE_CONTROL_GLOBAL_GTT;
+	uint32_t index = wa_ctx_start(wa_ctx, *offset, CACHELINE_DWORDS);
 
 	/* WaDisableCtxRestoreArbitration:bdw,chv */
-	intel_logical_ring_emit(ringbuf, MI_ARB_ON_OFF | MI_ARB_ENABLE);
+	wa_ctx_emit(batch, MI_ARB_ON_OFF | MI_ARB_ENABLE);
+
+	wa_ctx_emit(batch, MI_BATCH_BUFFER_END);
+
+	return wa_ctx_end(wa_ctx, *offset = index, 1);
+}
+
+static int lrc_setup_wa_ctx_obj(struct intel_engine_cs *ring, u32 size)
+{
+	int ret;
 
 	/*
-	 * As per Bspec, to workaround a known HW issue, SW must perform the
-	 * below programming sequence prior to programming MI_BATCH_BUFFER_END.
-	 *
-	 * This is only applicable for Gen8.
+	 * In more recent kernels, rings are only initialized once and there
+	 * was no risk of leaking the wa_ctx obj. But this is not the case in
+	 * v3.14, i915_resume will re-init the rings (gt.init_rings), so it
+	 * isn't required to create a new wa_ctx obj.
 	 */
+	if (ring->wa_ctx.obj)
+		return 0;
 
-	/* WaRsRestoreWithPerCtxtBb:bdw,chv */
-	intel_logical_ring_emit(ringbuf, MI_LOAD_REGISTER_IMM(1));
-	intel_logical_ring_emit(ringbuf, INSTPM);
-	intel_logical_ring_emit(ringbuf,
-				_MASKED_BIT_DISABLE(INSTPM_FORCE_ORDERING));
+	ring->wa_ctx.obj = i915_gem_alloc_object(ring->dev, PAGE_ALIGN(size));
+	if (!ring->wa_ctx.obj) {
+		DRM_DEBUG_DRIVER("alloc LRC WA ctx backing obj failed.\n");
+		return -ENOMEM;
+	}
 
-	flags = MI_ATOMIC_MEMORY_TYPE_GGTT |
-		MI_ATOMIC_INLINE_DATA |
-		MI_ATOMIC_CS_STALL |
-		MI_ATOMIC_RETURN_DATA_CTL |
-		MI_ATOMIC_MOVE;
-
-	intel_logical_ring_emit(ringbuf, MI_ATOMIC(5) | flags);
-	intel_logical_ring_emit(ringbuf, scratch_addr);
-	intel_logical_ring_emit(ringbuf, 0);
-	intel_logical_ring_emit(ringbuf,
-				_MASKED_BIT_ENABLE(INSTPM_FORCE_ORDERING));
-	intel_logical_ring_emit(ringbuf,
-				_MASKED_BIT_ENABLE(INSTPM_FORCE_ORDERING));
-
-	/*
-	 * Bspec says MI_LOAD_REGISTER_MEM, MI_LOAD_REGISTER_REG and
-	 * MI_BATCH_BUFFER_END need to be in the same cacheline.
-	 */
-	while (((unsigned long) ringbuf->tail % CACHELINE_BYTES) != 0)
-		intel_logical_ring_emit(ringbuf, MI_NOOP);
-
-	intel_logical_ring_emit(ringbuf,
-				MI_LOAD_REGISTER_MEM |
-				MI_LRM_USE_GLOBAL_GTT |
-				MI_LRM_ASYNC_MODE_ENABLE);
-	intel_logical_ring_emit(ringbuf, INSTPM);
-	intel_logical_ring_emit(ringbuf, scratch_addr);
-
-	/*
-	 * Bspec says there should not be any commands programmed
-	 * between MI_LOAD_REGISTER_REG and MI_BATCH_BUFFER_END so
-	 * do not add any new commands
-	 */
-	intel_logical_ring_emit(ringbuf, MI_LOAD_REGISTER_REG);
-	intel_logical_ring_emit(ringbuf, GEN8_RS_PREEMPT_STATUS);
-	intel_logical_ring_emit(ringbuf, GEN8_RS_PREEMPT_STATUS);
-	/* Padding */
-	intel_logical_ring_emit(ringbuf, MI_NOOP);
-
-	intel_logical_ring_emit(ringbuf, MI_BATCH_BUFFER_END);
+	ret = i915_gem_obj_ggtt_pin(ring->wa_ctx.obj, PAGE_SIZE, 0);
+	if (ret) {
+		DRM_DEBUG_DRIVER("pin LRC WA ctx backing obj failed: %d\n",
+				 ret);
+		drm_gem_object_unreference(&ring->wa_ctx.obj->base);
+		return ret;
+	}
 
 	return 0;
 }
 
-static int intel_init_workaround_bb(struct intel_engine_cs *ring,
-				    struct intel_context *ctx)
+static void lrc_destroy_wa_ctx_obj(struct intel_engine_cs *ring)
+{
+	if (ring->wa_ctx.obj) {
+		i915_gem_object_ggtt_unpin(ring->wa_ctx.obj);
+		drm_gem_object_unreference(&ring->wa_ctx.obj->base);
+		ring->wa_ctx.obj = NULL;
+	}
+}
+
+static int intel_init_workaround_bb(struct intel_engine_cs *ring)
 {
 	int ret;
-	struct drm_device *dev = ring->dev;
+	uint32_t *batch;
+	uint32_t offset;
+	struct page *page;
+	struct i915_ctx_workarounds *wa_ctx = &ring->wa_ctx;
 
 	WARN_ON(ring->id != RCS);
 
-	if (IS_GEN8(dev)) {
-		ret = gen8_init_indirectctx_bb(ring, ctx);
-		if (ret)
-			return ret;
+	/* update this when WA for higher Gen are added */
+	if (WARN(INTEL_INFO(ring->dev)->gen > 8,
+		 "WA batch buffer is not initialized for Gen%d\n",
+		 INTEL_INFO(ring->dev)->gen))
+		return 0;
 
-		ret = gen8_init_perctx_bb(ring, ctx);
-		if (ret)
-			return ret;
+	/* some WA perform writes to scratch page, ensure it is valid */
+	if (ring->scratch.obj == NULL) {
+		DRM_ERROR("scratch page not allocated for %s\n", ring->name);
+		return -EINVAL;
 	}
 
-	return 0;
+	ret = lrc_setup_wa_ctx_obj(ring, PAGE_SIZE);
+	if (ret) {
+		DRM_DEBUG_DRIVER("Failed to setup context WA page: %d\n", ret);
+		return ret;
+	}
 
+	page = i915_gem_object_get_page(wa_ctx->obj, 0);
+	batch = kmap_atomic(page);
+	offset = 0;
+
+	if (INTEL_INFO(ring->dev)->gen == 8) {
+		ret = gen8_init_indirectctx_bb(ring,
+					       &wa_ctx->indirect_ctx,
+					       batch,
+					       &offset);
+		if (ret)
+			goto out;
+
+		ret = gen8_init_perctx_bb(ring,
+					  &wa_ctx->per_ctx,
+					  batch,
+					  &offset);
+		if (ret)
+			goto out;
+	}
+
+out:
+	kunmap_atomic(batch);
+	if (ret)
+		lrc_destroy_wa_ctx_obj(ring);
+
+	return ret;
 }
 
 static int gen8_init_common_ring(struct intel_engine_cs *ring)
@@ -2401,22 +2453,30 @@ static int gen8_init_common_ring(struct intel_engine_cs *ring)
 		   _MASKED_BIT_ENABLE(GFX_RUN_LIST_ENABLE));
 	POSTING_READ(RING_MODE_GEN7(ring));
 
-	/* Instead of reseting the CSB read pointer, we need to read the write
-	 * pointer from hardware and use its value, because "this register is
-	 * power context save restored".
+	/*
+	 * Instead of resetting the Context Status Buffer (CSB) read pointer to
+	 * zero, we need to read the write pointer from hardware and use its
+	 * value because "this register is power context save restored".
+	 * Effectively, these states have been observed:
+	 *
+	 * 	| Suspend-to-idle (freeze) | Suspend-to-RAM (mem) |
+	 * BDW  | CSB regs not reset       | CSB regs reset       |
+	 * CHT  | CSB regs not reset       | CSB regs not reset   |
 	 */
-	next_context_status_buffer_hw = I915_READ(RING_CONTEXT_STATUS_PTR(ring)) & 0x07;
+	next_context_status_buffer_hw = I915_READ(RING_CONTEXT_STATUS_PTR(ring))
+						  & GEN8_CSB_PTR_MASK;
 
-	/* But, after power-up / gpu reset, csb write pointer is set to all 1's,
-	 * which is not valid, use 0 in this special case.
+	/*
+	 * When the CSB registers are reset (also after power-up / engine reset),
+	 * CSB write pointer is set to all 1's, which is not valid.
+	 *
+	 * In this special case...
+	 * Reset next_context_status_buffer to GEN8_CSB_ENTRIES - 1. 
+	 * This is because it is pre-incremented (to GEN8_CSB_ENTRIES = 0 
+	 * modulo GEN8_CSB_ENTRIES) before it is used
 	 */
 	if (next_context_status_buffer_hw == 0x7)
-		next_context_status_buffer_hw = 0;
-
-	if (ring->next_context_status_buffer != next_context_status_buffer_hw)
-		DRM_INFO("csb pointers sw: %u, hw: %u\n",
-			 ring->next_context_status_buffer,
-			 next_context_status_buffer_hw);
+		next_context_status_buffer_hw = (GEN8_CSB_ENTRIES - 1);
 
 	spin_lock_irqsave(&ring->execlist_lock, flags);
 	ring->next_context_status_buffer = next_context_status_buffer_hw;
@@ -2443,20 +2503,60 @@ static int gen8_init_render_ring(struct intel_engine_cs *ring)
 	 */
 	I915_WRITE(MI_MODE, _MASKED_BIT_ENABLE(ASYNC_FLIP_PERF_DISABLE));
 
-	ret = intel_init_pipe_control(ring);
-	if (ret)
-		return ret;
-
 	I915_WRITE(INSTPM, _MASKED_BIT_ENABLE(INSTPM_FORCE_ORDERING));
 
 	return init_workarounds_ring(ring);
 }
 
+static int intel_logical_ring_emit_pdps(struct intel_engine_cs *ring,
+					struct intel_context *ctx)
+{
+	struct i915_hw_ppgtt *ppgtt = ctx->ppgtt;
+	struct intel_ringbuffer *ringbuf = ctx->engine[ring->id].ringbuf;
+	const int num_lri_cmds = GEN8_LEGACY_PDPES * 2;
+	int i, ret;
+
+	ret = intel_logical_ring_begin(ringbuf, num_lri_cmds * 2 + 2);
+	if (ret)
+		return ret;
+
+	intel_logical_ring_emit(ringbuf, MI_LOAD_REGISTER_IMM(num_lri_cmds));
+	for (i = GEN8_LEGACY_PDPES - 1; i >= 0; i--) {
+		const dma_addr_t pd_daddr = i915_page_dir_dma_addr(ppgtt, i);
+
+		intel_logical_ring_emit(ringbuf, GEN8_RING_PDP_UDW(ring, i));
+		intel_logical_ring_emit(ringbuf, upper_32_bits(pd_daddr));
+		intel_logical_ring_emit(ringbuf, GEN8_RING_PDP_LDW(ring, i));
+		intel_logical_ring_emit(ringbuf, lower_32_bits(pd_daddr));
+	}
+
+	intel_logical_ring_emit(ringbuf, MI_NOOP);
+	intel_logical_ring_advance(ringbuf);
+
+	return 0;
+}
+
 static int gen8_emit_bb_start(struct intel_ringbuffer *ringbuf,
 			      u64 offset, unsigned flags)
 {
+	struct intel_engine_cs *ring = ringbuf->ring;
+	struct intel_context *ctx = ringbuf->FIXME_lrc_ctx;
 	bool ppgtt = !(flags & I915_DISPATCH_SECURE);
 	int ret;
+
+	/* Don't rely in hw updating PDPs, specially in lite-restore.
+	 * Ideally, we should set Force PD Restore in ctx descriptor,
+	 * but we can't. Force Restore would be a second option, but
+	 * it is unsafe in case of lite-restore (because the ctx is
+	 * not idle). */
+	if (ctx->ppgtt &&
+	    (intel_ring_flag(ring) & ctx->ppgtt->pd_dirty_rings)) {
+		ret = intel_logical_ring_emit_pdps(ring, ctx);
+		if (ret)
+			return ret;
+
+		ctx->ppgtt->pd_dirty_rings &= ~intel_ring_flag(ring);
+	}
 
 	ret = intel_logical_ring_begin(ringbuf, 4);
 	if (ret)
@@ -2938,6 +3038,8 @@ void intel_logical_ring_cleanup(struct intel_engine_cs *ring)
 		kunmap(sg_page(ring->status_page.obj->pages->sgl));
 		ring->status_page.obj = NULL;
 	}
+
+	lrc_destroy_wa_ctx_obj(ring);
 }
 
 static int logical_ring_init(struct drm_device *dev, struct intel_engine_cs *ring)
@@ -2977,6 +3079,7 @@ static int logical_render_ring_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_engine_cs *ring = &dev_priv->ring[RCS];
+	int ret;
 
 	ring->name = "render ring";
 	ring->id = RCS;
@@ -2993,7 +3096,6 @@ static int logical_render_ring_init(struct drm_device *dev)
 
 	ring->init = gen8_init_render_ring;
 	ring->init_context = intel_logical_ring_workarounds_emit;
-	ring->init_context_bb = intel_init_workaround_bb;
 	ring->cleanup = intel_fini_pipe_control;
 	ring->get_seqno = gen8_get_seqno;
 	ring->set_seqno = gen8_set_seqno;
@@ -3007,7 +3109,28 @@ static int logical_render_ring_init(struct drm_device *dev)
 	ring->save = gen8_ring_save;
 	ring->restore = gen8_ring_restore;
 
-	return logical_ring_init(dev, ring);
+	ring->dev = dev;
+
+	ret = intel_init_pipe_control(ring);
+	if (ret)
+		return ret;
+
+	ret = intel_init_workaround_bb(ring);
+	if (ret) {
+		/*
+		 * We continue even if we fail to initialize WA batch
+		 * because we only expect rare glitches but nothing
+		 * critical to prevent us from using GPU
+		 */
+		DRM_ERROR("WA batch buffer initialization failed: %d\n",
+			  ret);
+	}
+
+	ret = logical_ring_init(dev, ring);
+	if (ret)
+		lrc_destroy_wa_ctx_obj(ring);
+
+	return ret;
 }
 
 static int logical_bsd_ring_init(struct drm_device *dev)
@@ -3296,27 +3419,25 @@ populate_lr_context(struct intel_context *ctx, struct drm_i915_gem_object *ctx_o
 	reg_state[CTX_SECOND_BB_STATE+1] = 0;
 	if (ring->id == RCS) {
 		reg_state[CTX_BB_PER_CTX_PTR] = ring->mmio_base + 0x1c0;
-
-		if (ctx->per_ctx_wa_bb)
-			reg_state[CTX_BB_PER_CTX_PTR + 1] =
-				i915_gem_obj_ggtt_offset(
-					ctx->per_ctx_wa_bb->obj) | 0x01;
-		else
-			reg_state[CTX_BB_PER_CTX_PTR+1] = 0;
-
+		reg_state[CTX_BB_PER_CTX_PTR+1] = 0;
 		reg_state[CTX_RCS_INDIRECT_CTX] = ring->mmio_base + 0x1c4;
+		reg_state[CTX_RCS_INDIRECT_CTX+1] = 0;
 		reg_state[CTX_RCS_INDIRECT_CTX_OFFSET] = ring->mmio_base + 0x1c8;
+		reg_state[CTX_RCS_INDIRECT_CTX_OFFSET+1] = 0;
+		if (ring->wa_ctx.obj) {
+			struct i915_ctx_workarounds *wa_ctx = &ring->wa_ctx;
+			uint32_t ggtt_offset = i915_gem_obj_ggtt_offset(wa_ctx->obj);
 
-		if (ctx->indirect_ctx_wa_bb) {
-			reg_state[CTX_RCS_INDIRECT_CTX + 1] =
-				i915_gem_obj_ggtt_offset(
-				ctx->indirect_ctx_wa_bb->obj) | 0x01;
+			reg_state[CTX_RCS_INDIRECT_CTX+1] =
+				(ggtt_offset + wa_ctx->indirect_ctx.offset * sizeof(uint32_t)) |
+				(wa_ctx->indirect_ctx.size / CACHELINE_DWORDS);
 
-			reg_state[CTX_RCS_INDIRECT_CTX_OFFSET + 1] =
+			reg_state[CTX_RCS_INDIRECT_CTX_OFFSET+1] =
 				CTX_RCS_INDIRECT_CTX_OFFSET_DEFAULT << 6;
-		} else {
-			reg_state[CTX_RCS_INDIRECT_CTX+1] = 0;
-			reg_state[CTX_RCS_INDIRECT_CTX_OFFSET+1] = 0;
+
+			reg_state[CTX_BB_PER_CTX_PTR+1] =
+				(ggtt_offset + wa_ctx->per_ctx.offset * sizeof(uint32_t)) |
+				0x01;
 		}
 	}
 	reg_state[CTX_LRI_HEADER_1] = MI_LOAD_REGISTER_IMM(9);
@@ -3407,18 +3528,6 @@ void intel_lr_context_free(struct intel_context *ctx)
 			kfree(ringbuf);
 			drm_gem_object_unreference(&ctx_obj->base);
 		}
-	}
-
-	if (ctx->indirect_ctx_wa_bb) {
-		intel_unpin_ringbuffer_obj(ctx->indirect_ctx_wa_bb);
-		intel_destroy_ringbuffer_obj(ctx->indirect_ctx_wa_bb);
-		kfree(ctx->indirect_ctx_wa_bb);
-	}
-
-	if (ctx->per_ctx_wa_bb) {
-		intel_unpin_ringbuffer_obj(ctx->per_ctx_wa_bb);
-		intel_destroy_ringbuffer_obj(ctx->per_ctx_wa_bb);
-		kfree(ctx->per_ctx_wa_bb);
 	}
 }
 
@@ -3551,16 +3660,6 @@ int intel_lr_context_deferred_create(struct intel_context *ctx,
 
 	}
 
-	if (ring->id == RCS && !ctx->rcs_initialized) {
-		if (ring->init_context_bb) {
-			ret = ring->init_context_bb(ring, ctx);
-			if (ret) {
-				DRM_ERROR("ring init context bb: %d\n", ret);
-				goto error;
-			}
-		}
-	}
-
 	ret = populate_lr_context(ctx, ctx_obj, ring, ringbuf);
 	if (ret) {
 		DRM_DEBUG_DRIVER("Failed to populate LRC: %d\n", ret);
@@ -3568,7 +3667,7 @@ int intel_lr_context_deferred_create(struct intel_context *ctx,
 	}
 
 	/* Create a timeline for HW Native Sync support*/
-	ret = i915_sync_timeline_create(dev, ring->name, ctx, ring);
+	ret = i915_sync_timeline_create(dev, ctx, ring);
 	if (ret) {
 		DRM_ERROR("Sync timeline creation failed for ring %s, ctx %p\n",
 			ring->name, ctx);
@@ -3600,7 +3699,6 @@ int intel_lr_context_deferred_create(struct intel_context *ctx,
 			ctx->engine[ring->id].state = NULL;
 			goto error;
 		}
-
 		ctx->rcs_initialized = true;
 	}
 
@@ -3608,17 +3706,6 @@ int intel_lr_context_deferred_create(struct intel_context *ctx,
 	return 0;
 
 error:
-	if (ctx->indirect_ctx_wa_bb) {
-		intel_unpin_ringbuffer_obj(ctx->indirect_ctx_wa_bb);
-		intel_destroy_ringbuffer_obj(ctx->indirect_ctx_wa_bb);
-		kfree(ctx->indirect_ctx_wa_bb);
-	}
-	if (ctx->per_ctx_wa_bb) {
-		intel_unpin_ringbuffer_obj(ctx->per_ctx_wa_bb);
-		intel_destroy_ringbuffer_obj(ctx->per_ctx_wa_bb);
-		kfree(ctx->per_ctx_wa_bb);
-	}
-
 	if (is_global_default_ctx)
 		intel_unpin_ringbuffer_obj(ringbuf);
 error_destroy_rbuf:
@@ -3661,7 +3748,6 @@ bool intel_execlists_TDR_force_CSB_check(struct drm_i915_private *dev_priv,
 
 	if (atomic_read(&ring->hangcheck.flags)
 		& DRM_I915_HANGCHECK_RESETTING) {
-
 		/*
 		 * Normally it's not a problem to fake context event interrupts
 		 * at any point even though the real interrupt might come in as
@@ -3693,7 +3779,7 @@ bool intel_execlists_TDR_force_CSB_check(struct drm_i915_private *dev_priv,
 		return true;
 	}
 
-	status = intel_execlists_TDR_get_submitted_context(ring, NULL);
+	status = i915_gem_context_get_current_context(ring, NULL);
 
 	if (status == CONTEXT_SUBMISSION_STATUS_SUBMITTED) {
 		spin_lock_irqsave(&ring->execlist_lock, flags);

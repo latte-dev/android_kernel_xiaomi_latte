@@ -1,6 +1,5 @@
 /*
  * Copyright © 2008 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1840,6 +1839,12 @@ static int i915_dpst_status(struct seq_file *m, void *unused)
 		return 0;
 	}
 
+	/* Check if dpst is initialized by UMD? */
+	if (!dev_priv->dpst.reg.blm_hist_ctl) {
+		seq_puts(m, "DPST feature not enabled\n");
+		return 0;
+	}
+
 	mutex_lock(&dev_priv->dpst.ioctl_lock);
 
 	intel_display_power_get(dev_priv, PIPE_A);
@@ -1884,7 +1889,7 @@ static int i915_dpst_disable_get(void *data, u64 *val)
 	struct drm_device *dev = data;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	*val = dev_priv->dpst.kernel_disable;
+	*val = !dev_priv->dpst.enabled;
 
 	return 0;
 }
@@ -4264,7 +4269,6 @@ DEFINE_SIMPLE_ATTRIBUTE(i915_fake_ctx_submission_inconsistency_fops,
 			i915_fake_ctx_submission_inconsistency_set,
 			"%llu\n");
 
-
 static const char *ringid_to_str(enum intel_ring_id ring_id)
 {
 	switch (ring_id) {
@@ -5039,23 +5043,23 @@ static ssize_t i915_connector_reset_read(struct file *filp, char __user *ubuf,
 
 	list_for_each_entry(connector, &dev->mode_config.connector_list,
 				base.head) {
-		switch (connector->encoder->type) {
-		case INTEL_OUTPUT_DSI:
-			snprintf(&tmpbuf[ret_count], max - ret_count,
-				"\tID=%d; Active:%d; Type=DSI\n",
-				connector->base.base.id,
-				connector->encoder->connectors_active);
-			break;
-		case INTEL_OUTPUT_EDP:
-			snprintf(&tmpbuf[ret_count], max - ret_count,
-				"\tID=%d; Active:%d; Type=EDP\n",
-				connector->base.base.id,
-				connector->encoder->connectors_active);
-			break;
-		default:
-			break;
-		}
-		ret_count = strlen(tmpbuf);
+	    switch (connector->encoder->type) {
+	    case INTEL_OUTPUT_DSI:
+		snprintf(&tmpbuf[ret_count], max - ret_count,
+			"\tID=%d; Active:%d; Type=DSI\n",
+			connector->base.base.id,
+			connector->encoder->connectors_active);
+		break;
+	    case INTEL_OUTPUT_EDP:
+		snprintf(&tmpbuf[ret_count], max - ret_count,
+			"\tID=%d; Active:%d; Type=EDP\n",
+			connector->base.base.id,
+			connector->encoder->connectors_active);
+		break;
+	    default:
+		break;
+	    }
+	    ret_count = strlen(tmpbuf);
 	}
 	ret_count = simple_read_from_buffer(ubuf, max, ppos,
 		(const void *)tmpbuf, ret_count);

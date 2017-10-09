@@ -1,7 +1,6 @@
 /*
  * Copyright © 2010 Daniel Vetter
  * Copyright © 2011-2014 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -25,6 +24,7 @@
  */
 
 #include <linux/seq_file.h>
+#include <linux/stop_machine.h>
 #include <drm/drmP.h>
 #include <drm/i915_drm.h>
 #include "i915_drv.h"
@@ -347,7 +347,7 @@ err_out:
 }
 
 static void unmap_and_free_pd(struct i915_page_directory_entry *pd,
-			 struct drm_device *dev)
+			       struct drm_device *dev)
 {
 	if (pd->page) {
 		i915_dma_unmap_single(pd, dev);
@@ -393,8 +393,8 @@ free_pd:
 
 /* Broadwell Page Directory Pointer Descriptors */
 static int gen8_write_pdp(struct intel_engine_cs *ring,
-			unsigned entry, dma_addr_t addr,
-			bool synchronous)
+			  unsigned entry, dma_addr_t addr,
+			  bool synchronous)
 {
 	struct drm_i915_private *dev_priv = ring->dev->dev_private;
 	int ret;
@@ -429,10 +429,8 @@ static int gen8_mm_switch(struct i915_hw_ppgtt *ppgtt,
 	int i, ret;
 
 	for (i = GEN8_LEGACY_PDPES - 1; i >= 0; i--) {
-		struct i915_page_directory_entry *pd = ppgtt->pdp.page_directory[i];
-		dma_addr_t pd_daddr = pd ? pd->daddr : ppgtt->scratch_pd->daddr;
-		/* The page directory might be NULL, but we need to clear out
-		 * whatever the previous context might have used. */
+		const dma_addr_t pd_daddr = i915_page_dir_dma_addr(ppgtt, i);
+
 		ret = gen8_write_pdp(ring, i, pd_daddr, synchronous);
 		if (ret)
 			return ret;
@@ -564,9 +562,9 @@ static void __gen8_do_map_pt(gen8_ppgtt_pde_t * const pde,
  * save us unnecessary kmap calls, but do no more functionally than multiple
  * calls to map_pt. */
 static void gen8_map_pagetable_range(struct i915_page_directory_entry *pd,
-				uint64_t start,
-				uint64_t length,
-				struct drm_device *dev)
+				     uint64_t start,
+				     uint64_t length,
+				     struct drm_device *dev)
 {
 	gen8_ppgtt_pde_t * const page_directory = kmap_atomic(pd->page);
 	struct i915_page_table_entry *pt;
@@ -769,10 +767,10 @@ unwind_out:
  * Return: 0 if success; negative error code otherwise.
  */
 static int gen8_ppgtt_alloc_page_directories(struct i915_hw_ppgtt *ppgtt,
-				 struct i915_page_directory_pointer_entry *pdp,
-				 uint64_t start,
-				 uint64_t length,
-				 unsigned long *new_pds)
+				     struct i915_page_directory_pointer_entry *pdp,
+				     uint64_t start,
+				     uint64_t length,
+				     unsigned long *new_pds)
 {
 	struct i915_page_directory_entry *pd;
 	uint64_t temp;
@@ -851,6 +849,16 @@ int __must_check alloc_gen8_temp_bitmaps(unsigned long **new_pds,
 err_out:
 	free_gen8_temp_bitmaps(pds, pts);
 	return -ENOMEM;
+}
+
+/* PDE TLBs are a pain invalidate pre GEN8. It requires a context reload. If we
+ * are switching between contexts with the same LRCA, we also must do a force
+ * restore.
+ */
+static inline void mark_tlbs_dirty(struct i915_hw_ppgtt *ppgtt)
+{
+	/* If current vm != vm, */
+	ppgtt->pd_dirty_rings = INTEL_INFO(ppgtt->base.dev)->ring_mask;
 }
 
 static int gen8_alloc_va_range(struct i915_address_space *vm,
@@ -948,6 +956,7 @@ static int gen8_alloc_va_range(struct i915_address_space *vm,
 	}
 
 	free_gen8_temp_bitmaps(new_page_dirs, new_page_tables);
+	mark_tlbs_dirty(ppgtt);
 	return 0;
 
 err_out:
@@ -957,6 +966,7 @@ err_out:
 		unmap_and_free_pd(ppgtt->pdp.page_directory[pdpe], vm->dev);
 
 	free_gen8_temp_bitmaps(new_page_dirs, new_page_tables);
+	mark_tlbs_dirty(ppgtt);
 	return ret;
 }
 
@@ -1378,16 +1388,6 @@ static void gen6_ppgtt_unmap_pages(struct i915_hw_ppgtt *ppgtt)
 	}
 }
 
-/* PDE TLBs are a pain invalidate pre GEN8. It requires a context reload. If we
- * are switching between contexts with the same LRCA, we also must do a force
- * restore.
- */
-static inline void mark_tlbs_dirty(struct i915_hw_ppgtt *ppgtt)
-{
-	/* If current vm != vm, */
-	ppgtt->pd_dirty_rings = INTEL_INFO(ppgtt->base.dev)->ring_mask;
-}
-
 static int gen6_alloc_va_range(struct i915_address_space *vm,
 			       uint64_t start, uint64_t length)
 {
@@ -1727,6 +1727,8 @@ i915_ppgtt_create(struct drm_device *dev, struct drm_i915_file_private *fpriv)
 
 	ppgtt->file_priv = fpriv;
 
+	trace_i915_ppgtt_create(&ppgtt->base);
+
 	return ppgtt;
 }
 
@@ -1734,6 +1736,8 @@ void  i915_ppgtt_release(struct kref *kref)
 {
 	struct i915_hw_ppgtt *ppgtt =
 		container_of(kref, struct i915_hw_ppgtt, ref);
+
+	trace_i915_ppgtt_release(&ppgtt->base);
 
 	/* vmas should already be unbound */
 	WARN_ON(!list_empty(&ppgtt->base.active_list));
@@ -1796,10 +1800,10 @@ ppgtt_bind_vma(struct i915_vma *vma,
 
 static void ppgtt_unbind_vma(struct i915_vma *vma)
 {
-	vma->vm->clear_range(vma->vm,
-			     vma->node.start,
-			     vma->obj->base.size,
-			     true);
+		vma->vm->clear_range(vma->vm,
+				     vma->node.start,
+				     vma->obj->base.size,
+				     true);
 }
 
 extern int intel_iommu_gfx_mapped;
@@ -1940,7 +1944,7 @@ void i915_gem_restore_gtt_mappings(struct drm_device *dev)
 
 	if (USES_PPGTT(dev)) {
 		list_for_each_entry(vm, &dev_priv->vm_list, global_link) {
-		/* TODO: Perhaps it shouldn't be gen6 specific */
+			/* TODO: Perhaps it shouldn't be gen6 specific */
 
 			struct i915_hw_ppgtt *ppgtt =
 				container_of(vm, struct i915_hw_ppgtt, base);
@@ -2191,6 +2195,27 @@ static void ggtt_bind_vma(struct i915_vma *vma,
 					    cache_level, flags);
 		vma->obj->has_aliasing_ppgtt_mapping = 1;
 	}
+}
+
+struct ggtt_bind_vma__cb {
+	struct i915_vma *vma;
+	enum i915_cache_level cache_level;
+	u32 flags;
+};
+
+static int ggtt_bind_vma__cb(void *_arg)
+{
+	struct ggtt_bind_vma__cb *arg = _arg;
+	ggtt_bind_vma(arg->vma, arg->cache_level, arg->flags);
+	return 0;
+}
+
+static void ggtt_bind_vma__BKL(struct i915_vma *vma,
+			      enum i915_cache_level cache_level,
+			      u32 flags)
+{
+	struct ggtt_bind_vma__cb arg = { vma, cache_level, flags };
+	stop_machine(ggtt_bind_vma__cb, &arg, NULL);
 }
 
 static void ggtt_unbind_vma(struct i915_vma *vma)
@@ -2469,10 +2494,7 @@ static int ggtt_probe_common(struct drm_device *dev,
 	gtt_phys_addr = pci_resource_start(dev->pdev, 0) +
 		(pci_resource_len(dev->pdev, 0) / 2);
 
-	if (IS_CHERRYVIEW(dev))
-		dev_priv->gtt.gsm = ioremap_nocache(gtt_phys_addr, gtt_size);
-	else
-		dev_priv->gtt.gsm = ioremap_wc(gtt_phys_addr, gtt_size);
+	dev_priv->gtt.gsm = ioremap_wc(gtt_phys_addr, gtt_size);
 	if (!dev_priv->gtt.gsm) {
 		DRM_ERROR("Failed to map the gtt page table\n");
 		return -ENOMEM;
@@ -2736,6 +2758,9 @@ static struct i915_vma *__i915_gem_vma_create(struct drm_i915_gem_object *obj,
 		if (i915_is_ggtt(vm)) {
 			vma->unbind_vma = ggtt_unbind_vma;
 			vma->bind_vma = ggtt_bind_vma;
+
+			if (IS_CHERRYVIEW(vm->dev))
+				vma->bind_vma = ggtt_bind_vma__BKL;
 		} else {
 			vma->unbind_vma = ppgtt_unbind_vma;
 			vma->bind_vma = ppgtt_bind_vma;

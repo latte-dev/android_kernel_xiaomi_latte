@@ -228,6 +228,8 @@ struct drm_mode_get_encoder {
 #define DRM_MODE_CONNECTOR_VIRTUAL      15
 #define DRM_MODE_CONNECTOR_DSI		16
 
+#define ELD_DP_CONNECTION_TYPE		(1<<2)
+
 struct drm_mode_get_connector {
 
 	__u64 encoders_ptr;

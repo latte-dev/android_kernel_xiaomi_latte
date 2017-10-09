@@ -155,6 +155,9 @@ static int intelfb_create(struct drm_fb_helper *helper,
 		sizes->fb_height = intel_fb->base.height;
 	}
 
+	if (intel_fb == NULL)
+		goto out_unlock;
+
 	obj = intel_fb->obj;
 	size = obj->base.size;
 
@@ -672,6 +675,21 @@ void intel_fbdev_set_suspend(struct drm_device *dev, int state)
 
 	info = ifbdev->helper.fbdev;
 
+	/* When the FB object becomes inactive and is unpinned, other buffers
+	 * can be allocated virtual addresses within its range.  Therefore we
+	 * must not clear this memory range after the FB is unpinned otherwise
+	 * we will clear these buffers causing unpredictable behaviour and GPU
+	 * hangs.  On Android we never hibernate so there is no need to clear
+	 * the memory in any case.
+	 */
+#if 0
+	/* On resume from hibernation: If the object is shmemfs backed, it has
+	 * been restored from swap. If the object is stolen however, it will be
+	 * full of whatever garbage was left in there.
+	 */
+	if (state == FBINFO_STATE_RUNNING && ifbdev->fb->obj->stolen)
+		memset_io(info->screen_base, 0, info->screen_size);
+#endif
 	fb_set_suspend(info, state);
 }
 

@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2014 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -644,16 +643,14 @@ int i915_scheduler_handle_irq(struct intel_engine_cs *ring)
 
 	seqno = ring->get_seqno(ring, false);
 
-	trace_i915_scheduler_irq(ring, seqno);
+	trace_i915_scheduler_irq(scheduler, ring, seqno,
+			i915.scheduler_override & i915_so_direct_submit);
 
-	if (i915.scheduler_override & i915_so_direct_submit) {
-		trace_printk("i915_so_direct_submit, return \n");
+	if (i915.scheduler_override & i915_so_direct_submit)
 		return 0;
-	}
 
 	if (seqno == scheduler->last_irq_seqno[ring->id]) {
 		/* Why are there sometimes multiple interrupts per seqno? */
-		trace_printk("irq with same seqno = %u, return \n", seqno);
 		return 0;
 	}
 	scheduler->last_irq_seqno[ring->id] = seqno;
@@ -1034,6 +1031,30 @@ int i915_scheduler_query_stats(struct intel_engine_cs *ring,
 	spin_unlock_irqrestore(&scheduler->lock, flags);
 
 	return 0;
+}
+
+uint32_t i915_scheduler_count_queued_by_context(struct drm_device *dev,
+						struct intel_context *target,
+						struct intel_engine_cs *ring) {
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct i915_scheduler *scheduler = dev_priv->scheduler;
+	struct i915_scheduler_queue_entry *node;
+	unsigned long flags;
+	uint32_t count = 0;
+
+	spin_lock_irqsave(&scheduler->lock, flags);
+	list_for_each_entry(node, &scheduler->node_queue[ring->id], link) {
+		if (!I915_SQS_IS_QUEUED(node))
+			continue;
+
+		if (node->params.ctx != target)
+			continue;
+
+		count++;
+	}
+
+	spin_unlock_irqrestore(&scheduler->lock, flags);
+	return count;
 }
 
 int i915_scheduler_flush_request(struct drm_i915_gem_request *req,

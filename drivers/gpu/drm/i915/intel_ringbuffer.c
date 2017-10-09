@@ -1324,8 +1324,10 @@ static int init_render_ring(struct intel_engine_cs *ring)
 {
 	struct drm_device *dev = ring->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int ret = init_ring_common(ring);
 	u32 imr;
+	int ret = init_ring_common(ring);
+	if (ret)
+		return ret;
 
 	/* WaTimedSingleVertexDispatch:cl,bw,ctg,elk,ilk,snb */
 	if (INTEL_INFO(dev)->gen >= 4 && INTEL_INFO(dev)->gen < 7)
@@ -1351,12 +1353,6 @@ static int init_render_ring(struct intel_engine_cs *ring)
 		I915_WRITE(GFX_MODE_GEN7,
 			   _MASKED_BIT_ENABLE(GFX_TLB_INVALIDATE_EXPLICIT) |
 			   _MASKED_BIT_ENABLE(GFX_REPLAY_MODE));
-
-	if (INTEL_INFO(dev)->gen >= 5) {
-		ret = intel_init_pipe_control(ring);
-		if (ret)
-			return ret;
-	}
 
 	if (IS_GEN6(dev)) {
 		/* From the Sandybridge PRM, volume 1 part 3, page 24:
@@ -2963,6 +2959,7 @@ int intel_init_render_ring_buffer(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_engine_cs *ring = &dev_priv->ring[RCS];
+	int ret;
 
 	ring->name = "render ring";
 	ring->id = RCS;
@@ -3077,7 +3074,17 @@ int intel_init_render_ring_buffer(struct drm_device *dev)
 		ring->scratch.gtt_offset = i915_gem_obj_ggtt_offset(obj);
 	}
 
-	return intel_init_ring_buffer(dev, ring);
+	ret = intel_init_ring_buffer(dev, ring);
+	if (ret)
+		return ret;
+
+	if (INTEL_INFO(dev)->gen >= 5) {
+		ret = intel_init_pipe_control(ring);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
 }
 
 int intel_render_ring_init_dri(struct drm_device *dev, u64 start, u32 size)

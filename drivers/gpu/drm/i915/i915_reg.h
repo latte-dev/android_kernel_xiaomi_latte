@@ -1,5 +1,4 @@
 /* Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
- * Copyright (C) 2016 XiaoMi, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -312,26 +311,6 @@
 #define   MI_INVALIDATE_BSD		(1<<7)
 #define   MI_FLUSH_DW_USE_GTT		(1<<2)
 #define   MI_FLUSH_DW_USE_PPGTT		(0<<2)
-#define MI_ATOMIC(len)	MI_INSTR(0x2F, (len-2))
-#define   MI_ATOMIC_MEMORY_TYPE_GGTT	(1<<22)
-#define   MI_ATOMIC_INLINE_DATA		(1<<18)
-#define   MI_ATOMIC_CS_STALL		(1<<17)
-#define   MI_ATOMIC_RETURN_DATA_CTL	(1<<16)
-#define MI_ATOMIC_OP_MASK(op)  ((op) << 8)
-#define MI_ATOMIC_AND	MI_ATOMIC_OP_MASK(0x01)
-#define MI_ATOMIC_OR	MI_ATOMIC_OP_MASK(0x02)
-#define MI_ATOMIC_XOR	MI_ATOMIC_OP_MASK(0x03)
-#define MI_ATOMIC_MOVE	MI_ATOMIC_OP_MASK(0x04)
-#define MI_ATOMIC_INC	MI_ATOMIC_OP_MASK(0x05)
-#define MI_ATOMIC_DEC	MI_ATOMIC_OP_MASK(0x06)
-#define MI_ATOMIC_ADD	MI_ATOMIC_OP_MASK(0x07)
-#define MI_ATOMIC_SUB	MI_ATOMIC_OP_MASK(0x08)
-#define MI_ATOMIC_RSUB	MI_ATOMIC_OP_MASK(0x09)
-#define MI_ATOMIC_IMAX	MI_ATOMIC_OP_MASK(0x0A)
-#define MI_ATOMIC_IMIN	MI_ATOMIC_OP_MASK(0x0B)
-#define MI_ATOMIC_UMAX	MI_ATOMIC_OP_MASK(0x0C)
-#define MI_ATOMIC_UMIN	MI_ATOMIC_OP_MASK(0x0D)
-
 #define MI_BATCH_BUFFER		MI_INSTR(0x30, 1)
 #define   MI_BATCH_NON_SECURE		(1)
 /* for snb/ivb/vlv this also means "batch in ppgtt" when ppgtt is enabled. */
@@ -398,7 +377,7 @@
 #define   DISPLAY_PLANE_A           (0<<20)
 #define   DISPLAY_PLANE_B           (1<<20)
 #define GFX_OP_PIPE_CONTROL(len)	((0x3<<29)|(0x3<<27)|(0x2<<24)|(len-2))
-#define   PIPE_CONTROL_FLUSH_RO_CACHES			(1<<27)
+#define   PIPE_CONTROL_FLUSH_L3				(1<<27)
 #define   PIPE_CONTROL_GLOBAL_GTT_IVB			(1<<24) /* gen7+ */
 #define   PIPE_CONTROL_MMIO_WRITE			(1<<23)
 #define   PIPE_CONTROL_STORE_DATA_INDEX			(1<<21)
@@ -442,10 +421,8 @@
 #define MI_CLFLUSH              MI_INSTR(0x27, 0)
 #define MI_REPORT_PERF_COUNT    MI_INSTR(0x28, 0)
 #define   MI_REPORT_PERF_COUNT_GGTT (1<<0)
-#define MI_LOAD_REGISTER_MEM    MI_INSTR(0x29, 2)
-#define MI_LRM_USE_GLOBAL_GTT (1<<22)
-#define MI_LRM_ASYNC_MODE_ENABLE (1<<21)
-#define MI_LOAD_REGISTER_REG    MI_INSTR(0x2A, 1)
+#define MI_LOAD_REGISTER_MEM    MI_INSTR(0x29, 0)
+#define MI_LOAD_REGISTER_REG    MI_INSTR(0x2A, 0)
 #define MI_RS_STORE_DATA_IMM    MI_INSTR(0x2B, 0)
 #define MI_LOAD_URB_MEM         MI_INSTR(0x2C, 0)
 #define MI_STORE_URB_MEM        MI_INSTR(0x2D, 0)
@@ -968,10 +945,10 @@ enum punit_power_well {
 #define   DPIO_PCS_SWING_DEEMPH_CALC_MASK	(0xcf0f << DPIO_PCS_SWING_DEEMPH_CALC_SHIFT)
 #define   DPIO_PCS_SWING_CALC_TX0_TX2	(1<<30)
 #define   DPIO_PCS_SWING_CALC_TX1_TX3	(1<<31)
-#define   DPIO_PCS_DEEMPH_CALC_TX0_TX2	(2<<24)
-#define   DPIO_PCS_DEEMPH_CALC_TX1_TX3	(2<<16)
-#define   DPIO_PCS_DEEMPH_4K_CALC_TX0_TX2	(6<<28)
-#define   DPIO_PCS_DEEMPH_4K_CALC_TX1_TX3	(6<<20)
+#define	  DPIO_PCS_DEEMPH_CALC_TX0_TX2	(2<<24)
+#define	  DPIO_PCS_DEEMPH_CALC_TX1_TX3	(2<<16)
+#define	  DPIO_PCS_DEEMPH_4K_CALC_TX0_TX2	(6<<28)
+#define	  DPIO_PCS_DEEMPH_4K_CALC_TX1_TX3	(6<<20)
 #define   DPIO_PCS_TX2DEEMP_MASK	(0xf<<24)
 #define   DPIO_PCS_TX2DEEMP_9P5		(0<<24)
 #define   DPIO_PCS_TX2DEEMP_6P0		(2<<24)
@@ -1113,6 +1090,13 @@ enum punit_power_well {
 #define  DPIO_CHV_INT_LOCK_THRESHOLD_MASK		(7 << 1)
 #define  DPIO_CHV_INT_LOCK_THRESHOLD_SEL_COARSE	1 /* 1: coarse & 0 : fine  */
 #define CHV_PLL_DW9(ch) _PIPE(ch, _CHV_PLL_DW9_CH0, _CHV_PLL_DW9_CH1)
+
+#define _CHV_PLL_DW10_CH0		0x8028
+#define _CHV_PLL_DW10_CH1		0x81A8
+#define   DPIO_CHV_DCOAMP_OVERRIDE_EN	(1 << 27)
+#define   DPIO_CHV_DCOAMP_SHIFT		10
+#define   DPIO_CHV_DCOAMP_MASK		(0xF << DPIO_CHV_DCOAMP_SHIFT)
+#define CHV_PLL_DW10(ch) _PIPE(ch, _CHV_PLL_DW10_CH0, _CHV_PLL_DW10_CH1)
 
 #define _CHV_CMN_DW5_CH0               0x8114
 #define   CHV_BUFRIGHTENA1_DISABLE	(0 << 20)
@@ -1589,8 +1573,6 @@ enum punit_power_well {
 #define   GEN8_RC_SEMA_IDLE_MSG_DISABLE	(1 << 12)
 #define   GEN8_FF_DOP_CLOCK_GATE_DISABLE	(1<<10)
 
-#define GEN8_RS_PREEMPT_STATUS		0x215C
-
 /* Fuse readout registers for GT */
 #define CHV_FUSE_GT			0x182168
 #define   CHV_FGT_EU_DIS_SS0_R0_SHIFT	16
@@ -1695,12 +1677,25 @@ enum punit_power_well {
 #define I915_LPE_PIPE_B_INTERRUPT	(1<<20)
 #define I915_LPE_PIPE_A_INTERRUPT	(1<<21)
 #define I915_LPE_PIPE_C_INTERRUPT			(1<<12)
+#define CHV_I915_LPE_PIPE_A_INTERRUPT		(1<<20)
+#define CHV_I915_LPE_PIPE_B_INTERRUPT		(1<<21)
 #define I915_HDMI_AUDIO_UNDERRUN	(1UL<<31)
 #define I915_HDMI_AUDIO_BUFFER_DONE	(1UL<<29)
 #define I915_HDMI_AUDIO_UNDERRUN_ENABLE	(1UL<<15)
 #define I915_HDMI_AUDIO_LPE_C_CONFIG	0x65900
 #define I915_HDMI_AUDIO_LPE_B_CONFIG	0x65800
+#define I915_HDMI_AUDIO_LPE_A_CONFIG	0x65000
 #define GEN6_BSD_RNCID			0x12198
+#define AUD_CONFIG_VALID_BIT			(1<<9)
+#define AUD_CONFIG_DP_MODE				(1<<15)
+#define AUD_CONFIG_BLOCK_BIT			(1<<7)
+#define HDMI_LPE_AUDIO_PIPE_OFFSET		0x100
+#define HDMI_LPE_AUDIO_PIPE_BC_OFFSET(pipe) \
+	(I915_LPE_AUDIO_HDMI_STATUS_B + \
+	(pipe - 1) * HDMI_LPE_AUDIO_PIPE_OFFSET)
+#define I915_LPE_AUDIO_HDMI_STATUS(pipe) \
+	(pipe ? (HDMI_LPE_AUDIO_PIPE_BC_OFFSET(pipe)) : \
+	I915_LPE_AUDIO_HDMI_STATUS_A)
 
 #define GEN7_FF_THREAD_MODE		0x20a0
 #define   GEN7_FF_SCHED_MASK		0x0077070
@@ -1870,7 +1865,6 @@ enum punit_power_well {
 #define   GMBUS_CYCLE_INDEX	(2<<25)
 #define   GMBUS_CYCLE_STOP	(4<<25)
 #define   GMBUS_BYTE_COUNT_SHIFT 16
-#define   GMBUS_BYTE_COUNT_MAX   256U
 #define   GMBUS_SLAVE_INDEX_SHIFT 8
 #define   GMBUS_SLAVE_ADDR_SHIFT 1
 #define   GMBUS_SLAVE_READ	(1<<0)
@@ -1943,6 +1937,12 @@ enum punit_power_well {
 #define DPIO_PHY_STATUS			(VLV_DISPLAY_BASE + 0x6240)
 #define   DPLL_PORTD_READY_MASK		(0xf)
 #define DISPLAY_PHY_CONTROL (VLV_DISPLAY_BASE + 0x60100)
+#define   PHY_CHN0_SINGLE_CHANNEL_POWERDOWN_LANE_MASK  (0xF << 19)
+#define   PHY_CHN0_SINGLE_CHANNEL_POWERDOWN_OVERRIDE  (1 << 29)
+#define   PHY_CHN0_DOUBLE_CHANNEL_POWERDOWN_LANE_MASK   (0xF << 11)
+#define   PHY_CHN0_DOUBLE_CHANNEL_POWERDOWN_OVERRIDE (1 << 27)
+#define   PHY_CHN1_DOUBLE_CHANNEL_POWERDOWN_LANE_MASK   (0xF << 15)
+#define   PHY_CHN1_DOUBLE_CHANNEL_POWERDOWN_OVERRIDE (1 << 28)
 #define   PHY_COM_LANE_RESET_DEASSERT(phy) (1 << (phy))
 #define DISPLAY_PHY_STATUS (VLV_DISPLAY_BASE + 0x60104)
 #define   PHY_POWERGOOD(phy)	(((phy) == DPIO_PHY0) ? (1<<31) : (1<<30))
@@ -2700,6 +2700,10 @@ enum punit_power_well {
 #define VSYNCSHIFT(trans) _TRANSCODER2(trans, _VSYNCSHIFT_A)
 #define PIPESRC(trans) _TRANSCODER2(trans, _PIPEASRC)
 
+#define VERTICAL_ACTIVE_DISPLAY_MASK		(0xfff)
+#define VERTICAL_TOTAL_DISPLAY_OFFSET		16
+#define VERTICAL_TOTAL_DISPLAY_MASK		(0xfff<<16)
+
 /* HSW+ eDP PSR registers */
 #define EDP_PSR_BASE(dev)                       (IS_HASWELL(dev) ? 0x64800 : 0x6f800)
 #define EDP_PSR_CTL(dev)			(EDP_PSR_BASE(dev) + 0)
@@ -2961,7 +2965,12 @@ enum punit_power_well {
 #define HDMIC	(dev_priv->info.display_mmio_offset + 0x61160)
 #define GEN4_HDMIB	GEN3_SDVOB
 #define GEN4_HDMIC	GEN3_SDVOC
+#define CHV_HDMIB	0x61140
+#define CHV_HDMIC	0x61160
 #define CHV_HDMID	0x6116C
+#define VLV_CHV_HDMIB	(VLV_DISPLAY_BASE + CHV_HDMIB)
+#define VLV_CHV_HDMIC	(VLV_DISPLAY_BASE + CHV_HDMIC)
+#define VLV_CHV_HDMID	(VLV_DISPLAY_BASE + CHV_HDMID)
 #define PCH_SDVOB	0xe1140
 #define PCH_HDMIB	PCH_SDVOB
 #define PCH_HDMIC	0xe1150
@@ -2970,9 +2979,9 @@ enum punit_power_well {
 #define _PORTADDR(dvo_port, b, c, d)	((dvo_port == b) ? GEN4_HDMIB : \
 					((dvo_port == c) ? GEN4_HDMIC : \
 					CHV_HDMID))
-#define PORT_DFT_I9XX				0x61150
+#define PORT_DFT_I9XX				(dev_priv->info.display_mmio_offset + 0x61150)
 #define   DC_BALANCE_RESET			(1 << 25)
-#define PORT_DFT2_G4X				0x61154
+#define PORT_DFT2_G4X				(dev_priv->info.display_mmio_offset + 0x61154)
 #define   DC_BALANCE_RESET_VLV			(1 << 31)
 #define   PIPE_SCRAMBLE_RESET_MASK		(0x3 << 0)
 #define   PIPE_B_SCRAMBLE_RESET			(1 << 1)
@@ -3014,6 +3023,19 @@ enum punit_power_well {
 #define   HDMI_MODE_SELECT_DVI			(0 << 9) /* HDMI only */
 #define   HDMI_COLOR_RANGE_16_235		(1 << 8) /* HDMI only */
 #define   SDVO_AUDIO_ENABLE			(1 << 6)
+
+/* Enabling LPE Audio */
+#define CHICKEN_BIT_DBG_ENABLE		(1 << 0)
+#define AMP_UNMUTE					(1 << 1)
+#define AUD_CHICKEN_BIT_REG			0x62F38
+#define AUD_PORT_EN_B_DBG			0x62F20
+#define AUD_PORT_EN_C_DBG			0x62F30
+#define AUD_PORT_EN_D_DBG			0x62F34
+#define VLV_AUD_CHICKEN_BIT_REG		(VLV_DISPLAY_BASE + AUD_CHICKEN_BIT_REG)
+#define VLV_AUD_PORT_EN_B_DBG		(VLV_DISPLAY_BASE + AUD_PORT_EN_B_DBG)
+#define VLV_AUD_PORT_EN_C_DBG		(VLV_DISPLAY_BASE + AUD_PORT_EN_C_DBG)
+#define VLV_AUD_PORT_EN_D_DBG		(VLV_DISPLAY_BASE + AUD_PORT_EN_D_DBG)
+
 /* VSYNC/HSYNC bits new with 965, default is to be set */
 #define   SDVO_VSYNC_ACTIVE_HIGH		(1 << 4)
 #define   SDVO_HSYNC_ACTIVE_HIGH		(1 << 3)
@@ -3798,6 +3820,9 @@ enum punit_power_well {
 #define DP_B				0x64100
 #define DP_C				0x64200
 #define DP_D				0x64300
+#define VLV_DP_B			(VLV_DISPLAY_BASE + DP_B)
+#define VLV_DP_C			(VLV_DISPLAY_BASE + DP_C)
+#define CHV_DP_D			(VLV_DISPLAY_BASE + DP_D)
 
 #define   DP_PORT_EN			(1 << 31)
 #define   DP_PIPEB_SELECT		(1 << 30)
@@ -4615,16 +4640,21 @@ enum punit_power_well {
 	(I915_WRITE((reg), (gfx_addr) | I915_LO_DISPBASE(I915_READ(reg))))
 
 /* VBIOS flags */
-#define SWF00			(dev_priv->info.display_mmio_offset + 0x71410)
-#define SWF01			(dev_priv->info.display_mmio_offset + 0x71414)
-#define SWF02			(dev_priv->info.display_mmio_offset + 0x71418)
-#define SWF03			(dev_priv->info.display_mmio_offset + 0x7141c)
-#define SWF04			(dev_priv->info.display_mmio_offset + 0x71420)
-#define SWF05			(dev_priv->info.display_mmio_offset + 0x71424)
-#define SWF06			(dev_priv->info.display_mmio_offset + 0x71428)
-#define SWF10			(dev_priv->info.display_mmio_offset + 0x70410)
-#define SWF11			(dev_priv->info.display_mmio_offset + 0x70414)
+#define SWF00			(dev_priv->info.display_mmio_offset + 0x70410)
+#define SWF01			(dev_priv->info.display_mmio_offset + 0x70414)
+#define SWF02			(dev_priv->info.display_mmio_offset + 0x70418)
+#define SWF03			(dev_priv->info.display_mmio_offset + 0x7041c)
+#define SWF04			(dev_priv->info.display_mmio_offset + 0x70420)
+#define SWF05			(dev_priv->info.display_mmio_offset + 0x70424)
+#define SWF06			(dev_priv->info.display_mmio_offset + 0x70428)
+
+#define SWF10			(dev_priv->info.display_mmio_offset + 0x71410)
+#define SWF11			(dev_priv->info.display_mmio_offset + 0x71414)
+#define SWF12			(dev_priv->info.display_mmio_offset + 0x71418)
+#define SWF13			(dev_priv->info.display_mmio_offset + 0x7141c)
 #define SWF14			(dev_priv->info.display_mmio_offset + 0x71420)
+#define SWF15			(dev_priv->info.display_mmio_offset + 0x71424)
+
 #define SWF30			(dev_priv->info.display_mmio_offset + 0x72414)
 #define SWF31			(dev_priv->info.display_mmio_offset + 0x72418)
 #define SWF32			(dev_priv->info.display_mmio_offset + 0x7241c)
@@ -5290,6 +5320,7 @@ enum punit_power_well {
 
 #define GEN7_L3SQCREG4				0xb034
 #define  L3SQ_URB_READ_CAM_MATCH_DISABLE	(1<<27)
+#define  GEN8_LQSC_FLUSH_COHERENT_LINES		(1<<21)
 
 #define GEN8_L3CNTLREG				0x7034
 #define  GEN8_L3CNTLREG_ALL_L3_CLIENT_POOL	(48<<25)

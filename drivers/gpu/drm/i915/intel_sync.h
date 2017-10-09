@@ -1,6 +1,5 @@
 /*
  * Copyright © 2013 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -66,7 +65,6 @@ bool i915_safe_to_ignore_fence(struct intel_engine_cs *ring, struct sync_fence *
 #ifdef CONFIG_DRM_I915_SYNC
 
 int i915_sync_timeline_create(struct drm_device *dev,
-			      const char *name,
 			      struct intel_context *ctx,
 			      struct intel_engine_cs *ring);
 
@@ -87,7 +85,6 @@ void i915_sync_hung_request(struct drm_i915_gem_request *req);
 
 static inline
 int i915_sync_timeline_create(struct drm_device *dev,
-			      const char *name,
 			      struct intel_context *ctx,
 			      struct intel_engine_cs *ring)
 {
@@ -121,6 +118,11 @@ void i915_sync_hung_ring(struct intel_engine_cs *ring)
 
 }
 
+static inline
+void i915_sync_hung_request(struct drm_i915_gem_request *req)
+{
+
+}
 #endif /* CONFIG_DRM_I915_SYNC */
 
 #endif /* _INTEL_SYNC_H_ */

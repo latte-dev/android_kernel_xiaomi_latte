@@ -38,10 +38,7 @@
 #define DSI_HFP_PACKET_EXTRA_SIZE	6
 #define DSI_EOTP_PACKET_SIZE		4
 
-struct dsi_mnp {
-	u32 dsi_pll_ctrl;
-	u32 dsi_pll_div;
-};
+#define DSI_DRRS_PLL_CONFIG_TIMEOUT_MS	100
 
 static const u32 lfsr_converts[] = {
 	426, 469, 234, 373, 442, 221, 110, 311, 411,		/* 62 - 70 */
@@ -133,15 +130,11 @@ static u32 dsi_rr_formula(const struct drm_display_mode *mode,
 
 #else
 
-/* Get DSI clock from pixel clock */
-static u32 dsi_clk_from_pclk(struct intel_dsi *intel_dsi,
-			  int pixel_format, int lane_count)
+static u32 intel_get_bits_per_pixel(struct intel_dsi *intel_dsi)
 {
-	u32 dsi_clk_khz;
 	u32 bpp;
-	int pclk;
 
-	switch (pixel_format) {
+	switch (intel_dsi->pixel_format) {
 	default:
 	case VID_MODE_FORMAT_RGB888:
 	case VID_MODE_FORMAT_RGB666_LOOSE:
@@ -154,11 +147,71 @@ static u32 dsi_clk_from_pclk(struct intel_dsi *intel_dsi,
 		bpp = 16;
 		break;
 	}
-	pclk = intel_dsi->pclk;
 
-	/* DSI data rate = pixel clock * bits per pixel / lane count
-	   pixel clock is converted from KHz to Hz */
-	dsi_clk_khz = DIV_ROUND_CLOSEST(pclk * bpp, lane_count);
+	return bpp;
+}
+
+void adjust_pclk_for_dual_link(struct intel_dsi *intel_dsi,
+				struct drm_display_mode *mode, u32 *pclk)
+{
+	/* In dual link mode each port needs half of pixel clock */
+	*pclk = *pclk / 2;
+
+	/*
+	 * If pixel_overlap needed by panel, we need to	increase the pixel
+	 * clock for extra pixels.
+	 */
+	if (intel_dsi->dual_link & MIPI_DUAL_LINK_FRONT_BACK)
+		*pclk += DIV_ROUND_UP(mode->vtotal * intel_dsi->pixel_overlap *
+							mode->vrefresh, 1000);
+}
+
+void adjust_pclk_for_burst_mode(u32 *pclk, u16 burst_mode_ratio)
+{
+	*pclk = DIV_ROUND_UP(*pclk * burst_mode_ratio, 100);
+}
+
+
+/* To recalculate the pclk considering dual link and Burst mode */
+static u32 intel_drrs_calc_pclk(struct intel_dsi *intel_dsi,
+					struct drm_display_mode *mode)
+{
+	u32 pclk;
+	int pkt_pixel_size;		/* in bits */
+
+	pclk = mode->clock;
+
+	pkt_pixel_size = intel_get_bits_per_pixel(intel_dsi);
+
+	/* In dual link mode each port needs half of pixel clock */
+	if (intel_dsi->dual_link)
+		adjust_pclk_for_dual_link(intel_dsi, mode, &pclk);
+
+	/* Retaining the same Burst mode ratio for DRRS. Need to be tested */
+	if (intel_dsi->burst_mode_ratio > 100)
+		adjust_pclk_for_burst_mode(&pclk, intel_dsi->burst_mode_ratio);
+
+	DRM_DEBUG_KMS("mode->clock : %d, pclk : %d\n", mode->clock, pclk);
+	return pclk;
+}
+
+/* Get DSI clock from pixel clock */
+static u32 dsi_clk_from_pclk(struct intel_dsi *intel_dsi,
+					struct drm_display_mode *mode)
+{
+	u32 dsi_clk_khz;
+	u32 bpp;
+	u32 pclk;
+
+	bpp = intel_get_bits_per_pixel(intel_dsi);
+
+	pclk = intel_drrs_calc_pclk(intel_dsi, mode);
+
+	/*
+	 * DSI data rate = pixel clock * bits per pixel / lane count
+	 * pixel clock is converted from KHz to Hz
+	 */
+	dsi_clk_khz = DIV_ROUND_CLOSEST(pclk * bpp, intel_dsi->lane_count);
 
 	return dsi_clk_khz;
 }
@@ -255,6 +308,187 @@ static int dsi_calc_mnp(struct drm_i915_private *dev_priv,
 struct dsi_mnp dsi_mnp;
 
 /*
+ * vlv_dsi_pll_reg_configure:
+ *	Function to configure the CCK registers for PLL control and dividers
+ *
+ * pll		: Pll that is getting configure
+ * dsi_mnp	: Struct with divider values
+ * pll_enable	: Flag to indicate whether it is a fresh pll enable call or
+ *		  call on DRRS purpose
+ */
+static void vlv_dsi_pll_reg_configure(struct intel_encoder *encoder,
+				struct dsi_mnp *dsi_mnp, bool pll_enable)
+{
+	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
+	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+	enum pipe pipe;
+
+	if (!intel_crtc)
+		return;
+
+	pipe = intel_crtc->pipe;
+
+	if (pll_enable) {
+		vlv_cck_write(dev_priv, CCK_REG_DSI_PLL_CONTROL, 0);
+
+		dsi_mnp->dsi_pll_ctrl |= DSI_PLL_CLK_GATE_DSI0_DSIPLL;
+
+		/* Enable DSI1 pll for DSI Port C & DSI Dual link*/
+		if ((pipe == PIPE_B) || intel_dsi->dual_link)
+			dsi_mnp->dsi_pll_ctrl |= DSI_PLL_CLK_GATE_DSI1_DSIPLL;
+	} else {
+
+		/*
+		 * Updating the M1, N1, P1 div values alone on the
+		 * CCK registers. these new values are abstracted from
+		 * the dsi_mnp struction
+		 */
+		dsi_mnp->dsi_pll_ctrl =
+			(dsi_mnp->dsi_pll_ctrl & DSI_PLL_P1_POST_DIV_MASK) |
+			(vlv_cck_read(dev_priv, CCK_REG_DSI_PLL_CONTROL) &
+			~DSI_PLL_P1_POST_DIV_MASK);
+		dsi_mnp->dsi_pll_div = (dsi_mnp->dsi_pll_div &
+			(DSI_PLL_M1_DIV_MASK | DSI_PLL_N1_DIV_MASK)) |
+			(vlv_cck_read(dev_priv, CCK_REG_DSI_PLL_DIVIDER)
+			& ~(DSI_PLL_M1_DIV_MASK | DSI_PLL_N1_DIV_MASK));
+	}
+
+	DRM_DEBUG("dsi_pll: div %08x, ctrl %08x\n",
+				dsi_mnp->dsi_pll_div, dsi_mnp->dsi_pll_ctrl);
+
+	vlv_cck_write(dev_priv, CCK_REG_DSI_PLL_DIVIDER, dsi_mnp->dsi_pll_div);
+	vlv_cck_write(dev_priv, CCK_REG_DSI_PLL_CONTROL, dsi_mnp->dsi_pll_ctrl);
+
+	return;
+}
+
+/*
+ * vlv_drrs_configure_dsi_pll:
+ *	Function to configure the PLL dividers and bring the new values
+ * into effect by power cycling the VCO. This power cycle is supposed
+ * to be completed within the vblank period. This is software implementation
+ * and depends on the CCK register access. Needs to be tested thoroughly.
+ *
+ * encoder	: target encoder
+ * dsi_mnp	: struct with pll divider values
+ */
+int vlv_drrs_configure_dsi_pll(struct intel_encoder *encoder,
+						struct dsi_mnp *dsi_mnp)
+{
+	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
+	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
+	struct dsi_drrs *dsi_drrs = &intel_dsi->dsi_drrs;
+	struct intel_mipi_drrs_work *work = dsi_drrs->mipi_drrs_work;
+	enum pipe pipe;
+	u32 dsl_offset, dsl, dsl_end;
+	u32 vactive, vtotal, vblank, vblank_30_percent, vblank_70_percent;
+	unsigned long timeout;
+
+	if (!intel_crtc)
+		return -EPERM;
+
+	pipe = intel_crtc->pipe;
+	dsl_offset = PIPEDSL(pipe);
+
+	vlv_dsi_pll_reg_configure(encoder, dsi_mnp, false);
+
+	DRM_DEBUG("dsi_mnp:: ctrl: 0x%X, div: 0x%X\n", dsi_mnp->dsi_pll_ctrl,
+							dsi_mnp->dsi_pll_div);
+
+	dsi_mnp->dsi_pll_ctrl &= (~DSI_PLL_VCO_EN);
+
+	vtotal = I915_READ(VTOTAL(pipe));
+	vactive = (vtotal & VERTICAL_ACTIVE_DISPLAY_MASK);
+	vtotal = (vtotal & VERTICAL_TOTAL_DISPLAY_MASK) >>
+					VERTICAL_TOTAL_DISPLAY_OFFSET;
+	vblank = vtotal - vactive;
+	vblank_30_percent = vactive + DIV_ROUND_UP((vblank * 3), 10);
+	vblank_70_percent = vactive + DIV_ROUND_UP((vblank * 7), 10);
+
+	timeout = jiffies + msecs_to_jiffies(DSI_DRRS_PLL_CONFIG_TIMEOUT_MS);
+
+tap_vblank_start:
+	do {
+		if (atomic_read(&work->abort_wait_loop) == 1) {
+			DRM_DEBUG_KMS("Aborting the pll update\n");
+			return -EPERM;
+		}
+
+		if (time_after(jiffies, timeout)) {
+			DRM_DEBUG("Timeout at waiting for Vblank\n");
+			return -ETIMEDOUT;
+		}
+
+		dsl = (I915_READ(dsl_offset) & DSL_LINEMASK_GEN3);
+
+	} while (dsl <= vactive || dsl > vblank_30_percent);
+
+	mutex_lock(&dev_priv->dpio_lock);
+
+	dsl_end = I915_READ(dsl_offset) & DSL_LINEMASK_GEN3;
+
+	/*
+	 * Did we cross Vblank due to delay in mutex acquirement?
+	 * Keeping two scanlines in vblank as buffer for ops.
+	 */
+	if (dsl_end < vactive || dsl_end > vblank_70_percent) {
+		mutex_unlock(&dev_priv->dpio_lock);
+		goto tap_vblank_start;
+	}
+
+	/* Toggle the VCO_EN to bring in the new dividers values */
+	vlv_cck_write(dev_priv, CCK_REG_DSI_PLL_CONTROL, dsi_mnp->dsi_pll_ctrl);
+	dsi_mnp->dsi_pll_ctrl |= DSI_PLL_VCO_EN;
+	vlv_cck_write(dev_priv, CCK_REG_DSI_PLL_CONTROL, dsi_mnp->dsi_pll_ctrl);
+
+	dsl_end = I915_READ(dsl_offset) & DSL_LINEMASK_GEN3;
+
+	mutex_unlock(&dev_priv->dpio_lock);
+
+	if (wait_for(I915_READ(PIPECONF(pipe)) &
+					PIPECONF_DSI_PLL_LOCKED, 20)) {
+		DRM_ERROR("DSI PLL lock failed\n");
+		return -1;
+	}
+
+	DRM_DEBUG("PLL Changed between DSL: %u, %u\n", dsl, dsl_end);
+	DRM_DEBUG("DSI PLL locked\n");
+	return 0;
+}
+
+/*
+ * vlv_dsi_mnp_calculate_for_mode:
+ *	calculates the dsi_mnp values for a given mode
+ *
+ * encoder	: Target encoder
+ * dsi_mnp	: output struct to store divider values
+ * mode		: Input mode for which mnp is calculated
+ */
+int vlv_dsi_mnp_calculate_for_mode(struct intel_encoder *encoder,
+				struct dsi_mnp *dsi_mnp,
+				struct drm_display_mode *mode)
+{
+	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
+	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+	u32 dsi_clk, ret;
+
+	dsi_clk = dsi_clk_from_pclk(intel_dsi, mode);
+
+	DRM_DEBUG("Mode->clk: %u, dsi_clk: %u\n", mode->clock, dsi_clk);
+
+	ret = dsi_calc_mnp(dev_priv, dsi_clk, dsi_mnp);
+	if (ret)
+		DRM_DEBUG("dsi_calc_mnp failed\n");
+	else
+		DRM_DEBUG("dsi_mnp: ctrl : 0x%X, div : 0x%X\n",
+						dsi_mnp->dsi_pll_ctrl,
+							dsi_mnp->dsi_pll_div);
+	return ret;
+}
+
+/*
  * XXX: The muxing and gating is hard coded for now. Need to add support for
  * sharing PLLs with two DSI outputs.
  */
@@ -263,31 +497,31 @@ static void vlv_configure_dsi_pll(struct intel_encoder *encoder)
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+	struct dsi_drrs *drrs = &intel_dsi->dsi_drrs;
+	struct intel_connector *intel_connector = intel_dsi->attached_connector;
 	enum pipe pipe = intel_crtc->pipe;
 	int ret;
-	u32 dsi_clk;
 
-	dsi_clk = dsi_clk_from_pclk(intel_dsi, intel_dsi->pixel_format,
-						intel_dsi->lane_count);
-
-	ret = dsi_calc_mnp(dev_priv, dsi_clk, &dsi_mnp);
-	if (ret) {
-		DRM_DEBUG_KMS("dsi_calc_mnp failed\n");
+	ret = vlv_dsi_mnp_calculate_for_mode(encoder, &dsi_mnp,
+					intel_connector->panel.fixed_mode);
+	if (ret < 0) {
+		DRM_ERROR("dsi_mnp calculations failed\n");
 		return;
 	}
+	drrs->mnp[DRRS_HIGH_RR] = dsi_mnp;
 
-	dsi_mnp.dsi_pll_ctrl |= DSI_PLL_CLK_GATE_DSI0_DSIPLL;
+	if (dev_priv->drrs[pipe] && dev_priv->drrs[pipe]->has_drrs &&
+				intel_connector->panel.downclock_mode) {
+		ret = vlv_dsi_mnp_calculate_for_mode(encoder,
+					&drrs->mnp[DRRS_LOW_RR],
+					intel_connector->panel.downclock_mode);
+		if (ret < 0) {
+			DRM_ERROR("dsi_mnp calculations failed\n");
+			return;
+		}
+	}
 
-	/* For MIPI Port C or for dual link */
-	if ((pipe == PIPE_B) || intel_dsi->dual_link)
-		dsi_mnp.dsi_pll_ctrl |= DSI_PLL_CLK_GATE_DSI1_DSIPLL;
-
-	DRM_DEBUG_KMS("dsi pll div %08x, ctrl %08x\n",
-		      dsi_mnp.dsi_pll_div, dsi_mnp.dsi_pll_ctrl);
-
-	vlv_cck_write(dev_priv, CCK_REG_DSI_PLL_CONTROL, 0);
-	vlv_cck_write(dev_priv, CCK_REG_DSI_PLL_DIVIDER, dsi_mnp.dsi_pll_div);
-	vlv_cck_write(dev_priv, CCK_REG_DSI_PLL_CONTROL, dsi_mnp.dsi_pll_ctrl);
+	vlv_dsi_pll_reg_configure(encoder, &dsi_mnp, true);
 }
 
 void vlv_enable_dsi_pll(struct intel_encoder *encoder)

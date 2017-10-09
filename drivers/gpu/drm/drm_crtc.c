@@ -2,7 +2,6 @@
  * Copyright (c) 2006-2008 Intel Corporation
  * Copyright (c) 2007 Dave Airlie <airlied@linux.ie>
  * Copyright (c) 2008 Red Hat Inc.
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * DRM core CRTC related functions
  *
@@ -2538,11 +2537,8 @@ int drm_mode_setcrtc(struct drm_device *dev, void *data,
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EINVAL;
 
-	/*
-	 * Universal plane src offsets are only 16.16, prevent havoc for
-	 * drivers using universal plane code internally.
-	 */
-	if (crtc_req->x & 0xffff0000 || crtc_req->y & 0xffff0000)
+	/* For some reason crtc x/y offsets are signed internally. */
+	if (crtc_req->x > INT_MAX || crtc_req->y > INT_MAX)
 		return -ERANGE;
 
 	drm_modeset_lock_all(dev);
@@ -4187,6 +4183,13 @@ int drm_mode_obj_set_property_ioctl(struct drm_device *dev, void *data,
 	}
 	property = obj_to_property(prop_obj);
 
+	/*
+	 * If we keep all the CRTCs locked for any property change,
+	 * it will block flips on other displays till the change is done,
+	 * causing stuttering/blanking. We should only lock this CRTC
+	 * which is going through property change.
+	 */
+
 	if (!drm_property_change_is_valid(property, arg->value))
 		goto out;
 
@@ -4194,15 +4197,15 @@ int drm_mode_obj_set_property_ioctl(struct drm_device *dev, void *data,
 	case DRM_MODE_OBJECT_CONNECTOR:
 		crtc = drm_crtc_from_connector(obj_to_connector(arg_obj));
 		if (crtc) {
-			DRM_DEBUG_DRIVER("CRTC from connector,CRTC={id=%d props=%d}\n",
-				crtc->base.id, crtc->base.properties ?
+			DRM_DEBUG_KMS("CRTC from connector,{id=%d props=%d}\n",
+					crtc->base.id, crtc->base.properties ?
 					crtc->base.properties->count : 0);
 			mutex_lock(&config->mutex);
 			drm_modeset_lock(&crtc->mutex, NULL);
 			ret = drm_mode_connector_set_obj_prop(arg_obj, property,
 							arg->value);
 		} else {
-			DRM_ERROR("No crtc from connector, lock all\n");
+			DRM_DEBUG_KMS("No crtc from connector, lock all\n");
 			drm_modeset_lock_all(dev);
 			ret = drm_mode_connector_set_obj_prop(arg_obj, property,
 							arg->value);
@@ -4227,7 +4230,8 @@ int drm_mode_obj_set_property_ioctl(struct drm_device *dev, void *data,
 		drm_modeset_unlock(&crtc->mutex);
 		if (arg_obj->type == DRM_MODE_OBJECT_CONNECTOR)
 			mutex_unlock(&config->mutex);
-	} else
+	}
+	else
 		drm_modeset_unlock_all(dev);
 out:
 	return ret;

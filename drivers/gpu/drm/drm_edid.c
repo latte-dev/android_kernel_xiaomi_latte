@@ -159,7 +159,7 @@ static const struct drm_display_mode drm_dmt_modes[] = {
 		   DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_PVSYNC) },
 	/* 640x480@60Hz */
 	{ DRM_MODE("640x480", DRM_MODE_TYPE_DRIVER, 25175, 640, 656,
-		   752, 800, 0, 480, 489, 492, 525, 0,
+		   752, 800, 0, 480, 490, 492, 525, 0,
 		   DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC) },
 	/* 640x480@72Hz */
 	{ DRM_MODE("640x480", DRM_MODE_TYPE_DRIVER, 31500, 640, 664,
@@ -1019,13 +1019,15 @@ MODULE_PARM_DESC(edid_fixup,
  * @raw_edid: pointer to raw EDID block
  * @block: type of block to validate (0 for base, extension otherwise)
  * @print_bad_edid: if true, dump bad EDID blocks to the console
+ * @edid_corrupt: if true, the header or checksum is invalid
  *
  * Validate a base or extension EDID block and optionally dump bad blocks to
  * the console.
  *
  * Return: True if the block is valid, false otherwise.
  */
-bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid)
+bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid,
+			  bool *edid_corrupt)
 {
 	int i;
 	u8 csum = 0;
@@ -1039,11 +1041,22 @@ bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid)
 
 	if (block == 0) {
 		int score = drm_edid_header_is_valid(raw_edid);
-		if (score == 8) ;
-		else if (score >= edid_fixup) {
+		if (score == 8) {
+			if (edid_corrupt)
+				*edid_corrupt = 0;
+		} else if (score >= edid_fixup) {
+			/* Displayport Link CTS Core 1.2 rev1.1 test 4.2.2.6
+			 * The corrupt flag needs to be set here otherwise, the
+			 * fix-up code here will correct the problem, the
+			 * checksum is correct and the test fails
+			 */
+			if (edid_corrupt)
+				*edid_corrupt = 1;
 			DRM_DEBUG("Fixing EDID header, your hardware may be failing\n");
 			memcpy(raw_edid, edid_header, sizeof(edid_header));
 		} else {
+			if (edid_corrupt)
+				*edid_corrupt = 1;
 			goto bad;
 		}
 	}
@@ -1054,6 +1067,9 @@ bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid)
 		if (print_bad_edid) {
 			DRM_ERROR("EDID checksum is invalid, remainder is %d\n", csum);
 		}
+
+		if (edid_corrupt)
+			*edid_corrupt = 1;
 
 		/* allow CEA to slide through, switches mangle this */
 		if (raw_edid[0] != 0x02)
@@ -1105,7 +1121,7 @@ bool drm_edid_is_valid(struct edid *edid)
 		return false;
 
 	for (i = 0; i <= edid->extensions; i++)
-		if (!drm_edid_block_valid(raw + i * EDID_LENGTH, i, true))
+		if (!drm_edid_block_valid(raw + i * EDID_LENGTH, i, true, NULL))
 			return false;
 
 	return true;
@@ -1198,7 +1214,8 @@ drm_do_get_edid(struct drm_connector *connector, struct i2c_adapter *adapter)
 	for (i = 0; i < 4; i++) {
 		if (drm_do_probe_ddc_edid(adapter, block, 0, EDID_LENGTH))
 			goto out;
-		if (drm_edid_block_valid(block, 0, print_bad_edid))
+		if (drm_edid_block_valid(block, 0, print_bad_edid,
+					 &connector->edid_corrupt))
 			break;
 		if (i == 0 && drm_edid_is_zero(block, EDID_LENGTH)) {
 			connector->null_edid_counter++;
@@ -1223,7 +1240,10 @@ drm_do_get_edid(struct drm_connector *connector, struct i2c_adapter *adapter)
 				  block + (valid_extensions + 1) * EDID_LENGTH,
 				  j, EDID_LENGTH))
 				goto out;
-			if (drm_edid_block_valid(block + (valid_extensions + 1) * EDID_LENGTH, j, print_bad_edid)) {
+			if (drm_edid_block_valid(block + (valid_extensions + 1)
+						 * EDID_LENGTH, j,
+						 print_bad_edid,
+						 NULL)) {
 				valid_extensions++;
 				break;
 			}
@@ -3141,6 +3161,13 @@ void drm_edid_to_eld(struct drm_connector *connector, struct edid *edid)
 		}
 	}
 	eld[5] |= sad_count << 4;
+	/*
+	 * Audio driver expects the second and third bits
+	 * of fifth byte of ELD to be 01 for DP.
+	 * So, setting second bit to be 1.
+	 */
+	if (connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort)
+		eld[5] |= ELD_DP_CONNECTION_TYPE;
 	eld[2] = (20 + mnl + sad_count * 3 + 3) / 4;
 
 	DRM_DEBUG_KMS("ELD size %d, SAD count %d\n", (int)eld[2], sad_count);

@@ -1,6 +1,5 @@
 /*
  * Copyright © 2014 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -114,6 +113,12 @@ int i915_extended_ioctl(struct drm_device *dev, void *data,
 			if (asize > usize)
 				memset(kdata + usize, 0, asize - usize);
 		}
+	}
+
+	if (kdata == NULL) {
+		DRM_ERROR("kdata is NULL\n");
+		retcode = -EINVAL;
+		goto err_i1;
 	}
 
 	if (ioctl->flags & DRM_UNLOCKED) {

@@ -191,15 +191,23 @@
 # define DP_TRAIN_VOLTAGE_SWING_SHIFT	    0
 # define DP_TRAIN_MAX_SWING_REACHED	    (1 << 2)
 # define DP_TRAIN_VOLTAGE_SWING_400	    (0 << 0)
+# define DP_TRAIN_VOLTAGE_SWING_LEVEL_0 (0 << 0)
 # define DP_TRAIN_VOLTAGE_SWING_600	    (1 << 0)
+# define DP_TRAIN_VOLTAGE_SWING_LEVEL_1 (1 << 0)
 # define DP_TRAIN_VOLTAGE_SWING_800	    (2 << 0)
+# define DP_TRAIN_VOLTAGE_SWING_LEVEL_2 (2 << 0)
 # define DP_TRAIN_VOLTAGE_SWING_1200	    (3 << 0)
+# define DP_TRAIN_VOLTAGE_SWING_LEVEL_3 (3 << 0)
 
 # define DP_TRAIN_PRE_EMPHASIS_MASK	    (3 << 3)
 # define DP_TRAIN_PRE_EMPHASIS_0	    (0 << 3)
+# define DP_TRAIN_PRE_EMPH_LEVEL_0		(0 << 3)
 # define DP_TRAIN_PRE_EMPHASIS_3_5	    (1 << 3)
+# define DP_TRAIN_PRE_EMPH_LEVEL_1		(1 << 3)
 # define DP_TRAIN_PRE_EMPHASIS_6	    (2 << 3)
+# define DP_TRAIN_PRE_EMPH_LEVEL_2		(2 << 3)
 # define DP_TRAIN_PRE_EMPHASIS_9_5	    (3 << 3)
+# define DP_TRAIN_PRE_EMPH_LEVEL_3		(3 << 3)
 
 # define DP_TRAIN_PRE_EMPHASIS_SHIFT	    3
 # define DP_TRAIN_MAX_PRE_EMPHASIS_REACHED  (1 << 5)
@@ -550,6 +558,7 @@ struct drm_dp_aux {
 	struct mutex hw_mutex;
 	ssize_t (*transfer)(struct drm_dp_aux *aux,
 			    struct drm_dp_aux_msg *msg);
+	unsigned i2c_nack_count, i2c_defer_count;
 };
 
 ssize_t drm_dp_dpcd_read(struct drm_dp_aux *aux, unsigned int offset,

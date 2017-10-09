@@ -1,6 +1,5 @@
 /*
  * Copyright © 2011 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -509,6 +508,11 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_crtc *crtc,
 		sprctl &= ~SP_TILED;
 
 	sprctl |= SP_ENABLE;
+
+	/* disable current DRRS work scheduled and restart
+	 * to push work by another x seconds
+	 */
+	intel_restart_idleness_drrs(intel_crtc);
 
 	if (!intel_crtc->atomic_update) {
 		intel_update_sprite_watermarks(dplane, crtc, src_w, pixel_size,
@@ -1302,6 +1306,7 @@ intel_post_enable_primary(struct drm_crtc *crtc)
 
 	mutex_lock(&dev->struct_mutex);
 	intel_update_fbc(dev);
+	intel_restart_idleness_drrs(intel_crtc);
 	mutex_unlock(&dev->struct_mutex);
 }
 
@@ -1925,6 +1930,14 @@ int intel_sprite_set_colorkey(struct drm_device *dev, void *data,
 	}
 
 	plane = obj_to_plane(obj);
+
+	/*
+	 * Primary plane also gets registered as drm_plane.
+	 * Apply Color Key only if its sprite plane.
+	 */
+	if (plane->type != DRM_PLANE_TYPE_OVERLAY)
+		return -EINVAL;
+
 	intel_plane = to_intel_plane(plane);
 	ret = intel_plane->update_colorkey(plane, set);
 
@@ -1954,6 +1967,10 @@ int intel_sprite_get_colorkey(struct drm_device *dev, void *data,
 	}
 
 	plane = obj_to_plane(obj);
+
+	if (plane->type != DRM_PLANE_TYPE_OVERLAY)
+		return -EINVAL;
+
 	intel_plane = to_intel_plane(plane);
 	intel_plane->get_colorkey(plane, get);
 
@@ -2120,17 +2137,21 @@ intel_plane_init(struct drm_device *dev, enum pipe pipe, int plane)
 			     &intel_plane_funcs,
 			     plane_formats, num_plane_formats,
 			     false);
-	if (ret)
+
+	if (ret) {
 		kfree(intel_plane);
-	else {
-		if (IS_CHERRYVIEW(dev) && STEP_FROM(STEP_B0) && pipe == PIPE_B) {
-			intel_plane->csc_profile = 4;
-			intel_plane->csc_profile_property =
-				drm_property_create_range(dev, 0, "csc profile", 1,
-					chv_sprite_csc_num_entries);
-			drm_object_attach_property(&intel_plane->base.base,
-				intel_plane->csc_profile_property, 4);
-		}
+		DRM_DEBUG_KMS("Returning from plane init...\n");
+		return ret;
 	}
+
+	if (IS_CHERRYVIEW(dev) && STEP_FROM(STEP_B0) && pipe == PIPE_B) {
+		intel_plane->csc_profile = 4;
+		intel_plane->csc_profile_property =
+			drm_property_create_range(dev, 0, "csc profile", 1,
+				chv_sprite_csc_num_entries);
+		drm_object_attach_property(&intel_plane->base.base,
+			intel_plane->csc_profile_property, 4);
+	}
+
 	return ret;
 }

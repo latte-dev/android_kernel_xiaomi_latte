@@ -1,6 +1,5 @@
 /*
  * Copyright © 2014 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -61,6 +60,7 @@ struct i915_params i915 __read_mostly = {
 	.memtrack_debug = 1,
 	.enable_intel_adf = 0,
 	.scheduler_override = 0,
+	.enable_dpst_wa = 1,
 };
 module_param_named(limitbw, i915.limitbw, int, 0400);
 MODULE_PARM_DESC(limitbw,
@@ -265,3 +265,7 @@ MODULE_PARM_DESC(memtrack_debug,
 
 module_param_named(scheduler_override, i915.scheduler_override, int, 0600);
 MODULE_PARM_DESC(scheduler_override, "Scheduler override mask (default: 0)");
+
+module_param_named(enable_dpst_wa, i915.enable_dpst_wa, int, 0400);
+MODULE_PARM_DESC(enable_dpst_wa, "Disable DPST when pipe C is being used for chv "
+		"default=1 (enabled)");

@@ -2,7 +2,6 @@
  * Copyright (c) 2006 Dave Airlie <airlied@linux.ie>
  * Copyright (c) 2007-2008 Intel Corporation
  *   Jesse Barnes <jesse.barnes@intel.com>
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -27,7 +26,6 @@
 #define __INTEL_DRV_H__
 
 #include <linux/i2c.h>
-#include <linux/extcon.h>
 #include <linux/hdmi.h>
 #include <drm/i915_drm.h>
 #include "i915_drv.h"
@@ -35,6 +33,9 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_dp_helper.h>
+
+#include "intel_drrs.h"
+#include "intel_edp_drrs.h"
 
 /**
  * _wait_for - magic (register) wait macro
@@ -191,6 +192,7 @@ struct intel_encoder {
 struct intel_panel {
 	struct drm_display_mode *fixed_mode;
 	struct drm_display_mode *downclock_mode;
+	struct drm_display_mode *target_mode;
 	int fitting_mode;
 
 	/* backlight */
@@ -218,11 +220,6 @@ struct intel_connector {
 	 */
 	struct intel_encoder *new_encoder;
 
-#ifdef CONFIG_EXTCON
-	/* Android uses switch to inform userspace about hotplug events. */
-	struct extcon_dev hotplug_switch;
-#endif
-
 	/* Reads out the current hw, returning true if the connector is enabled
 	 * and active (i.e. dpms ON state). */
 	bool (*get_hw_state)(struct intel_connector *);
@@ -247,6 +244,8 @@ struct intel_connector {
 
 	/* Whether DPMS off is pending on this ? */
 	bool dpms_off_pending;
+
+	bool simulate_disconnect_connect;
 };
 
 typedef struct dpll {
@@ -532,6 +531,8 @@ struct intel_crtc {
 	 */
 	u32 hw_frm_cnt_at_enable;
 	bool skip_check_state;
+
+	bool te_int;
 };
 
 struct intel_plane_wm_parameters {
@@ -651,6 +652,7 @@ struct intel_hdmi {
 	bool rgb_quant_range_selectable;
 	struct edid *edid;
 	u32 edid_mode_count;
+	int notify_had;
 
 	/*
 	 * For HDCP compliance, we disable port immediately after detecting
@@ -678,8 +680,10 @@ struct intel_dp {
 	enum hdmi_force_audio force_audio;
 	uint32_t color_range;
 	bool color_range_auto;
+	bool allow_dpcd;
 	uint8_t link_bw;
 	uint8_t lane_count;
+	uint8_t sink_count;
 	uint8_t dpcd[DP_RECEIVER_CAP_SIZE];
 	uint8_t psr_dpcd[EDP_PSR_RECEIVER_CAP_SIZE];
 	uint8_t downstream_ports[DP_MAX_DOWNSTREAM_PORTS];
@@ -717,6 +721,13 @@ struct intel_dp {
 				     int send_bytes,
 				     uint32_t aux_clock_divider);
 
+	struct edp_drrs_platform_ops *drrs_ops;
+	int notify_had;
+
+	/* Displayport compliance testing */
+	unsigned long compliance_test_type;
+	unsigned long compliance_test_data;
+	bool compliance_test_active;
 };
 
 struct intel_digital_port {
@@ -725,6 +736,7 @@ struct intel_digital_port {
 	u32 saved_port_bits;
 	struct intel_dp dp;
 	struct intel_hdmi hdmi;
+	bool (*hpd_pulse)(struct intel_digital_port *, bool);
 };
 
 static inline int
@@ -979,14 +991,15 @@ void intel_mode_from_pipe_config(struct drm_display_mode *mode,
 				 struct intel_crtc_config *pipe_config);
 int intel_format_to_fourcc(int format);
 void intel_crtc_wait_for_pending_flips(struct drm_crtc *crtc);
-
+void chv_set_lpe_audio_reg_pipe(struct drm_device *dev,
+				int encoder_type, enum port port);
 
 /* intel_dp.c */
 void intel_dp_init(struct drm_device *dev, int output_reg, enum port port);
 bool intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 			     struct intel_connector *intel_connector);
-void intel_dp_start_link_train(struct intel_dp *intel_dp);
-void intel_dp_complete_link_train(struct intel_dp *intel_dp);
+bool intel_dp_start_link_train(struct intel_dp *intel_dp);
+bool intel_dp_complete_link_train(struct intel_dp *intel_dp);
 void intel_dp_stop_link_train(struct intel_dp *intel_dp);
 bool intel_dp_fast_link_train(struct intel_dp *intel_dp);
 bool chv_upfront_link_train(struct drm_device *dev,
@@ -996,11 +1009,15 @@ void intel_dp_set_clock(struct intel_encoder *encoder,
 void intel_dp_sink_dpms(struct intel_dp *intel_dp, int mode);
 void intel_dp_set_m2_n2(struct intel_crtc *crtc, struct intel_link_m_n *m_n);
 void intel_dp_encoder_destroy(struct drm_encoder *encoder);
-void intel_dp_check_link_status(struct intel_dp *intel_dp);
+void intel_dp_check_link_status(struct intel_dp *intel_dp, bool *full_detect);
 int intel_dp_sink_crc(struct intel_dp *intel_dp, u8 *crc);
 bool intel_dp_compute_config(struct intel_encoder *encoder,
 			     struct intel_crtc_config *pipe_config);
 bool intel_dp_is_edp(struct drm_device *dev, enum port port);
+bool intel_dp_hpd_pulse(struct intel_digital_port *intel_dig_port,
+			bool long_hpd);
+int intel_dp_max_link_bw(struct intel_dp *intel_dp);
+
 void intel_edp_backlight_on(struct intel_dp *intel_dp);
 void intel_edp_backlight_off(struct intel_dp *intel_dp);
 void intel_edp_panel_vdd_on(struct intel_dp *intel_dp);
@@ -1011,6 +1028,7 @@ void intel_edp_psr_disable(struct intel_dp *intel_dp);
 void intel_edp_psr_update(struct drm_device *dev, bool suspend);
 void intel_vlv_edp_psr_update(struct drm_device *dev);
 void intel_vlv_edp_psr_disable(struct drm_device *dev);
+void intel_vlv_edp_psr_reset(struct drm_device *dev);
 void intel_vlv_edp_psr_exit(struct drm_device *dev, bool disable);
 void intel_vlv_psr_irq_handler(struct drm_device *dev, enum pipe pipe);
 enum pipe vlv_power_sequencer_pipe(struct intel_dp *intel_dp);
@@ -1063,6 +1081,7 @@ void intel_hdmi_init_connector(struct intel_digital_port *intel_dig_port,
 struct intel_hdmi *enc_to_intel_hdmi(struct drm_encoder *encoder);
 bool intel_hdmi_compute_config(struct intel_encoder *encoder,
 			       struct intel_crtc_config *pipe_config);
+bool intel_hdmi_live_status(struct drm_connector *connector);
 
 
 /* intel_lvds.c */

@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2014 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -175,6 +174,9 @@ bool        i915_scheduler_is_request_tracked(struct drm_i915_gem_request *req,
 					      bool *completed, bool *busy);
 int         i915_scheduler_query_stats(struct intel_engine_cs *ring,
 				       struct i915_scheduler_stats_nodes *stats);
+uint32_t    i915_scheduler_count_queued_by_context(struct drm_device *dev,
+						   struct intel_context *target,
+						   struct intel_engine_cs *ring);
 bool        i915_scheduler_file_queue_is_full(struct drm_file *file);
 
 #endif  /* _I915_SCHEDULER_H_ */

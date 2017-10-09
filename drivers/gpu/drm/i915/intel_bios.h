@@ -601,62 +601,62 @@ int intel_parse_bios(struct drm_device *dev);
 #define GR18_SMM_EN		(1<<0)
 
 /* Set by driver, cleared by VBIOS */
-#define SWF00_YRES_SHIFT	16
-#define SWF00_XRES_SHIFT	0
-#define SWF00_RES_MASK		0xffff
+#define SWF10_YRES_SHIFT	16
+#define SWF10_XRES_SHIFT	0
+#define SWF10_RES_MASK		0xffff
 
 /* Set by VBIOS at boot time and driver at runtime */
-#define SWF01_TV2_FORMAT_SHIFT	8
-#define SWF01_TV1_FORMAT_SHIFT	0
-#define SWF01_TV_FORMAT_MASK	0xffff
+#define SWF11_TV2_FORMAT_SHIFT	8
+#define SWF11_TV1_FORMAT_SHIFT	0
+#define SWF11_TV_FORMAT_MASK	0xffff
 
-#define SWF10_VBIOS_BLC_I2C_EN	(1<<29)
-#define SWF10_GTT_OVERRIDE_EN	(1<<28)
-#define SWF10_LFP_DPMS_OVR	(1<<27) /* override DPMS on display switch */
-#define SWF10_ACTIVE_TOGGLE_LIST_MASK (7<<24)
-#define   SWF10_OLD_TOGGLE	0x0
-#define   SWF10_TOGGLE_LIST_1	0x1
-#define   SWF10_TOGGLE_LIST_2	0x2
-#define   SWF10_TOGGLE_LIST_3	0x3
-#define   SWF10_TOGGLE_LIST_4	0x4
-#define SWF10_PANNING_EN	(1<<23)
-#define SWF10_DRIVER_LOADED	(1<<22)
-#define SWF10_EXTENDED_DESKTOP	(1<<21)
-#define SWF10_EXCLUSIVE_MODE	(1<<20)
-#define SWF10_OVERLAY_EN	(1<<19)
-#define SWF10_PLANEB_HOLDOFF	(1<<18)
-#define SWF10_PLANEA_HOLDOFF	(1<<17)
-#define SWF10_VGA_HOLDOFF	(1<<16)
-#define SWF10_ACTIVE_DISP_MASK	0xffff
-#define   SWF10_PIPEB_LFP2	(1<<15)
-#define   SWF10_PIPEB_EFP2	(1<<14)
-#define   SWF10_PIPEB_TV2	(1<<13)
-#define   SWF10_PIPEB_CRT2	(1<<12)
-#define   SWF10_PIPEB_LFP	(1<<11)
-#define   SWF10_PIPEB_EFP	(1<<10)
-#define   SWF10_PIPEB_TV	(1<<9)
-#define   SWF10_PIPEB_CRT	(1<<8)
-#define   SWF10_PIPEA_LFP2	(1<<7)
-#define   SWF10_PIPEA_EFP2	(1<<6)
-#define   SWF10_PIPEA_TV2	(1<<5)
-#define   SWF10_PIPEA_CRT2	(1<<4)
-#define   SWF10_PIPEA_LFP	(1<<3)
-#define   SWF10_PIPEA_EFP	(1<<2)
-#define   SWF10_PIPEA_TV	(1<<1)
-#define   SWF10_PIPEA_CRT	(1<<0)
+#define SWF00_VBIOS_BLC_I2C_EN	(1<<29)
+#define SWF00_GTT_OVERRIDE_EN	(1<<28)
+#define SWF00_LFP_DPMS_OVR	(1<<27) /* override DPMS on display switch */
+#define SWF00_ACTIVE_TOGGLE_LIST_MASK (7<<24)
+#define   SWF00_OLD_TOGGLE	0x0
+#define   SWF00_TOGGLE_LIST_1	0x1
+#define   SWF00_TOGGLE_LIST_2	0x2
+#define   SWF00_TOGGLE_LIST_3	0x3
+#define   SWF00_TOGGLE_LIST_4	0x4
+#define SWF00_PANNING_EN	(1<<23)
+#define SWF00_DRIVER_LOADED	(1<<22)
+#define SWF00_EXTENDED_DESKTOP	(1<<21)
+#define SWF00_EXCLUSIVE_MODE	(1<<20)
+#define SWF00_OVERLAY_EN	(1<<19)
+#define SWF00_PLANEB_HOLDOFF	(1<<18)
+#define SWF00_PLANEA_HOLDOFF	(1<<17)
+#define SWF00_VGA_HOLDOFF	(1<<16)
+#define SWF00_ACTIVE_DISP_MASK	0xffff
+#define   SWF00_PIPEB_LFP2	(1<<15)
+#define   SWF00_PIPEB_EFP2	(1<<14)
+#define   SWF00_PIPEB_TV2	(1<<13)
+#define   SWF00_PIPEB_CRT2	(1<<12)
+#define   SWF00_PIPEB_LFP	(1<<11)
+#define   SWF00_PIPEB_EFP	(1<<10)
+#define   SWF00_PIPEB_TV	(1<<9)
+#define   SWF00_PIPEB_CRT	(1<<8)
+#define   SWF00_PIPEA_LFP2	(1<<7)
+#define   SWF00_PIPEA_EFP2	(1<<6)
+#define   SWF00_PIPEA_TV2	(1<<5)
+#define   SWF00_PIPEA_CRT2	(1<<4)
+#define   SWF00_PIPEA_LFP	(1<<3)
+#define   SWF00_PIPEA_EFP	(1<<2)
+#define   SWF00_PIPEA_TV	(1<<1)
+#define   SWF00_PIPEA_CRT	(1<<0)
 
-#define SWF11_MEMORY_SIZE_SHIFT	16
-#define SWF11_SV_TEST_EN	(1<<15)
-#define SWF11_IS_AGP		(1<<14)
-#define SWF11_DISPLAY_HOLDOFF	(1<<13)
-#define SWF11_DPMS_REDUCED	(1<<12)
-#define SWF11_IS_VBE_MODE	(1<<11)
-#define SWF11_PIPEB_ACCESS	(1<<10) /* 0 here means pipe a */
-#define SWF11_DPMS_MASK		0x07
-#define   SWF11_DPMS_OFF	(1<<2)
-#define   SWF11_DPMS_SUSPEND	(1<<1)
-#define   SWF11_DPMS_STANDBY	(1<<0)
-#define   SWF11_DPMS_ON		0
+#define SWF01_MEMORY_SIZE_SHIFT	16
+#define SWF01_SV_TEST_EN	(1<<15)
+#define SWF01_IS_AGP		(1<<14)
+#define SWF01_DISPLAY_HOLDOFF	(1<<13)
+#define SWF01_DPMS_REDUCED	(1<<12)
+#define SWF01_IS_VBE_MODE	(1<<11)
+#define SWF01_PIPEB_ACCESS	(1<<10) /* 0 here means pipe a */
+#define SWF01_DPMS_MASK		0x07
+#define   SWF01_DPMS_OFF	(1<<2)
+#define   SWF01_DPMS_SUSPEND	(1<<1)
+#define   SWF01_DPMS_STANDBY	(1<<0)
+#define   SWF01_DPMS_ON		0
 
 #define SWF14_GFX_PFIT_EN	(1<<31)
 #define SWF14_TEXT_PFIT_EN	(1<<30)

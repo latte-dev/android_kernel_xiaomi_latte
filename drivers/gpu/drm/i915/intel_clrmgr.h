@@ -47,9 +47,12 @@ struct hue_saturationlut {
 /* CSC correction */
 #define CLRMGR_BASE   16
 #define CSC_MAX_COEFF_COUNT		6
+#define CSC_MAX_COEFF_COUNT_CHV		5
 #define CLR_MGR_PARSE_MAX		128
 #define PIPECONF_GAMMA			(1<<24)
 #define GAMMA_CORRECT_MAX_COUNT 256
+#define GAMMA_CORRECT_MAX_COUNT_CHV	514
+#define DEGAMMA_CORRECT_MAX_COUNT_CHV	130
 #define CRTC_ID_TOKEN_COUNT	1
 #define ENABLE_TOKEN_MAX_COUNT	1
 #define GC_MAX_COUNT 3
@@ -168,6 +171,15 @@ struct hue_saturationlut {
 #define CHV_CGM_GAMMA_MATRIX_MAX_VALS   257
 #define CHV_CGM_DEGAMMA_MATRIX_MAX_VALS	65
 
+
+enum color {
+	RED_OFFSET = 0,
+	GREEN_OFFSET,
+	BLUE_OFFSET,
+	MAX_COLOR_COMPONENTS,
+};
+#define CHV_GAMMA_MAX_VALS	CHV_CGM_GAMMA_MATRIX_MAX_VALS
+
 #define PIPEA_CGM_DEGAMMA_ST 0x66000
 #define PIPEA_CGM_GAMMA_ST   0x67000
 #define PIPEA_CGM_CSC_ST     0x67900
@@ -285,6 +297,8 @@ int intel_sprite_hs_adjust(struct drm_i915_private *dev_priv,
 		struct hue_saturationlut *hs_ptr);
 void intel_save_clr_mgr_status(struct drm_device *dev);
 bool intel_restore_clr_mgr_status(struct drm_device *dev);
+void chv_save_gamma_lut(uint *dest, enum pipe pipe, enum color color);
+int chv_set_pipe_degamma(struct drm_crtc *crtc, bool enable, bool is_internal);
 
 /*
  * intel_clrmgr_set_property

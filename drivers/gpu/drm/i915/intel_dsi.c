@@ -1,6 +1,5 @@
 /*
  * Copyright © 2013 Intel Corporation
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -372,6 +371,10 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	u32 temp;
 	u32 val;
 	u32 count = 1;
+	int ret;
+	int i = 0;
+	struct sg_page_iter sg_iter;
+	struct scatterlist *sg_temp;
 
 	DRM_DEBUG_KMS("\n");
 
@@ -382,29 +385,94 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 			return;
 		}
 
-		i915_gem_object_set_cache_level(intel_dsi->gem_obj,
+		ret = i915_gem_object_set_cache_level(intel_dsi->gem_obj,
 							I915_CACHE_LLC);
+		if (ret)
+			goto err_unref;
 
-		if (i915_gem_obj_ggtt_pin(intel_dsi->gem_obj, 4096, 0)) {
-			DRM_ERROR("MIPI command buffer GTT pin failed");
-			return;
-		}
+		ret = i915_gem_obj_ggtt_pin(intel_dsi->gem_obj, 4096, 0);
+		if (ret)
+			goto err_unref;
 
 		intel_dsi->cmd_buff =
 				kmap(sg_page(intel_dsi->gem_obj->pages->sgl));
 		intel_dsi->cmd_buff_phy_addr = page_to_phys(
 				sg_page(intel_dsi->gem_obj->pages->sgl));
 	}
+	if (intel_dsi->cursor_obj == NULL && is_cmd_mode(intel_dsi)) {
+		mutex_lock(&dev->struct_mutex);
+		intel_dsi->cursor_obj = i915_gem_alloc_object(dev, 64 * 64 * 4);
+		if (intel_dsi->cursor_obj == NULL) {
+			DRM_ERROR("Failed to allocate seqno page\n");
+			return;
+		}
 
+		ret = i915_gem_object_set_cache_level(intel_dsi->cursor_obj,
+				HAS_WT(intel_dsi->cursor_obj->base.dev) ?
+					I915_CACHE_WT : I915_CACHE_NONE);
+		if (ret)
+			goto err_unref_cursor;
+
+		ret =  i915_gem_obj_ggtt_pin(intel_dsi->cursor_obj,
+						PAGE_SIZE, PIN_MAPPABLE);
+		if (ret) {
+			ret = i915_gem_obj_ggtt_pin(intel_dsi->cursor_obj,
+								PAGE_SIZE, 0);
+			if (ret)
+				goto err_unref_cursor;
+	       }
+
+		ret = i915_gem_object_set_to_gtt_domain(intel_dsi->cursor_obj,
+									true);
+		if (ret) {
+			DRM_ERROR("failed to move cursor obj into the GTT\n");
+			goto err_unref_cursor;
+		}
+
+		sg_temp = intel_dsi->cursor_obj->pages->sgl;
+		for_each_sg_page(intel_dsi->cursor_obj->pages->sgl, &sg_iter,
+				intel_dsi->cursor_obj->pages->nents, 0) {
+			if (sg_temp != NULL) {
+				intel_dsi->cursor_buff[i] =
+							kmap(sg_page(sg_temp));
+				sg_temp = sg_next(sg_temp);
+			}
+			i++;
+		}
+		mutex_unlock(&dev->struct_mutex);
+	}
+
+
+	if ((intel_dsi->dual_link) && (intel_dsi->gem_obj_2 == NULL) &&
+						is_cmd_mode(intel_dsi)) {
+		intel_dsi->gem_obj_2 = i915_gem_alloc_object(dev, 4096);
+		if (intel_dsi->gem_obj_2 == NULL) {
+			DRM_ERROR("Failed to allocate seqno page\n");
+			return;
+		}
+
+		ret = i915_gem_object_set_cache_level(intel_dsi->gem_obj_2,
+							I915_CACHE_LLC);
+		if (ret)
+			goto err_unref_2;
+
+		ret = i915_gem_obj_ggtt_pin(intel_dsi->gem_obj_2, 4096, 0);
+		if (ret) {
+err_unref_2:
+			drm_gem_object_unreference(&intel_dsi->gem_obj_2->base);
+			return;
+		}
+
+		intel_dsi->cmd_buff_2 =
+				kmap(sg_page(intel_dsi->gem_obj_2->pages->sgl));
+		intel_dsi->cmd_buff_phy_addr_2 = page_to_phys(
+				sg_page(intel_dsi->gem_obj_2->pages->sgl));
+	}
 	/* Panel Enable */
 	if (intel_dsi->dev.dev_ops->power_on)
 		intel_dsi->dev.dev_ops->power_on(&intel_dsi->dev);
 
-	/*
-	 *  delay after power on is already done in sequence
-	 *  execution, unnecessary here
-	 */
-	/* msleep(intel_dsi->panel_on_delay); */
+	msleep(intel_dsi->panel_on_delay);
 
 	/* Disable DPOunit clock gating, can stall pipe
 	 * and we need DPLL REFA always enabled */
@@ -471,9 +539,22 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 
 	do {
 		val = intel_dsi->lane_count << DATA_LANES_PRG_REG_SHIFT;
-		val |= intel_dsi->channel << VID_MODE_CHANNEL_NUMBER_SHIFT;
-		val |= intel_dsi->pixel_format;
+
+		if (is_cmd_mode(intel_dsi)) {
+			val |= intel_dsi->channel <<
+					CMD_MODE_CHANNEL_NUMBER_SHIFT;
+			val |= CMD_MODE_DATA_WIDTH_OPTION2;
+
+			I915_WRITE(MIPI_DBI_FIFO_THROTTLE(pipe),
+					DBI_FIFO_EMPTY_QUARTER);
+			I915_WRITE(MIPI_HS_LP_DBI_ENABLE(pipe), 0);
+		} else {
+			val |= intel_dsi->channel <<
+						VID_MODE_CHANNEL_NUMBER_SHIFT;
+			val |= intel_dsi->pixel_format;
+		}
 		I915_WRITE(MIPI_DSI_FUNC_PRG(pipe), val);
+
 		val = 0;
 		if (intel_dsi->eotp_pkt == 0)
 			val |= EOT_DISABLE;
@@ -489,18 +570,21 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	/* Enable port in pre-enable phase itself because as per hw team
 	 * recommendation, port should be enabled befor plane & pipe */
 	intel_dsi_send_enable_cmds(encoder);
+	return;
+
+err_unref:
+	drm_gem_object_unreference(&intel_dsi->gem_obj->base);
+	return;
+
+err_unref_cursor:
+	drm_gem_object_unreference(&intel_dsi->cursor_obj->base);
+	return;
 }
 
 static void intel_dsi_enable(struct intel_encoder *encoder)
 {
-
-	DRM_DEBUG_KMS("\n");
-
+        DRM_DEBUG_KMS("\n");
 	intel_dsi_port_enable(encoder);
-	/*
-	 *Backlight work is done in lp855x_bl.c, unnecessary here
-	 *remove the code to save power on time
-	 */
 }
 
 static void intel_dsi_pre_disable(struct intel_encoder *encoder)
@@ -508,7 +592,6 @@ static void intel_dsi_pre_disable(struct intel_encoder *encoder)
 	struct drm_device *dev = encoder->base.dev;
 
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
-
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
 	int pipe = intel_crtc->pipe;
 
@@ -524,12 +607,6 @@ static void intel_dsi_pre_disable(struct intel_encoder *encoder)
 		 */
 		mdelay(40);
 	}
-
-	/*
-	 * Backlight work is done in lp855x_bl.c for A3, unnecessary here
-	 * remove the action here to avoid conflict.
-	 */
-
 	if (is_vid_mode(intel_dsi)) {
 		/* Send Shutdown command to the panel in LP mode */
 		dpi_send_cmd(intel_dsi, SHUTDOWN, DPI_LP_MODE_EN);
@@ -704,6 +781,7 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 {
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+	struct drm_device *dev = encoder->base.dev;
 	u32 val;
 
 	DRM_DEBUG_KMS("\n");
@@ -731,7 +809,38 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 	if (intel_dsi->gem_obj != NULL) {
 		kunmap(intel_dsi->cmd_buff);
 		i915_gem_object_ggtt_unpin(intel_dsi->gem_obj);
+		mutex_lock(&dev->struct_mutex);
 		drm_gem_object_unreference(&intel_dsi->gem_obj->base);
+		mutex_unlock(&dev->struct_mutex);
+		intel_dsi->gem_obj = NULL;
+	}
+	if (intel_dsi->cursor_obj != NULL) {
+		if (intel_dsi->cursor_buff[3] != NULL)
+			kunmap(intel_dsi->cursor_buff[3]);
+		 if (intel_dsi->cursor_buff[2] != NULL)
+			kunmap(intel_dsi->cursor_buff[2]);
+		 if (intel_dsi->cursor_buff[1] != NULL)
+			kunmap(intel_dsi->cursor_buff[1]);
+		 if (intel_dsi->cursor_buff[0] != NULL)
+			kunmap(intel_dsi->cursor_buff[0]);
+		intel_dsi->cursor_buff[0] = NULL;
+		intel_dsi->cursor_buff[1] = NULL;
+		intel_dsi->cursor_buff[2] = NULL;
+		intel_dsi->cursor_buff[3] = NULL;
+		i915_gem_object_ggtt_unpin(intel_dsi->cursor_obj);
+		mutex_lock(&dev->struct_mutex);
+		drm_gem_object_unreference(&intel_dsi->cursor_obj->base);
+		mutex_unlock(&dev->struct_mutex);
+		intel_dsi->cursor_obj = NULL;
+	}
+
+	if ((intel_dsi->dual_link) && (intel_dsi->gem_obj_2 != NULL)) {
+		kunmap(intel_dsi->cmd_buff_2);
+		i915_gem_object_ggtt_unpin(intel_dsi->gem_obj_2);
+		mutex_lock(&dev->struct_mutex);
+		drm_gem_object_unreference(&intel_dsi->gem_obj_2->base);
+		mutex_unlock(&dev->struct_mutex);
+		intel_dsi->gem_obj_2 = NULL;
 	}
 }
 
@@ -1095,6 +1204,9 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 					IP_TG_CONFIG |
 					RANDOM_DPI_DISPLAY_RESOLUTION);
 
+		if (is_cmd_mode(intel_dsi))
+			I915_WRITE(MIPI_TEARING_CTRL(pipe),
+						CHV_CMD_MODE_TEARING_DELAY);
 
 		/* For Port C for dual link */
 		if (intel_dsi->dual_link)
@@ -1364,6 +1476,17 @@ bool intel_dsi_init(struct drm_device *dev)
 	intel_dsi->cmd_buff = NULL;
 	intel_dsi->cmd_buff_phy_addr = 0;
 	intel_dsi->gem_obj = NULL;
+
+	intel_dsi->cursor_buff[0] = NULL;
+	intel_dsi->cursor_buff[1] = NULL;
+	intel_dsi->cursor_buff[2] = NULL;
+	intel_dsi->cursor_buff[3] = NULL;
+	intel_dsi->cursor_obj = NULL;
+
+
+	intel_dsi->cmd_buff_2 = NULL;
+	intel_dsi->cmd_buff_phy_addr_2 = 0;
+	intel_dsi->gem_obj_2 = NULL;
 
 	intel_encoder->cloneable = 0;
 	drm_connector_init(dev, connector, &intel_dsi_connector_funcs,
