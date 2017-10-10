@@ -623,11 +623,6 @@ static int iTCO_wdt_resume(struct device *dev)
 	return iTCO_wdt_set_timeout(&iTCO_wdt_watchdog_dev,
 				    iTCO_wdt_watchdog_dev.timeout);
 }
-int iTCO_wdt_resume_early(void)
-{
-	printk("System debug in function %s \n", __func__);
-	return iTCO_wdt_resume(NULL);
-}
 #endif /* CONFIG_PM_SLEEP */
 
 static SIMPLE_DEV_PM_OPS(iTCO_wdt_pm_ops, iTCO_wdt_suspend, iTCO_wdt_resume);

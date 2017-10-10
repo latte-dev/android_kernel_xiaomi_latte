@@ -764,7 +764,6 @@ static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 	sched_info_queued(rq, p);
 	update_cpu_concurrency(rq);
 	p->sched_class->enqueue_task(rq, p, flags);
-	update_cpu_concurrency(rq);
 }
 
 static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
@@ -773,7 +772,6 @@ static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	sched_info_dequeued(rq, p);
 	update_cpu_concurrency(rq);
 	p->sched_class->dequeue_task(rq, p, flags);
-	update_cpu_concurrency(rq);
 }
 
 void activate_task(struct rq *rq, struct task_struct *p, int flags)
@@ -2472,7 +2470,6 @@ void scheduler_tick(void)
 	update_cpu_concurrency(rq);
 	curr->sched_class->task_tick(rq, curr, 0);
 	update_cpu_load_active(rq);
-	update_cpu_concurrency(rq);
 	raw_spin_unlock(&rq->lock);
 
 	perf_event_task_tick();
@@ -4960,6 +4957,7 @@ sd_alloc_ctl_domain_table(struct sched_domain *sd)
 	set_table_entry(&table[12], "consolidating_coeff", &sd->consolidating_coeff,
 		sizeof(int), 0644, proc_dointvec, false);
 	/* &table[13] is terminator */
+
 	return table;
 }
 
@@ -5602,6 +5600,7 @@ static void update_wc_domain(struct sched_domain *sd, int cpu)
 		sd->group_number = j;
 		sd = sd->parent;
 	}
+
 	sd = highest_flag_domain(cpu, SD_WORKLOAD_CONSOLIDATION, 0);
 	rcu_assign_pointer(per_cpu(sd_wc, cpu), sd);
 }

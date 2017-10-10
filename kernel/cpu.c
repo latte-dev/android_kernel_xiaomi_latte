@@ -22,6 +22,8 @@
 #include <trace/events/power.h>
 #include <trace/events/sched.h>
 
+#include <trace/events/sched.h>
+
 #include "smpboot.h"
 
 #ifdef CONFIG_SMP
@@ -534,7 +536,7 @@ void __ref enable_nonboot_cpus(void)
 	if (cpumask_empty(frozen_cpus))
 		goto out;
 
-	pr_debug("Enabling non-boot CPUs ...\n");
+	printk(KERN_INFO "Enabling non-boot CPUs ...\n");
 
 	arch_enable_nonboot_cpus_begin();
 

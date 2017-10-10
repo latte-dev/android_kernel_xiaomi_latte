@@ -1680,10 +1680,6 @@ static void pull_rt_task(struct rq *this_rq)
 	if (likely(!rt_overloaded(this_rq)))
 		return;
 
-#ifdef CONFIG_WORKLOAD_CONSOLIDATION
-	if (workload_consolidation_cpu_shielded(this_cpu))
-		return 0;
-#endif
 	/*
 	 * Match the barrier from rt_set_overloaded; this guarantees that if we
 	 * see overloaded we must also see the rto_mask bit.

@@ -116,6 +116,15 @@
 #define UVC_GUID_FORMAT_RW10 \
 	{ 'R',  'W',  '1',  '0', 0x00, 0x00, 0x10, 0x00, \
 	 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}
+#define UVC_GUID_FORMAT_INVZ \
+	{ 'I',  'N',  'V',  'Z', 0x90, 0x2d, 0x58, 0x4a, \
+	 0x92, 0x0b, 0x77, 0x3f, 0x1f, 0x2c, 0x55, 0x6b}
+#define UVC_GUID_FORMAT_INZI \
+	{ 'I',  'N',  'Z',  'I', 0x66, 0x1a, 0x42, 0xa2, \
+	 0x90, 0x65, 0xd0, 0x18, 0x14, 0xa8, 0xef, 0x8a}
+#define UVC_GUID_FORMAT_INVI \
+	{ 'I',  'N',  'V',  'I', 0xdb, 0x57, 0x49, 0x5e, \
+	 0x8e, 0x3f, 0xf4, 0x79, 0x53, 0x2b, 0x94, 0x6f}
 
 /* ------------------------------------------------------------------------
  * Driver specific constants.
@@ -123,8 +132,10 @@
 
 #define DRIVER_VERSION		"1.1.1"
 
-/* Number of isochronous URBs. */
-#define UVC_URBS		5
+/* Default Number of isochronous URBs. */
+#define UVC_DEFAULT_URBS	5
+/* Maximum Number of isochronous URBs. */
+#define UVC_MAX_URBS		32
 /* Maximum number of packets per URB. */
 #define UVC_MAX_PACKETS		32
 /* Maximum number of video buffers. */
@@ -150,6 +161,7 @@
 #define UVC_QUIRK_PROBE_DEF		0x00000100
 #define UVC_QUIRK_RESTRICT_FRAME_RATE	0x00000200
 #define UVC_QUIRK_ALT_JPEG_PAYLOAD	0x00000400
+#define UVC_QUIRK_APPEND_UVC_HEADER	0x00000800
 
 /* Format flags */
 #define UVC_FMT_FLAG_COMPRESSED		0x00000001
@@ -479,9 +491,9 @@ struct uvc_streaming {
 		__u32 max_payload_size;
 	} bulk;
 
-	struct urb *urb[UVC_URBS];
-	char *urb_buffer[UVC_URBS];
-	dma_addr_t urb_dma[UVC_URBS];
+	struct urb *urb[UVC_MAX_URBS];
+	char *urb_buffer[UVC_MAX_URBS];
+	dma_addr_t urb_dma[UVC_MAX_URBS];
 	unsigned int urb_size;
 
 	__u32 sequence;
@@ -596,6 +608,7 @@ extern unsigned int uvc_clock_param;
 extern unsigned int uvc_no_drop_param;
 extern unsigned int uvc_trace_param;
 extern unsigned int uvc_timeout_param;
+extern unsigned int uvc_urbs_param;
 
 #define uvc_trace(flag, msg...) \
 	do { \

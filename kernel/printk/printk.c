@@ -1354,7 +1354,7 @@ static int console_trylock_for_printk(void)
 	int retval = 0, wake = 0;
 	unsigned int cpu = smp_processor_id();
 
-	if (!in_nmi() && console_trylock()) {
+	if (console_trylock()) {
 		retval = 1;
 
 		/*
@@ -1534,13 +1534,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 	}
 
 	lockdep_off();
-	if (unlikely(in_nmi())) {
-		if (!raw_spin_trylock(&logbuf_lock))
-			goto out_restore_lockdep_irqs;
-	} else {
-		raw_spin_lock(&logbuf_lock);
-	}
-
+	raw_spin_lock(&logbuf_lock);
 	logbuf_cpu = this_cpu;
 
 	if (recursion_bug) {
@@ -1653,8 +1647,6 @@ asmlinkage int vprintk_emit(int facility, int level,
 	if (console_trylock_for_printk())
 		console_unlock();
 
-
-out_restore_lockdep_irqs:
 	preempt_enable();
 	lockdep_on();
 
@@ -2192,24 +2184,6 @@ void console_unblank(void)
 	console_unlock();
 }
 
-/**
- * console_flush_on_panic - flush console content on panic
- *
- * Immediately output all pending messages no matter what.
- */
-void console_flush_on_panic(void)
-{
-	/*
-	 * If someone else is holding the console lock, trylock will fail
-	 * and may_schedule may be set.  Ignore and proceed to unlock so
-	 * that messages are flushed out.  As this can be called from any
-	 * context and we don't want to get preempted while flushing,
-	 * ensure may_schedule is cleared.
-	 */
-	console_trylock();
-	console_may_schedule = 0;
-	console_unlock();
-}
 void console_suspend_slow(void)
 {
 	struct console *c;
@@ -2237,6 +2211,25 @@ void console_restore_slow(void)
 		pr_err("Restore slow consoles\n");
 }
 EXPORT_SYMBOL(console_restore_slow);
+
+/**
+ * console_flush_on_panic - flush console content on panic
+ *
+ * Immediately output all pending messages no matter what.
+ */
+void console_flush_on_panic(void)
+{
+	/*
+	 * If someone else is holding the console lock, trylock will fail
+	 * and may_schedule may be set.  Ignore and proceed to unlock so
+	 * that messages are flushed out.  As this can be called from any
+	 * context and we don't want to get preempted while flushing,
+	 * ensure may_schedule is cleared.
+	 */
+	console_trylock();
+	console_may_schedule = 0;
+	console_unlock();
+}
 
 /*
  * Return the console tty driver structure and its associated index

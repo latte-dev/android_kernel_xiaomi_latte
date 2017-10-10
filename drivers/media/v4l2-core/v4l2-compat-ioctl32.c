@@ -634,6 +634,7 @@ static int get_v4l2_ext_controls32(struct v4l2_ext_controls *kp, struct v4l2_ext
 	struct v4l2_ext_control __user *kcontrols;
 	int n;
 	compat_caddr_t p;
+	__u32 id;
 
 	if (!access_ok(VERIFY_READ, up, sizeof(struct v4l2_ext_controls32)) ||
 		get_user(kp->ctrl_class, &up->ctrl_class) ||
@@ -657,7 +658,9 @@ static int get_v4l2_ext_controls32(struct v4l2_ext_controls *kp, struct v4l2_ext
 	while (--n >= 0) {
 		if (copy_in_user(kcontrols, ucontrols, sizeof(*ucontrols)))
 			return -EFAULT;
-		if (ctrl_is_pointer(kcontrols->id)) {
+		if (get_user(id, &kcontrols->id))
+			return -EFAULT;
+		if (ctrl_is_pointer(id)) {
 			void __user *s;
 
 			if (get_user(p, &ucontrols->string))
@@ -678,6 +681,7 @@ static int put_v4l2_ext_controls32(struct v4l2_ext_controls *kp, struct v4l2_ext
 	struct v4l2_ext_control __user *kcontrols = kp->controls;
 	int n = kp->count;
 	compat_caddr_t p;
+	__u32 id;
 
 	if (!access_ok(VERIFY_WRITE, up, sizeof(struct v4l2_ext_controls32)) ||
 		put_user(kp->ctrl_class, &up->ctrl_class) ||
@@ -701,7 +705,9 @@ static int put_v4l2_ext_controls32(struct v4l2_ext_controls *kp, struct v4l2_ext
 		/* Do not modify the pointer when copying a pointer control.
 		   The contents of the pointer was changed, not the pointer
 		   itself. */
-		if (ctrl_is_pointer(kcontrols->id))
+		if (get_user(id, &kcontrols->id))
+			return -EFAULT;
+		if (ctrl_is_pointer(id))
 			size -= sizeof(ucontrols->value64);
 		if (copy_in_user(ucontrols, kcontrols, size))
 			return -EFAULT;
