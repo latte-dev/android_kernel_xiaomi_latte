@@ -2958,7 +2958,6 @@ static void quirk_pcie_enable_rtpm(struct pci_dev *dev)
 DECLARE_PCI_FIXUP_ENABLE(PCI_VENDOR_ID_INTEL,
 	PCI_DEVICE_ID_INTEL_CHV_PCIe_0, quirk_pcie_enable_rtpm);
 
-
 /*PCIEe port 1 on Cherryview should support runtime PM and ignore children*/
 static void quirk_pcie_enable_rtpm_ignore_children(struct pci_dev *dev)
 {

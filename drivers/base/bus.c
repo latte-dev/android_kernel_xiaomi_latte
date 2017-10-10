@@ -520,7 +520,6 @@ int bus_add_device(struct device *dev)
 						&dev->kobj, dev_name(dev));
 		if (error)
 			goto out_groups;
-
 #ifndef CONFIG_ANDROID
 		error = sysfs_create_link(&dev->kobj,
 				&dev->bus->p->subsys.kobj, "subsystem");
